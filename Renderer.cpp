@@ -134,6 +134,9 @@ Renderer::Renderer()
     , m_context(nullptr)
     , m_swapChain(nullptr)
     , m_renderTargetView(nullptr)
+    , m_depthStencilBuffer(nullptr)
+    , m_depthStencilView(nullptr)
+    , m_depthStencilState(nullptr)
     , m_vertexShader(nullptr)
     , m_pixelShader(nullptr)
     , m_inputLayout(nullptr)
@@ -196,6 +199,41 @@ bool Renderer::Initialize(HWND hwnd)
     {
         return false;
     }
+
+    // 深度バッファ作成
+    D3D11_TEXTURE2D_DESC depthDesc = {};
+    depthDesc.Width = 800;
+    depthDesc.Height = 600;
+    depthDesc.MipLevels = 1;
+    depthDesc.ArraySize = 1;
+    depthDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    depthDesc.SampleDesc.Count = 1;
+    depthDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+
+    hr = m_device->CreateTexture2D(&depthDesc, nullptr, &m_depthStencilBuffer);
+    if (FAILED(hr))
+    {
+        return false;
+    }
+
+    hr = m_device->CreateDepthStencilView(m_depthStencilBuffer, nullptr, &m_depthStencilView);
+    if (FAILED(hr))
+    {
+        return false;
+    }
+    //深度比較ルール
+    D3D11_DEPTH_STENCIL_DESC dsDesc = {};
+    dsDesc.DepthEnable = TRUE;
+    dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+    dsDesc.DepthFunc = D3D11_COMPARISON_LESS;
+    dsDesc.StencilEnable = FALSE;
+
+    hr = m_device->CreateDepthStencilState(&dsDesc, &m_depthStencilState);
+    if (FAILED(hr))
+    {
+        return false;
+    }
+
     //画面のどこにどう描くか設定
     D3D11_VIEWPORT viewport = {};
     viewport.Width = 800.0f;
@@ -298,11 +336,18 @@ bool Renderer::Initialize(HWND hwnd)
         return false;
     }
 
+    //深度チェックのため2つの三角形としてデータを用意
     Vertex vertices[] =
     {
-        {  0.0f,  0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f },
-        {  0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f },
-        { -0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f }
+        // 奥の三角形（赤） z = 0.8f
+        {  0.0f,  0.6f, 0.8f, 1.0f, 0.0f, 0.0f, 1.0f },
+        {  0.6f, -0.6f, 0.8f, 1.0f, 0.0f, 0.0f, 1.0f },
+        { -0.6f, -0.6f, 0.8f, 1.0f, 0.0f, 0.0f, 1.0f },
+
+        // 手前の三角形（青） z = 0.2f
+        {  0.0f,  0.3f, 0.2f, 0.0f, 0.0f, 1.0f, 1.0f },
+        {  0.3f, -0.3f, 0.2f, 0.0f, 0.0f, 1.0f, 1.0f },
+        { -0.3f, -0.3f, 0.2f, 0.0f, 0.0f, 1.0f, 1.0f }
     };
 
     D3D11_BUFFER_DESC bufferDesc = {};
@@ -324,10 +369,26 @@ bool Renderer::Initialize(HWND hwnd)
 
 void Renderer::BeginFrame()
 {
+    // 画面を消すときの色を指定する
+   // { 赤, 緑, 青, アルファ } の順
     float clearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 
-    m_context->OMSetRenderTargets(1, &m_renderTargetView, nullptr);
+    // このフレームで使う描画先を設定する
+    // m_renderTargetView  : 色を書き込む先
+    // m_depthStencilView  : 深度(Z値)を書き込む先
+    m_context->OMSetRenderTargets(1, &m_renderTargetView, m_depthStencilView);
+
+    // 深度テストのルールをGPUに設定する
+    // 例: 手前のピクセルだけ描画する
+    m_context->OMSetDepthStencilState(m_depthStencilState, 0);
+
+    // 画面全体を clearColor で塗りつぶして初期化する
+    // 前のフレームの絵が残らないようにする
     m_context->ClearRenderTargetView(m_renderTargetView, clearColor);
+
+    // 深度バッファを 1.0f (一番奥) で初期化する
+    // 前のフレームのZ情報が残らないようにする
+    m_context->ClearDepthStencilView(m_depthStencilView, D3D11_CLEAR_DEPTH, 1.0f, 0);
 }
 
 void Renderer::DrawTriangle()
@@ -341,8 +402,8 @@ void Renderer::DrawTriangle()
 
     m_context->VSSetShader(m_vertexShader, nullptr, 0);
     m_context->PSSetShader(m_pixelShader, nullptr, 0);
-
-    m_context->Draw(3, 0);
+    //深度チェック中
+    m_context->Draw(6, 0);
 }
 
 void Renderer::EndFrame()
@@ -374,6 +435,24 @@ void Renderer::Finalize()
     {
         m_vertexShader->Release();
         m_vertexShader = nullptr;
+    }
+
+    if (m_depthStencilView)
+    {
+        m_depthStencilView->Release();
+        m_depthStencilView = nullptr;
+    }
+
+    if (m_depthStencilBuffer)
+    {
+        m_depthStencilBuffer->Release();
+        m_depthStencilBuffer = nullptr;
+    }
+
+    if (m_depthStencilState)
+    {
+        m_depthStencilState->Release();
+        m_depthStencilState = nullptr;
     }
 
     if (m_renderTargetView)
