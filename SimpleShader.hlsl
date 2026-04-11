@@ -1,8 +1,10 @@
+
 struct VSInput
 {
     float3 position : POSITION;
     float4 color : COLOR;
 };
+
 
 struct PSInput
 {
@@ -10,10 +12,18 @@ struct PSInput
     float4 color : COLOR;
 };
 
+cbuffer ConstantBuffer : register(b0)
+{
+    matrix WVP;
+};
+
+
 PSInput VSMain(VSInput input)
 {
     PSInput output;
-    output.position = float4(input.position, 1.0f);
+
+    output.position = mul(float4(input.position, 1.0f), WVP);
+
     output.color = input.color;
     return output;
 }
@@ -21,8 +31,4 @@ PSInput VSMain(VSInput input)
 float4 PSMain(PSInput input) : SV_TARGET
 {
     return input.color;
-}
-float4 main() : SV_TARGET
-{
-	return float4(1.0f, 1.0f, 1.0f, 1.0f);
 }

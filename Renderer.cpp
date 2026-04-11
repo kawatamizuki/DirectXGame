@@ -1,121 +1,3 @@
-//#include "Renderer.h"
-//
-//#pragma comment(lib, "d3d11.lib")
-//
-//Renderer::Renderer()
-//    : m_device(nullptr)
-//    , m_context(nullptr)
-//    , m_swapChain(nullptr)
-//    , m_renderTargetView(nullptr)
-//{
-//}
-//
-//Renderer::~Renderer()
-//{
-//    Finalize();
-//}
-//
-//bool Renderer::Initialize(HWND hwnd)
-//{
-//    DXGI_SWAP_CHAIN_DESC scDesc = {};
-//    scDesc.BufferCount = 1;
-//    scDesc.BufferDesc.Width = 800;
-//    scDesc.BufferDesc.Height = 600;
-//    scDesc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-//    scDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-//    scDesc.OutputWindow = hwnd;
-//    scDesc.SampleDesc.Count = 1;
-//    scDesc.Windowed = TRUE;
-//    scDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-//
-//    HRESULT hr = D3D11CreateDeviceAndSwapChain(
-//        nullptr,
-//        D3D_DRIVER_TYPE_HARDWARE,
-//        nullptr,
-//        0,
-//        nullptr,
-//        0,
-//        D3D11_SDK_VERSION,
-//        &scDesc,
-//        &m_swapChain,
-//        &m_device,
-//        nullptr,
-//        &m_context
-//    );
-//
-//    if (FAILED(hr))
-//    {
-//        return false;
-//    }
-//
-//    ID3D11Texture2D* backBuffer = nullptr;
-//    hr = m_swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backBuffer);
-//    if (FAILED(hr))
-//    {
-//        return false;
-//    }
-//
-//    hr = m_device->CreateRenderTargetView(backBuffer, nullptr, &m_renderTargetView);
-//    backBuffer->Release();
-//
-//    if (FAILED(hr))
-//    {
-//        return false;
-//    }
-//
-//    D3D11_VIEWPORT viewport = {};
-//    viewport.Width = 800.0f;
-//    viewport.Height = 600.0f;
-//    viewport.MinDepth = 0.0f;
-//    viewport.MaxDepth = 1.0f;
-//    viewport.TopLeftX = 0.0f;
-//    viewport.TopLeftY = 0.0f;
-//
-//    m_context->RSSetViewports(1, &viewport);
-//
-//    return true;
-//}
-//
-//void Renderer::BeginFrame()
-//{
-//    float clearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
-//
-//    m_context->OMSetRenderTargets(1, &m_renderTargetView, nullptr);
-//    m_context->ClearRenderTargetView(m_renderTargetView, clearColor);
-//}
-//
-//void Renderer::EndFrame()
-//{
-//    m_swapChain->Present(1, 0);
-//}
-//
-//void Renderer::Finalize()
-//{
-//    if (m_renderTargetView)
-//    {
-//        m_renderTargetView->Release();
-//        m_renderTargetView = nullptr;
-//    }
-//
-//    if (m_swapChain)
-//    {
-//        m_swapChain->Release();
-//        m_swapChain = nullptr;
-//    }
-//
-//    if (m_context)
-//    {
-//        m_context->Release();
-//        m_context = nullptr;
-//    }
-//
-//    if (m_device)
-//    {
-//        m_device->Release();
-//        m_device = nullptr;
-//    }
-//}
-
 #include "Renderer.h"
 #include <d3dcompiler.h>
 
@@ -141,6 +23,7 @@ Renderer::Renderer()
     , m_pixelShader(nullptr)
     , m_inputLayout(nullptr)
     , m_vertexBuffer(nullptr)
+    , m_constantBuffer(nullptr)
 {
 }
 
@@ -236,8 +119,14 @@ bool Renderer::Initialize(HWND hwnd)
 
     //画面のどこにどう描くか設定
     D3D11_VIEWPORT viewport = {};
-    viewport.Width = 800.0f;
-    viewport.Height = 600.0f;
+    RECT rect;
+    GetClientRect(hwnd, &rect);
+
+    float width = (float)(rect.right - rect.left);
+    float height = (float)(rect.bottom - rect.top);
+
+    viewport.Width = width;
+    viewport.Height = height;
     viewport.MinDepth = 0.0f;
     viewport.MaxDepth = 1.0f;
     viewport.TopLeftX = 0.0f;
@@ -248,6 +137,18 @@ bool Renderer::Initialize(HWND hwnd)
     ID3DBlob* vsBlob = nullptr;
     ID3DBlob* psBlob = nullptr;
     ID3DBlob* errorBlob = nullptr;
+
+    //
+    D3D11_BUFFER_DESC cbDesc = {};
+    cbDesc.Usage = D3D11_USAGE_DEFAULT;
+    cbDesc.ByteWidth = sizeof(ConstantBuffer);
+    cbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+
+     hr = m_device->CreateBuffer(&cbDesc, nullptr, &m_constantBuffer);
+    if (FAILED(hr))
+    {
+        return false;
+    }
 
     //シェーダー読み込み
     hr = D3DCompileFromFile(
@@ -339,15 +240,15 @@ bool Renderer::Initialize(HWND hwnd)
     //深度チェックのため2つの三角形としてデータを用意
     Vertex vertices[] =
     {
-        // 奥の三角形（赤） z = 0.8f
-        {  0.0f,  0.6f, 0.8f, 1.0f, 0.0f, 0.0f, 1.0f },
-        {  0.6f, -0.6f, 0.8f, 1.0f, 0.0f, 0.0f, 1.0f },
-        { -0.6f, -0.6f, 0.8f, 1.0f, 0.0f, 0.0f, 1.0f },
+        // 奥の三角形（赤） 
+        {  0.0f,  0.6f, 4.0f, 1.0f, 0.0f, 0.0f, 1.0f },
+        {  0.6f, -0.6f, 4.0f, 1.0f, 0.0f, 0.0f, 1.0f },
+        { -0.6f, -0.6f, 4.0f, 1.0f, 0.0f, 0.0f, 1.0f },
 
-        // 手前の三角形（青） z = 0.2f
-        {  0.0f,  0.3f, 0.2f, 0.0f, 0.0f, 1.0f, 1.0f },
-        {  0.3f, -0.3f, 0.2f, 0.0f, 0.0f, 1.0f, 1.0f },
-        { -0.3f, -0.3f, 0.2f, 0.0f, 0.0f, 1.0f, 1.0f }
+        // 手前の三角形（青） 
+        {  0.0f,  0.3f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f },
+        {  0.3f, -0.3f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f },
+        { -0.3f, -0.3f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f }
     };
 
     D3D11_BUFFER_DESC bufferDesc = {};
@@ -372,6 +273,15 @@ void Renderer::BeginFrame()
     // 画面を消すときの色を指定する
    // { 赤, 緑, 青, アルファ } の順
     float clearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+
+    D3D11_VIEWPORT vp = {};
+    vp.Width = 800;
+    vp.Height = 600;
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+
+    m_context->RSSetViewports(1, &vp);
+
 
     // このフレームで使う描画先を設定する
     // m_renderTargetView  : 色を書き込む先
@@ -402,6 +312,41 @@ void Renderer::DrawTriangle()
 
     m_context->VSSetShader(m_vertexShader, nullptr, 0);
     m_context->PSSetShader(m_pixelShader, nullptr, 0);
+
+      XMMATRIX world = XMMatrixIdentity();
+   // //ワールド行列がきいているかどうかのチェック
+   // XMMATRIX world = XMMatrixRotationX(XMConvertToRadians(45.0f));//x
+   // XMMATRIX world = XMMatrixRotationY(XMConvertToRadians(45.0f));//y
+   // XMMATRIX world = XMMatrixRotationZ(XMConvertToRadians(45.0f));//z
+    XMVECTOR eye = XMVectorSet(0.0f, 0.0f, -10.0f, 0.0f); // カメラ位置
+    XMVECTOR target = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f); // 見る方向
+    XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+
+    XMMATRIX view = XMMatrixLookAtLH(eye, target, up);
+
+    //透視投影
+    XMMATRIX projection = XMMatrixPerspectiveFovLH(
+        XMConvertToRadians(45.0),
+        800.0f / 600.0f,
+        0.1f,
+        100.0f
+    );
+    ////平行投影（プロジェクション行列がきいているかどうかのチェック）
+    //XMMATRIX projection = XMMatrixOrthographicLH(
+    //    4.0f,
+    //    3.0f,
+    //    0.1f,
+    //    100.0f
+    //);
+
+    XMMATRIX wvp = world * view * projection;
+
+    ConstantBuffer cb;
+    cb.WVP = XMMatrixTranspose(wvp);
+
+    m_context->UpdateSubresource(m_constantBuffer, 0, nullptr, &cb, 0, 0);
+
+    m_context->VSSetConstantBuffers(0, 1, &m_constantBuffer);
     //深度チェック中
     m_context->Draw(6, 0);
 }
@@ -477,5 +422,11 @@ void Renderer::Finalize()
     {
         m_device->Release();
         m_device = nullptr;
+    }
+
+    if (m_constantBuffer)
+    {
+        m_constantBuffer->Release();
+        m_constantBuffer = nullptr;
     }
 }

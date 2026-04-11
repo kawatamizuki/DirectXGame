@@ -1,6 +1,13 @@
 #pragma once
 #include <windows.h>
 #include <d3d11.h>
+#include <DirectXMath.h>
+using namespace DirectX;
+
+struct ConstantBuffer
+{
+    XMMATRIX WVP;
+};
 
 class Renderer
 {
@@ -26,6 +33,7 @@ private:
     ID3D11PixelShader* m_pixelShader;
     ID3D11InputLayout* m_inputLayout;
     ID3D11Buffer* m_vertexBuffer;
+    ID3D11Buffer* m_constantBuffer;
 
 
 };

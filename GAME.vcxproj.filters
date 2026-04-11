@@ -34,8 +34,8 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="SimpleShader.hlsl">
+    <None Include="SimpleShader.hlsl">
       <Filter>リソース ファイル</Filter>
-    </FxCompile>
+    </None>
   </ItemGroup>
 </Project>
