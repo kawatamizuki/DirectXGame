@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <d3d11.h>
 #include <DirectXMath.h>
+#include <vector>
 using namespace DirectX;
 
 struct ConstantBuffer
@@ -17,7 +18,9 @@ public:
 
     bool Initialize(HWND hwnd);
     void BeginFrame();
+    void Update();
     void DrawTriangle();
+    void DrawObj();
     void EndFrame();
     void Finalize();
 
@@ -32,8 +35,26 @@ private:
     ID3D11VertexShader* m_vertexShader;
     ID3D11PixelShader* m_pixelShader;
     ID3D11InputLayout* m_inputLayout;
-    ID3D11Buffer* m_vertexBuffer;
-    ID3D11Buffer* m_constantBuffer;
 
+    //ウィンドウサイズ
+    UINT m_windowWidth;
+    UINT m_windowHeight;
+
+     //三角形とobjで分ける
+  /*  ID3D11Buffer* m_vertexBuffer;*/
+    ID3D11Buffer* m_constantBuffer;
+  /*  UINT m_vertexCount;*/
+
+    // 三角形用
+    ID3D11Buffer* m_triangleVertexBuffer;
+    UINT m_triangleVertexCount;
+
+    // OBJ用
+    ID3D11Buffer* m_objVertexBuffer;
+    UINT m_objVertexCount;
+
+    //回転用(仮）
+    float m_objAngle=0;
+   
 
 };

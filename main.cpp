@@ -36,8 +36,9 @@ int WINAPI wWinMain(
         }
         else
         {
+            renderer.Update();
             renderer.BeginFrame();
-            renderer.DrawTriangle();
+            renderer.DrawObj();
             renderer.EndFrame();
         }
     }

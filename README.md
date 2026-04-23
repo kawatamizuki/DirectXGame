@@ -4,20 +4,34 @@ DirectX11を使用して作成している C++ のゲームプロジェクトで
 
 ## 概要
 DirectX11を用いた描画処理の学習と、就職作品としての開発を目的に制作しています。
-現在は3D描画の基礎となるWVP行列を導入し、透視投影および平行投影の理解と実装を進めています。
+現在はOBJモデルの読み込み機能を実装し、頂点・法線・UVを用いた3D描画の基礎と、  
+デバッグログによる開発効率の向上を行っています。
+
 
 ## 現在の実装内容
-- ウィンドウ生成
-- Rendererクラスによる描画管理
+
+### 描画基盤
 - DirectX11の初期化
-- HLSLシェーダーの読み込み
+- Rendererクラスによる描画管理
+- 深度バッファ（Zバッファ）
+- WVP行列（World / View / Projection）
+
+### 描画機能
 - 三角形の描画
-- 深度バッファ（Zバッファ）の実装
-- WVP行列（World・View・Projection）の導入
-- ワールド行列によるオブジェクトの回転
-- ビュー行列によるカメラ制御（基礎）
-- 透視投影と平行投影の実装と検証
-- Git / GitHubによるバージョン管理
+- OBJモデルの描画
+
+### モデル読み込み
+- OBJファイルの読み込み
+- 頂点（position）・法線（normal）・UV・カラーに対応
+- ポリゴンの三角形分割（扇形分割）
+
+### シェーダー
+- HLSLによる頂点シェーダー・ピクセルシェーダー
+- InputLayoutの拡張（POSITION / NORMAL / TEXCOORD / COLOR）
+
+### デバッグ・設計
+- Debugログシステムの実装
+- Rendererのリファクタリング（マジックナンバー削減・ログ追加）
 
 ## 使用技術
 - C++
@@ -32,49 +46,37 @@ DirectX11を用いた描画処理の学習と、就職作品としての開発�
 3. 実行する
 ## 実行結果
 
-### 回転無し（World Matrix）
-![no Axis Rotation](docs/wvp_matrix/default_world.png)
+### OBJ形式のBOXの描画
+![obj_box](docs/obj_box/obj_box.png)
 
-### Z軸回転（World Matrix）
-![Z Axis Rotation](docs/wvp_matrix/z_axis_rotation.png)
-
-### 透視投影（Perspective Projection）
-![Perspective Projection](docs/wvp_matrix/perspective_projection.png)
-
-### 平行投影（Orthographic Projection）
-![Orthographic Projection](docs/wvp_matrix/orthographic_projection.png)
+簡易OBJLoaderを用いて読み込んだモデルを描画した結果
 
 ## 理解したこと
 
-### 深度バッファ（Depth Buffer）
-深度バッファを導入することで、Z値に基づいた前後関係の判定が可能となり、
-オブジェクトの隠面消去（Hidden Surface Removal）が正しく行われることを理解しました。
+### OBJモデル読み込み
+OBJファイルの構造（v, vt, vn, f）を理解し、
+頂点・UV・法線を組み合わせて描画データを構築する流れを学びました。
 
-### WVP行列
-3D空間の座標を画面へ投影するためには、World・View・Projectionの3つの行列が必要であることを学びました。
+また、四角形ポリゴンを三角形に分割する処理（扇形分割）を実装し、
+GPUで描画可能な三角形リストへ変換する重要性を理解しました。
 
-- **World行列**：オブジェクトの位置・回転・拡大縮小を決定する。
-- **View行列**：カメラの位置と向きを決定する。
-- **Projection行列**：3D空間を2D画面へ投影する。
+### デバッグログ
+デバッグ用のログ出力関数を実装し、処理の流れやエラーの可視化を行いました。
 
-WVP = World × View × Projection
+- Error：エラー発生時のログ
+- Info：正常動作の確認
+- Log：処理の流れの確認
 
-### 透視投影と平行投影
-透視投影と平行投影の違いを理解しました。
-
-- **透視投影（Perspective Projection）**  
-  x座標とy座標をzの奥行きに基づいて変換することで、遠くの物体ほど小さく見える遠近感を表現する。
-
-- **平行投影（Orthographic Projection）**  
-  zの奥行きによって大きさが変化せず、距離に関係なく同じ大きさで表示される投影方式。
-
-UIなどには平行投影を、3D空間を表現する際には透視投影を用いることで適切な使い分けが可能であると理解しました。
+また、シェーダーコンパイルエラーは詳細ログを出力することで、
+問題箇所の特定が容易になることを理解しました。
 
 
 ## 今後の実装予定
-- カメラ制御
-- モデル読み込み
-- プレイヤー実装
+- カメラ制御（自由視点）
+- 複数モデルの管理（GameObject化）
+- テクスチャ付きOBJモデルの対応（.mtl・画像読み込み）
+- ライティング（法線の活用）
+- テクスチャ描画（UVの活用）
 - シーン管理
 
 ## 制作意図
