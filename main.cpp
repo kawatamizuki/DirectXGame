@@ -1,6 +1,6 @@
 
 #include "Window.h"
-#include "Renderer.h"
+#include "Game.h"
 
 int WINAPI wWinMain(
     _In_ HINSTANCE hInstance,
@@ -14,8 +14,8 @@ int WINAPI wWinMain(
         return -1;
     }
 
-    Renderer renderer;
-    if (!renderer.Initialize(window.GetHWND()))
+    Game game;
+    if (!game.Initialize(window.GetHWND()))
     {
         return -1;
     }
@@ -36,14 +36,13 @@ int WINAPI wWinMain(
         }
         else
         {
-            renderer.Update();
-            renderer.BeginFrame();
-            renderer.DrawObj();
-            renderer.EndFrame();
+            game.Update();
+            game.Draw();
+           
         }
     }
 
-    renderer.Finalize();
+    game.Finalize();
 
     return 0;
 }

@@ -1,4 +1,8 @@
 
+Texture2D diffuseTexture : register(t0);
+SamplerState textureSampler : register(s0);
+
+
 struct VSInput
 {
     float3 position : POSITION; // 頂点位置
@@ -34,7 +38,27 @@ PSInput VSMain(VSInput input)
 
     return output;
 }
+
 float4 PSMain(PSInput input) : SV_TARGET
 {
-    return input.color;
+    //テクスチャ読み込みをする前
+    //return input.color;
+    
+    // NG例:
+    // OBJのUVとDirectXで読み込んだ画像のV方向が逆になる場合がある。
+    // そのまま input.uv を使うと、テクスチャの上下が合わず
+    // 黒く見えたり、意図しない表示になることがある。
+    //
+    // float4 texColor = diffuseTexture.Sample(textureSampler, input.uv);
+    // return float4(texColor.rgb, 1.0f);
+
+    //objloader側で修正予定
+    
+    // V方向を反転して、OBJのUVとDirectXのテクスチャ座標を合わせる
+    float2 uv = float2(input.uv.x, 1.0f - input.uv.y);
+
+    float4 texColor = diffuseTexture.Sample(textureSampler, uv);
+
+    // alphaを1.0に固定して、不透明として表示する
+    return float4(texColor.rgb, 1.0f);
 }

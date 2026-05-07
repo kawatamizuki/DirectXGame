@@ -21,9 +21,15 @@ struct ObjIndex
 class ObjLoader
 {
 public:
-    static bool Load(const std::string& filePath, std::vector<ObjVertex>& outVertices);
+    static bool Load(const std::string& filePath, std::vector<ObjVertex>& outVertices, std::string& outTexturePath);
 
 private:
     //static int ParseVertexIndex(const std::string& token);//Å‰À•W‚¾‚¯‚ğ“Ç‚İ‚Ş‚½‚ß‚Éì‚Á‚½‰¼ŠÖ”i‚ ‚Æ‚Åíœj
     static ObjIndex ParseFaceToken(const std::string& token);
+    //mtl‚ğ“Ç‚İ‚Ş
+    static bool LoadMtl(
+        const std::string& mtlPath,
+        const std::string& directory,
+        std::string& outTexturePath
+    );
 };

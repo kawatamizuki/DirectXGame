@@ -1,4 +1,5 @@
 #include "ObjLoader.h"
+#include"Debug.h"
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -42,6 +43,8 @@ ObjIndex ObjLoader::ParseFaceToken(const std::string& token)
     // "3"     → positionのみ
 
 
+
+
     ObjIndex index{};
     index.positionIndex = -1;
     index.texcoordIndex = -1;
@@ -82,14 +85,16 @@ ObjIndex ObjLoader::ParseFaceToken(const std::string& token)
     return index;
 }
 
-bool ObjLoader::Load(const std::string& filePath, std::vector<ObjVertex>& outVertices)
+bool ObjLoader::Load(const std::string& filePath, std::vector<ObjVertex>& outVertices, std::string& outTexturePath)
 {
     //一旦中身をクリア
     outVertices.clear();
+    outTexturePath.clear();
 
     std::ifstream file(filePath);
     if (!file.is_open())
     {
+        Debug::Error("ObjLoader::Load failed : cannot open obj file : " + filePath);
         return false;
     }
 
@@ -141,6 +146,42 @@ bool ObjLoader::Load(const std::string& filePath, std::vector<ObjVertex>& outVer
             Float3 normal{};
             iss >> normal.x >> normal.y >> normal.z;
             normals.push_back(normal);
+        }
+        //========================================
+        // マテリアル
+        //========================================
+        else if (type == "mtllib")
+        {
+            std::string mtlFileName;
+
+
+
+            iss >> mtlFileName;
+
+            if (!mtlFileName.empty())
+            {
+                // いったん同じフォルダにある前提
+                std::string directory;
+
+                size_t slashPos = filePath.find_last_of("/\\");
+                if (slashPos != std::string::npos)
+                {
+                    directory = filePath.substr(0, slashPos + 1);
+                }
+
+                std::string mtlPath = directory + mtlFileName;
+
+                //マテリアルなしのOBJの可能性もあり
+                if (!LoadMtl(mtlPath, directory, outTexturePath))
+                {
+                    Debug::Warning("ObjLoader::LoadMtl failed : " + mtlPath);
+                }
+
+
+                LoadMtl(mtlPath, directory, outTexturePath);
+            }
+
+
         }
        //========================================
        // 面情報（f）
@@ -254,4 +295,58 @@ bool ObjLoader::Load(const std::string& filePath, std::vector<ObjVertex>& outVer
     }
 
     return !outVertices.empty();
+}
+
+// MTLファイルを読み込み、マテリアル情報を取得する
+// 今は map_Kd（テクスチャパス）のみ取得する
+bool ObjLoader::LoadMtl(
+    const std::string& mtlPath,
+    const std::string& directory,
+    std::string& outTexturePath
+)
+{
+    std::ifstream file(mtlPath);
+    if (!file.is_open())
+    {
+        Debug::Warning("ObjLoader::LoadMtl failed : cannot open mtl file : " + mtlPath);
+        return false;
+    }
+
+    std::string line;
+
+    while (std::getline(file, line))
+    {
+        if (line.empty())
+        {
+            continue;
+        }
+
+        std::istringstream iss(line);
+        std::string type;
+        iss >> type;
+
+
+        // テクスチャ（拡散マップ）を取得
+        if (type == "map_Kd")
+        {
+            std::string textureFileName;
+            iss >> textureFileName;
+
+            if (!textureFileName.empty())
+            {
+                outTexturePath = directory + textureFileName;
+                Debug::Info("ObjLoader::LoadMtl map_Kd : " + outTexturePath);
+                return true;
+            }
+
+            if (!textureFileName.empty())
+            {
+                // OBJと同じディレクトリを付けてフルパスにする
+                outTexturePath = directory + textureFileName;
+                return true;
+            }
+        }
+    }
+
+    return false;
 }

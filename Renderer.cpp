@@ -1,21 +1,22 @@
-#include <d3dcompiler.h>
+ï»¿#include <d3dcompiler.h>
 #include "Renderer.h"
+#include"Vertex.h"
 #include "ObjLoader.h"
 #include"Debug.h"
+
+using namespace DirectX;
+
+
+struct ConstantBuffer
+{
+    XMMATRIX WVP;
+};
 
 
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dcompiler.lib")
 
-/*’¸“_î•ñ*/
-struct Vertex
-{
-    float x, y, z;        // ˆÊ’u
-    float nx, ny, nz;     // –@ü
-    float u, v;           // UV
-    float r, g, b, a;     // F
-};
 
 Renderer::Renderer()
     : m_device(nullptr)
@@ -28,6 +29,7 @@ Renderer::Renderer()
     , m_vertexShader(nullptr)
     , m_pixelShader(nullptr)
     , m_inputLayout(nullptr)
+    , m_samplerState(nullptr)
     ,m_windowWidth(0)
     ,m_windowHeight(0)
    // , m_vertexBuffer(nullptr)
@@ -35,8 +37,8 @@ Renderer::Renderer()
     //, m_vertexCount(0)
     , m_triangleVertexBuffer(nullptr)
     , m_triangleVertexCount(0)
-    , m_objVertexBuffer(nullptr)
-    , m_objVertexCount(0)
+   /* , m_objVertexBuffer(nullptr)
+    , m_objVertexCount(0)*/
 
 
 {
@@ -44,7 +46,7 @@ Renderer::Renderer()
 
 Renderer::~Renderer()
 {
-    Finalize();
+    //Finalize();
 }
 
 bool Renderer::Initialize(HWND hwnd)
@@ -52,10 +54,10 @@ bool Renderer::Initialize(HWND hwnd)
     Debug::Log("Renderer::Initialize start");
 
     //========================================
-    // 1. DirectX–{‘Ì‚Æ‰æ–Ê•\¦—p‚Ìd‘g‚İ‚ğì‚é
+    // 1. DirectXæœ¬ä½“ã¨ç”»é¢è¡¨ç¤ºç”¨ã®ä»•çµ„ã¿ã‚’ä½œã‚‹
     //========================================
 
-    // ‰ŠúƒEƒBƒ“ƒhƒEƒTƒCƒY‚ÆƒoƒbƒNƒoƒbƒtƒ@İ’è
+    // åˆæœŸã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‚µã‚¤ã‚ºã¨ãƒãƒƒã‚¯ãƒãƒƒãƒ•ã‚¡è¨­å®š
     constexpr UINT kDefaultWindowWidth = 800;
     constexpr UINT kDefaultWindowHeight = 600;
 
@@ -65,8 +67,8 @@ bool Renderer::Initialize(HWND hwnd)
     constexpr UINT kBackBufferCount = 1;
     constexpr UINT kSampleCount = 1;
 
-    // ƒXƒƒbƒvƒ`ƒFƒCƒ“İ’è
-    // ‰æ–Ê‚É•\¦‚·‚éƒoƒbƒNƒoƒbƒtƒ@‚Ì–‡”‚âƒTƒCƒYAŒ`®‚È‚Ç‚ğŒˆ‚ß‚é
+    // ã‚¹ãƒ¯ãƒƒãƒ—ãƒã‚§ã‚¤ãƒ³è¨­å®š
+    // ç”»é¢ã«è¡¨ç¤ºã™ã‚‹ãƒãƒƒã‚¯ãƒãƒƒãƒ•ã‚¡ã®æšæ•°ã‚„ã‚µã‚¤ã‚ºã€å½¢å¼ãªã©ã‚’æ±ºã‚ã‚‹
     DXGI_SWAP_CHAIN_DESC scDesc = {};
     scDesc.BufferCount = kBackBufferCount;
     scDesc.BufferDesc.Width = m_windowWidth;
@@ -78,9 +80,9 @@ bool Renderer::Initialize(HWND hwnd)
     scDesc.Windowed = TRUE;
     scDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 
-   // Device  : GPUƒŠƒ\[ƒX‚ğì¬‚·‚é‚½‚ß‚Ì–{‘Ì
-   // Context : •`‰æ–½—ß‚ğo‚·‚½‚ß‚Ì–{‘Ì
-   // SwapChain : •`‰æŒ‹‰Ê‚ğ‰æ–Ê‚É•\¦‚·‚é‚½‚ß‚Ìd‘g‚İ
+   // Device  : GPUãƒªã‚½ãƒ¼ã‚¹ã‚’ä½œæˆã™ã‚‹ãŸã‚ã®æœ¬ä½“
+   // Context : æç”»å‘½ä»¤ã‚’å‡ºã™ãŸã‚ã®æœ¬ä½“
+   // SwapChain : æç”»çµæœã‚’ç”»é¢ã«è¡¨ç¤ºã™ã‚‹ãŸã‚ã®ä»•çµ„ã¿
 
     HRESULT hr = D3D11CreateDeviceAndSwapChain(
         nullptr,
@@ -104,10 +106,10 @@ bool Renderer::Initialize(HWND hwnd)
     }
 
     //========================================
-    // 2. F‚Ì•`‰ææ(RenderTargetView)‚ğì‚é
+    // 2. è‰²ã®æç”»å…ˆ(RenderTargetView)ã‚’ä½œã‚‹
     //========================================
 
-    // ƒXƒƒbƒvƒ`ƒFƒCƒ“‚©‚çƒoƒbƒNƒoƒbƒtƒ@‚ğæ‚èo‚·
+    // ã‚¹ãƒ¯ãƒƒãƒ—ãƒã‚§ã‚¤ãƒ³ã‹ã‚‰ãƒãƒƒã‚¯ãƒãƒƒãƒ•ã‚¡ã‚’å–ã‚Šå‡ºã™
     ID3D11Texture2D* backBuffer = nullptr;
     hr = m_swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backBuffer);
     if (FAILED(hr))
@@ -115,7 +117,7 @@ bool Renderer::Initialize(HWND hwnd)
         Debug::Error("SwapChain::GetBuffer failed");
         return false;
     }
-    //•`‰ææ‚Æ‚µ‚Äg‚¦‚éŒ`‚É‚·‚é
+    //æç”»å…ˆã¨ã—ã¦ä½¿ãˆã‚‹å½¢ã«ã™ã‚‹
     hr = m_device->CreateRenderTargetView(backBuffer, nullptr, &m_renderTargetView);
     backBuffer->Release();
 
@@ -126,14 +128,14 @@ bool Renderer::Initialize(HWND hwnd)
     }
 
     //========================================
-    // 3. [“xƒoƒbƒtƒ@ŠÖ˜A‚ğì‚é
+    // 3. æ·±åº¦ãƒãƒƒãƒ•ã‚¡é–¢é€£ã‚’ä½œã‚‹
     //========================================
 
-    // [“xƒoƒbƒtƒ@–{‘Ì‚ğì¬‚·‚é
-    // ‚±‚ê‚ÉŠeƒsƒNƒZƒ‹‚ÌZ’l‚ğ•Û‘¶‚µ‚ÄA‘OŒãŠÖŒW‚ğ”»’è‚·‚é
+    // æ·±åº¦ãƒãƒƒãƒ•ã‚¡æœ¬ä½“ã‚’ä½œæˆã™ã‚‹
+    // ã“ã‚Œã«å„ãƒ”ã‚¯ã‚»ãƒ«ã®Zå€¤ã‚’ä¿å­˜ã—ã¦ã€å‰å¾Œé–¢ä¿‚ã‚’åˆ¤å®šã™ã‚‹
     D3D11_TEXTURE2D_DESC depthDesc = {};
-    depthDesc.Width = 800;
-    depthDesc.Height = 600;
+    depthDesc.Width = m_windowWidth;
+    depthDesc.Height = m_windowHeight;
     depthDesc.MipLevels = 1;
     depthDesc.ArraySize = 1;
     depthDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
@@ -146,15 +148,15 @@ bool Renderer::Initialize(HWND hwnd)
         Debug::Error("CreateTexture2D for depth buffer failed");
         return false;
     }
-    // [“xƒoƒbƒtƒ@‚ğ•`‰æ‚Ég‚¤‚½‚ß‚Ìƒrƒ…[‚ğì¬
+    // æ·±åº¦ãƒãƒƒãƒ•ã‚¡ã‚’æç”»æ™‚ã«ä½¿ã†ãŸã‚ã®ãƒ“ãƒ¥ãƒ¼ã‚’ä½œæˆ
     hr = m_device->CreateDepthStencilView(m_depthStencilBuffer, nullptr, &m_depthStencilView);
     if (FAILED(hr))
     {
         Debug::Error("CreateDepthStencilView failed");
         return false;
     }
-    // [“xƒeƒXƒg‚Ìƒ‹[ƒ‹‚ğì‚é
-    // ¡‰ñ‚Íu‚æ‚èè‘O‚É‚ ‚é‚à‚Ì‚ğ•`‰æ‚·‚évİ’è
+    // æ·±åº¦ãƒ†ã‚¹ãƒˆã®ãƒ«ãƒ¼ãƒ«ã‚’ä½œã‚‹
+    // ä»Šå›ã¯ã€Œã‚ˆã‚Šæ‰‹å‰ã«ã‚ã‚‹ã‚‚ã®ã‚’æç”»ã™ã‚‹ã€è¨­å®š
     D3D11_DEPTH_STENCIL_DESC dsDesc = {};
     dsDesc.DepthEnable = TRUE;
     dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
@@ -168,11 +170,11 @@ bool Renderer::Initialize(HWND hwnd)
         return false;
     }
     //========================================
-    // 4. ƒrƒ…[ƒ|[ƒg‚ğİ’è‚·‚é(‰æ–Ê‚Ì‚Ç‚±‚É‚Ç‚¤•`‚­‚©İ’è)
+    // 4. ãƒ“ãƒ¥ãƒ¼ãƒãƒ¼ãƒˆã‚’è¨­å®šã™ã‚‹(ç”»é¢ã®ã©ã“ã«ã©ã†æãã‹è¨­å®š)
     //========================================
 
-    // ƒEƒBƒ“ƒhƒE‚ÌƒNƒ‰ƒCƒAƒ“ƒg—Ìˆæ‚ğæ“¾‚µA
-    // ‚»‚Ì”ÍˆÍ‘S‘Ì‚É•`‰æ‚·‚é‚æ‚¤İ’è‚·‚é
+    // ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã®ã‚¯ãƒ©ã‚¤ã‚¢ãƒ³ãƒˆé ˜åŸŸã‚’å–å¾—ã—ã€
+    // ãã®ç¯„å›²å…¨ä½“ã«æç”»ã™ã‚‹ã‚ˆã†è¨­å®šã™ã‚‹
     
     D3D11_VIEWPORT viewport = {};
     RECT rect;
@@ -191,7 +193,7 @@ bool Renderer::Initialize(HWND hwnd)
     m_context->RSSetViewports(1, &viewport);
 
    //========================================
-   // 5. ƒVƒF[ƒ_[‚ğƒRƒ“ƒpƒCƒ‹‚µ‚Äì¬‚·‚é
+   // 5. ã‚·ã‚§ãƒ¼ãƒ€ãƒ¼ã‚’ã‚³ãƒ³ãƒ‘ã‚¤ãƒ«ã—ã¦ä½œæˆã™ã‚‹
    //========================================
 
     ID3DBlob* vsBlob = nullptr;
@@ -202,11 +204,39 @@ bool Renderer::Initialize(HWND hwnd)
     const char* kVSMain = "VSMain";
     const char* kPSMain = "PSMain";
 
+   //========================================
+   // 6. ã‚µãƒ³ãƒ—ãƒ©ãƒ¼ã‚¹ãƒ†ãƒ¼ãƒˆã‚’ä½œæˆã™ã‚‹
+   //========================================
+
+   // ãƒ†ã‚¯ã‚¹ãƒãƒ£ã‚’ãƒ”ã‚¯ã‚»ãƒ«ã‚·ã‚§ãƒ¼ãƒ€ãƒ¼ã§èª­ã‚€ã¨ãã®è¨­å®šã€‚
+   // Filter:
+   //   æ‹¡å¤§ãƒ»ç¸®å°æ™‚ã«ç·šå½¢è£œé–“ã—ã¦æ»‘ã‚‰ã‹ã«è¡¨ç¤ºã™ã‚‹ã€‚
+   // AddressU/V/W:
+   //   UVãŒ0ã€œ1ã®ç¯„å›²å¤–ã«ãªã£ãŸã¨ãã€ãƒ†ã‚¯ã‚¹ãƒãƒ£ã‚’ç¹°ã‚Šè¿”ã™ã€‚
+   //   ä¾‹: UVãŒ1.2ãªã‚‰0.2ã¨ã—ã¦æ‰±ã†ã€‚
+   // ã“ã®ã‚µãƒ³ãƒ—ãƒ©ãƒ¼ã¯HLSLå´ã® SamplerState register(s0) ã«æ¸¡ã™ã€‚
+
+    D3D11_SAMPLER_DESC samplerDesc = {};
+    samplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    samplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+    samplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+    samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+    samplerDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
+    samplerDesc.MinLOD = 0;
+    samplerDesc.MaxLOD = D3D11_FLOAT32_MAX;
+
+    hr = m_device->CreateSamplerState(&samplerDesc, &m_samplerState);
+    if (FAILED(hr))
+    {
+        Debug::Error("CreateSamplerState failed");
+        return false;
+    }
+
     //========================================
-    // 6. ’è”ƒoƒbƒtƒ@‚ğì¬‚·‚é
+    // 7. å®šæ•°ãƒãƒƒãƒ•ã‚¡ã‚’ä½œæˆã™ã‚‹
     //========================================
 
-    // ’¸“_ƒVƒF[ƒ_[‚ÉWVPs—ñ‚ğ‘—‚é‚½‚ß‚Ìƒoƒbƒtƒ@
+    // é ‚ç‚¹ã‚·ã‚§ãƒ¼ãƒ€ãƒ¼ã«WVPè¡Œåˆ—ã‚’é€ã‚‹ãŸã‚ã®ãƒãƒƒãƒ•ã‚¡
     D3D11_BUFFER_DESC cbDesc = {};
     cbDesc.Usage = D3D11_USAGE_DEFAULT;
     cbDesc.ByteWidth = sizeof(ConstantBuffer);
@@ -219,7 +249,7 @@ bool Renderer::Initialize(HWND hwnd)
          return false;
      }
 
-    // ’¸“_ƒVƒF[ƒ_[‚ğƒRƒ“ƒpƒCƒ‹
+    // é ‚ç‚¹ã‚·ã‚§ãƒ¼ãƒ€ãƒ¼ã‚’ã‚³ãƒ³ãƒ‘ã‚¤ãƒ«
     hr = D3DCompileFromFile(
         kShaderFile,
         nullptr,
@@ -238,7 +268,7 @@ bool Renderer::Initialize(HWND hwnd)
 
         if (errorBlob)
         {
-            OutputDebugStringA((char*)errorBlob->GetBufferPointer());//ƒVƒF[ƒ_[‚ÌƒRƒ“ƒpƒCƒ‹ƒGƒ‰[‚ğo—Í
+            OutputDebugStringA((char*)errorBlob->GetBufferPointer());//ã‚·ã‚§ãƒ¼ãƒ€ãƒ¼ã®ã‚³ãƒ³ãƒ‘ã‚¤ãƒ«ã‚¨ãƒ©ãƒ¼ã‚’å‡ºåŠ›
             errorBlob->Release();
             errorBlob = nullptr;
         }
@@ -248,7 +278,7 @@ bool Renderer::Initialize(HWND hwnd)
 
   
 
-    // ƒsƒNƒZƒ‹ƒVƒF[ƒ_[‚ğƒRƒ“ƒpƒCƒ‹
+    // ãƒ”ã‚¯ã‚»ãƒ«ã‚·ã‚§ãƒ¼ãƒ€ãƒ¼ã‚’ã‚³ãƒ³ãƒ‘ã‚¤ãƒ«
     hr = D3DCompileFromFile(
         kShaderFile,
         nullptr,
@@ -281,7 +311,7 @@ bool Renderer::Initialize(HWND hwnd)
 
         return false;
     }
-    // ƒRƒ“ƒpƒCƒ‹‚µ‚½’¸“_ƒVƒF[ƒ_[‚ğGPU‚Åg‚¦‚éŒ`‚É‚·‚é
+    // ã‚³ãƒ³ãƒ‘ã‚¤ãƒ«ã—ãŸé ‚ç‚¹ã‚·ã‚§ãƒ¼ãƒ€ãƒ¼ã‚’GPUã§ä½¿ãˆã‚‹å½¢ã«ã™ã‚‹
     hr = m_device->CreateVertexShader(
         vsBlob->GetBufferPointer(),
         vsBlob->GetBufferSize(),
@@ -309,7 +339,7 @@ bool Renderer::Initialize(HWND hwnd)
     }
 
 
-    // ƒRƒ“ƒpƒCƒ‹‚µ‚½ƒsƒNƒZƒ‹ƒVƒF[ƒ_[‚ğGPU‚Åg‚¦‚éŒ`‚É‚·‚é
+    // ã‚³ãƒ³ãƒ‘ã‚¤ãƒ«ã—ãŸãƒ”ã‚¯ã‚»ãƒ«ã‚·ã‚§ãƒ¼ãƒ€ãƒ¼ã‚’GPUã§ä½¿ãˆã‚‹å½¢ã«ã™ã‚‹
     hr = m_device->CreatePixelShader(
         psBlob->GetBufferPointer(),
         psBlob->GetBufferSize(),
@@ -337,11 +367,11 @@ bool Renderer::Initialize(HWND hwnd)
     }
 
     //========================================
-    // 7. “ü—ÍƒŒƒCƒAƒEƒg‚ğì‚é
+    // 8. å…¥åŠ›ãƒ¬ã‚¤ã‚¢ã‚¦ãƒˆã‚’ä½œã‚‹
     //========================================
 
-    // Vertex\‘¢‘Ì‚Ìƒƒ‚ƒŠ”z’u‚ğƒVƒF[ƒ_[“ü—Í‚Æ‘Î‰‚Ã‚¯‚é
-    // ˆÊ’u(float3)+–@üifloat3j+UV(float2) + F(float4)
+    // Vertexæ§‹é€ ä½“ã®ãƒ¡ãƒ¢ãƒªé…ç½®ã‚’ã‚·ã‚§ãƒ¼ãƒ€ãƒ¼å…¥åŠ›ã¨å¯¾å¿œã¥ã‘ã‚‹
+    // ä½ç½®(float3)+æ³•ç·šï¼ˆfloat3ï¼‰+UV(float2) + è‰²(float4)
 
     D3D11_INPUT_ELEMENT_DESC layout[] =
     {
@@ -359,7 +389,7 @@ bool Renderer::Initialize(HWND hwnd)
         &m_inputLayout
     );
 
-    // ƒVƒF[ƒ_[ì¬Œã‚ÍƒRƒ“ƒpƒCƒ‹Œ‹‰Ê‚ÌBlob‚Í•s—v
+    // ã‚·ã‚§ãƒ¼ãƒ€ãƒ¼ä½œæˆå¾Œã¯ã‚³ãƒ³ãƒ‘ã‚¤ãƒ«çµæœã®Blobã¯ä¸è¦
     vsBlob->Release();
     psBlob->Release();
     if (FAILED(hr))
@@ -369,24 +399,24 @@ bool Renderer::Initialize(HWND hwnd)
     }
 
     //========================================
-    // 8. OŠpŒ`•`‰æ—p‚Ì’¸“_ƒoƒbƒtƒ@‚ğì‚é
+    // 9. ä¸‰è§’å½¢æç”»ç”¨ã®é ‚ç‚¹ãƒãƒƒãƒ•ã‚¡ã‚’ä½œã‚‹
     //========================================
 
-    // [“xƒ`ƒFƒbƒNŠm”F—p‚Ì’¸“_ƒf[ƒ^
+    // æ·±åº¦ãƒã‚§ãƒƒã‚¯ç¢ºèªç”¨ã®é ‚ç‚¹ãƒ‡ãƒ¼ã‚¿
    Vertex triangleVertices[] =
 {
-    // ‰œ‚ÌOŠpŒ`iÔj
+    // å¥¥ã®ä¸‰è§’å½¢ï¼ˆèµ¤ï¼‰
     {  0.0f,  0.6f, 4.0f,   0.0f, 0.0f, -1.0f,   0.5f, 0.0f,   1.0f, 0.0f, 0.0f, 1.0f },
     {  0.6f, -0.6f, 4.0f,   0.0f, 0.0f, -1.0f,   1.0f, 1.0f,   1.0f, 0.0f, 0.0f, 1.0f },
     { -0.6f, -0.6f, 4.0f,   0.0f, 0.0f, -1.0f,   0.0f, 1.0f,   1.0f, 0.0f, 0.0f, 1.0f },
 
-    // è‘O‚ÌOŠpŒ`iÂj
+    // æ‰‹å‰ã®ä¸‰è§’å½¢ï¼ˆé’ï¼‰
     {  0.0f,  0.3f, 1.0f,   0.0f, 0.0f, -1.0f,   0.5f, 0.0f,   0.0f, 0.0f, 1.0f, 1.0f },
     {  0.3f, -0.3f, 1.0f,   0.0f, 0.0f, -1.0f,   1.0f, 1.0f,   0.0f, 0.0f, 1.0f, 1.0f },
     { -0.3f, -0.3f, 1.0f,   0.0f, 0.0f, -1.0f,   0.0f, 1.0f,   0.0f, 0.0f, 1.0f, 1.0f }
 };
 
-    // OŠpŒ`ƒf[ƒ^‚ğGPU‚É‘—‚é‚½‚ß‚Ì’¸“_ƒoƒbƒtƒ@‚ğì¬
+    // ä¸‰è§’å½¢ãƒ‡ãƒ¼ã‚¿ã‚’GPUã«é€ã‚‹ãŸã‚ã®é ‚ç‚¹ãƒãƒƒãƒ•ã‚¡ã‚’ä½œæˆ
     D3D11_BUFFER_DESC bufferDesc = {};
     bufferDesc.Usage = D3D11_USAGE_DEFAULT;
     bufferDesc.ByteWidth = sizeof(triangleVertices);
@@ -405,239 +435,284 @@ bool Renderer::Initialize(HWND hwnd)
     m_triangleVertexCount = _countof(triangleVertices);
     Debug::Info("Triangle vertex buffer created. vertexCount = " + std::to_string(m_triangleVertexCount));
     //========================================
-    // 9. OBJƒ‚ƒfƒ‹—p‚Ì’¸“_ƒoƒbƒtƒ@‚ğì‚é
+    // 10. OBJãƒ¢ãƒ‡ãƒ«ç”¨ã®é ‚ç‚¹ãƒãƒƒãƒ•ã‚¡ã‚’ä½œã‚‹
     //========================================
-    std::vector<ObjVertex> objVertices;
+    //std::vector<ObjVertex> objVertices;
 
-    if (!ObjLoader::Load("Models/cube.obj", objVertices))
+    //if (!ObjLoader::Load("Models/cube.obj", objVertices))
+    //{
+    //    Debug::Error("ObjLoader::Load failed (Models/cube.obj)");
+    //    return false;
+    //}
+
+    //Debug::Info("OBJ loaded successfully. vertexCount = " + std::to_string(objVertices.size()));
+
+    //// OBJãƒ•ã‚¡ã‚¤ãƒ«ã‚’èª­ã¿è¾¼ã¿ã€ObjVertexã®é…åˆ—ã¨ã—ã¦å—ã‘å–ã‚‹
+    //m_objVertexCount = static_cast<UINT>(objVertices.size());
+    //Debug::Info("Triangle vertex buffer created. vertexCount = " + std::to_string(m_triangleVertexCount));
+
+    //// ç¾åœ¨ã®æç”»ç”¨Vertexæ§‹é€ ä½“ã«å¤‰æ›ã™ã‚‹
+    //std::vector<Vertex> objConverted;
+    //objConverted.reserve(objVertices.size());
+
+    //for (const auto& v : objVertices)
+    //{
+    //    objConverted.push_back({
+    //        v.x, v.y, v.z,
+    //        v.nx, v.ny, v.nz,
+    //        v.u, v.v,
+    //        v.r, v.g, v.b, v.a
+    //        });
+    //}
+
+    //// OBJç”¨é ‚ç‚¹ãƒãƒƒãƒ•ã‚¡ã‚’ä½œæˆ
+    //D3D11_BUFFER_DESC objBufferDesc = {};
+    //objBufferDesc.Usage = D3D11_USAGE_DEFAULT;
+    //objBufferDesc.ByteWidth = sizeof(Vertex) * static_cast<UINT>(objConverted.size());
+    //objBufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    //  
+    //D3D11_SUBRESOURCE_DATA objInitData = {};
+    //objInitData.pSysMem = objConverted.data();
+
+    //hr = m_device->CreateBuffer(&objBufferDesc, &objInitData, &m_objVertexBuffer);
+    //if (FAILED(hr))
+    //{
+    //    Debug::Error("CreateBuffer for OBJ vertex buffer failed");
+    //    return false;
+    //}
+
+    //Debug::Info(
+    //    "OBJ vertex buffer created. vertexCount = " +
+    //    std::to_string(objConverted.size())
+    //);
+
+    /*if (!m_objModel.LoadFromObj(m_device, "Models/cube.obj"))
     {
-        Debug::Error("ObjLoader::Load failed (Models/cube.obj)");
+        Debug::Error("Renderer::Initialize failed : m_objModel.LoadFromObj failed");
         return false;
     }
 
-    Debug::Info("OBJ loaded successfully. vertexCount = " + std::to_string(objVertices.size()));
+    m_objTransform.position = { 0.0f, 0.0f, 0.0f };
+    m_objTransform.rotation = { 0.0f, 0.0f, 0.0f };
+    m_objTransform.scale = { 0.5f, 0.5f, 0.5f };*/
 
-    // OBJƒtƒ@ƒCƒ‹‚ğ“Ç‚İ‚İAObjVertex‚Ì”z—ñ‚Æ‚µ‚Äó‚¯æ‚é
-    m_objVertexCount = static_cast<UINT>(objVertices.size());
-    Debug::Info("Triangle vertex buffer created. vertexCount = " + std::to_string(m_triangleVertexCount));
-
-    // Œ»İ‚Ì•`‰æ—pVertex\‘¢‘Ì‚É•ÏŠ·‚·‚é
-    std::vector<Vertex> objConverted;
-    objConverted.reserve(objVertices.size());
-
-    for (const auto& v : objVertices)
-    {
-        objConverted.push_back({
-            v.x, v.y, v.z,
-            v.nx, v.ny, v.nz,
-            v.u, v.v,
-            v.r, v.g, v.b, v.a
-            });
-    }
-
-    // OBJ—p’¸“_ƒoƒbƒtƒ@‚ğì¬
-    D3D11_BUFFER_DESC objBufferDesc = {};
-    objBufferDesc.Usage = D3D11_USAGE_DEFAULT;
-    objBufferDesc.ByteWidth = sizeof(Vertex) * static_cast<UINT>(objConverted.size());
-    objBufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-      
-    D3D11_SUBRESOURCE_DATA objInitData = {};
-    objInitData.pSysMem = objConverted.data();
-
-    hr = m_device->CreateBuffer(&objBufferDesc, &objInitData, &m_objVertexBuffer);
-    if (FAILED(hr))
-    {
-        Debug::Error("CreateBuffer for OBJ vertex buffer failed");
-        return false;
-    }
-
-    Debug::Info(
-        "OBJ vertex buffer created. vertexCount = " +
-        std::to_string(objConverted.size())
-    );
+    Debug::Info("Renderer initialized successfully");
 
     return true;
 
-    Debug::Info("Renderer initialized successfully");
+   
 }
 
 void Renderer::BeginFrame()
 {
-    // ‰æ–Ê‚ğÁ‚·‚Æ‚«‚ÌF‚ğw’è‚·‚é
-   // { Ô, —Î, Â, ƒAƒ‹ƒtƒ@ } ‚Ì‡
+    // ç”»é¢ã‚’æ¶ˆã™ã¨ãã®è‰²ã‚’æŒ‡å®šã™ã‚‹
+   // { èµ¤, ç·‘, é’, ã‚¢ãƒ«ãƒ•ã‚¡ } ã®é †
     float clearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 
     D3D11_VIEWPORT vp = {};
-    vp.Width = 800;
-    vp.Height = 600;
+    vp.Width = static_cast<float>(m_windowWidth);
+    vp.Height = static_cast<float>(m_windowHeight);
     vp.MinDepth = 0.0f;
     vp.MaxDepth = 1.0f;
 
     m_context->RSSetViewports(1, &vp);
 
 
-    // ‚±‚ÌƒtƒŒ[ƒ€‚Åg‚¤•`‰ææ‚ğİ’è‚·‚é
-    // m_renderTargetView  : F‚ğ‘‚«‚Şæ
-    // m_depthStencilView  : [“x(Z’l)‚ğ‘‚«‚Şæ
+    // ã“ã®ãƒ•ãƒ¬ãƒ¼ãƒ ã§ä½¿ã†æç”»å…ˆã‚’è¨­å®šã™ã‚‹
+    // m_renderTargetView  : è‰²ã‚’æ›¸ãè¾¼ã‚€å…ˆ
+    // m_depthStencilView  : æ·±åº¦(Zå€¤)ã‚’æ›¸ãè¾¼ã‚€å…ˆ
     m_context->OMSetRenderTargets(1, &m_renderTargetView, m_depthStencilView);
 
-    // [“xƒeƒXƒg‚Ìƒ‹[ƒ‹‚ğGPU‚Éİ’è‚·‚é
-    // —á: è‘O‚ÌƒsƒNƒZƒ‹‚¾‚¯•`‰æ‚·‚é
+    // æ·±åº¦ãƒ†ã‚¹ãƒˆã®ãƒ«ãƒ¼ãƒ«ã‚’GPUã«è¨­å®šã™ã‚‹
+    // ä¾‹: æ‰‹å‰ã®ãƒ”ã‚¯ã‚»ãƒ«ã ã‘æç”»ã™ã‚‹
     m_context->OMSetDepthStencilState(m_depthStencilState, 0);
 
-    // ‰æ–Ê‘S‘Ì‚ğ clearColor ‚Å“h‚è‚Â‚Ô‚µ‚Ä‰Šú‰»‚·‚é
-    // ‘O‚ÌƒtƒŒ[ƒ€‚ÌŠG‚ªc‚ç‚È‚¢‚æ‚¤‚É‚·‚é
+    // ç”»é¢å…¨ä½“ã‚’ clearColor ã§å¡—ã‚Šã¤ã¶ã—ã¦åˆæœŸåŒ–ã™ã‚‹
+    // å‰ã®ãƒ•ãƒ¬ãƒ¼ãƒ ã®çµµãŒæ®‹ã‚‰ãªã„ã‚ˆã†ã«ã™ã‚‹
     m_context->ClearRenderTargetView(m_renderTargetView, clearColor);
 
-    // [“xƒoƒbƒtƒ@‚ğ 1.0f (ˆê”Ô‰œ) ‚Å‰Šú‰»‚·‚é
-    // ‘O‚ÌƒtƒŒ[ƒ€‚ÌZî•ñ‚ªc‚ç‚È‚¢‚æ‚¤‚É‚·‚é
+    // æ·±åº¦ãƒãƒƒãƒ•ã‚¡ã‚’ 1.0f (ä¸€ç•ªå¥¥) ã§åˆæœŸåŒ–ã™ã‚‹
+    // å‰ã®ãƒ•ãƒ¬ãƒ¼ãƒ ã®Zæƒ…å ±ãŒæ®‹ã‚‰ãªã„ã‚ˆã†ã«ã™ã‚‹
     m_context->ClearDepthStencilView(m_depthStencilView, D3D11_CLEAR_DEPTH, 1.0f, 0);
 }
 
 void Renderer::Update()
 {
-    m_objAngle += 0.01f;
+   // m_objAngle += 0.01f;
+  /*  m_objTransform.rotation.y += 0.01f;*/
 }
 
 void Renderer::DrawTriangle()
 {
 
     //========================================
-    // 1. ’¸“_ƒf[ƒ^‚Ìİ’è
+    // 1. é ‚ç‚¹ãƒ‡ãƒ¼ã‚¿ã®è¨­å®š
     //========================================
 
-    UINT stride = sizeof(Vertex);// 1’¸“_‚ÌƒTƒCƒY
-    UINT offset = 0;             // “Ç‚İ‚İŠJnˆÊ’u
+    UINT stride = sizeof(Vertex);// 1é ‚ç‚¹ã®ã‚µã‚¤ã‚º
+    UINT offset = 0;             // èª­ã¿è¾¼ã¿é–‹å§‹ä½ç½®
 
-    // [“xƒeƒXƒg‚ğ—LŒø‰»iè‘O‚Ì‚à‚Ì‚ğ—Dæ•\¦j
+    // æ·±åº¦ãƒ†ã‚¹ãƒˆã‚’æœ‰åŠ¹åŒ–ï¼ˆæ‰‹å‰ã®ã‚‚ã®ã‚’å„ªå…ˆè¡¨ç¤ºï¼‰
     m_context->OMSetDepthStencilState(m_depthStencilState, 0);
 
-    // ’¸“_‚Ì\‘¢iPOSITION, COLORj‚ğGPU‚É“`‚¦‚é
+    // é ‚ç‚¹ã®æ§‹é€ ï¼ˆPOSITION, COLORï¼‰ã‚’GPUã«ä¼ãˆã‚‹
     m_context->IASetInputLayout(m_inputLayout);
 
-    // g—p‚·‚é’¸“_ƒoƒbƒtƒ@‚ğƒZƒbƒgi¡‰ñ‚ÍOŠpŒ`j
+    // ä½¿ç”¨ã™ã‚‹é ‚ç‚¹ãƒãƒƒãƒ•ã‚¡ã‚’ã‚»ãƒƒãƒˆï¼ˆä»Šå›ã¯ä¸‰è§’å½¢ï¼‰
     m_context->IASetVertexBuffers(0, 1, &m_triangleVertexBuffer, &stride, &offset);
 
-    // OŠpŒ`ƒŠƒXƒg‚Æ‚µ‚Ä•`‰æ‚·‚éİ’è
+    // ä¸‰è§’å½¢ãƒªã‚¹ãƒˆã¨ã—ã¦æç”»ã™ã‚‹è¨­å®š
     m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
     //========================================
-    // 2. ƒVƒF[ƒ_[‚Ìİ’è
+    // 2. ã‚·ã‚§ãƒ¼ãƒ€ãƒ¼ã®è¨­å®š
     //========================================
 
-    // ’¸“_•ÏŠ·‚ğs‚¤ƒVƒF[ƒ_[
+    // é ‚ç‚¹å¤‰æ›ã‚’è¡Œã†ã‚·ã‚§ãƒ¼ãƒ€ãƒ¼
     m_context->VSSetShader(m_vertexShader, nullptr, 0);
 
-    // F‚ğŒˆ‚ß‚éƒVƒF[ƒ_[
+    // è‰²ã‚’æ±ºã‚ã‚‹ã‚·ã‚§ãƒ¼ãƒ€ãƒ¼
     m_context->PSSetShader(m_pixelShader, nullptr, 0);
 
     //========================================
-    // 3. s—ñiWVPj‚Ìì¬
+    // 3. è¡Œåˆ—ï¼ˆWVPï¼‰ã®ä½œæˆ
     //========================================
 
-    // ƒ[ƒ‹ƒhs—ñi¡‰ñ‚ÍˆÚ“®E‰ñ“]‚È‚µj
+    // ãƒ¯ãƒ¼ãƒ«ãƒ‰è¡Œåˆ—ï¼ˆä»Šå›ã¯ç§»å‹•ãƒ»å›è»¢ãªã—ï¼‰
     XMMATRIX world = XMMatrixIdentity();
 
-    // ƒJƒƒ‰‚ÌˆÊ’uEŒü‚«
+    // ã‚«ãƒ¡ãƒ©ã®ä½ç½®ãƒ»å‘ã
     XMVECTOR eye = XMVectorSet(0.0f, 0.0f, -5.0f, 0.0f);
     XMVECTOR target = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
     XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
 
-    // ƒrƒ…[s—ñiƒJƒƒ‰‹“_‚Ì•ÏŠ·j
+    // ãƒ“ãƒ¥ãƒ¼è¡Œåˆ—ï¼ˆã‚«ãƒ¡ãƒ©è¦–ç‚¹ã®å¤‰æ›ï¼‰
     XMMATRIX view = XMMatrixLookAtLH(eye, target, up);
 
-    // “Š‰es—ñi‰“‹ßŠ´‚ğ‚Â‚¯‚éj
+    // æŠ•å½±è¡Œåˆ—ï¼ˆé è¿‘æ„Ÿã‚’ã¤ã‘ã‚‹ï¼‰
     XMMATRIX projection = XMMatrixPerspectiveFovLH(
         XMConvertToRadians(45.0f),
-        800.0f / 600.0f,
+        static_cast<float>(m_windowWidth) / static_cast<float>(m_windowHeight),
         0.1f,
         100.0f
     );
 
-    // ƒ[ƒ‹ƒh¨ƒrƒ…[¨“Š‰e‚Ì‡‚É•ÏŠ·
+    // ãƒ¯ãƒ¼ãƒ«ãƒ‰â†’ãƒ“ãƒ¥ãƒ¼â†’æŠ•å½±ã®é †ã«å¤‰æ›
     XMMATRIX wvp = world * view * projection;
 
     //========================================
-    // 4. ƒVƒF[ƒ_[‚És—ñ‚ğ‘—‚é
+    // 4. ã‚·ã‚§ãƒ¼ãƒ€ãƒ¼ã«è¡Œåˆ—ã‚’é€ã‚‹
     //========================================
     ConstantBuffer cb{};
-    cb.WVP = XMMatrixTranspose(wvp);// HLSL—p‚É“]’u
+    cb.WVP = XMMatrixTranspose(wvp);// HLSLç”¨ã«è»¢ç½®
 
-    // GPU‚Éƒf[ƒ^‘—M
+    // GPUã«ãƒ‡ãƒ¼ã‚¿é€ä¿¡
     m_context->UpdateSubresource(m_constantBuffer, 0, nullptr, &cb, 0, 0);
-    // ’¸“_ƒVƒF[ƒ_[‚Éƒoƒbƒtƒ@‚ğƒZƒbƒg
+    // é ‚ç‚¹ã‚·ã‚§ãƒ¼ãƒ€ãƒ¼ã«ãƒãƒƒãƒ•ã‚¡ã‚’ã‚»ãƒƒãƒˆ
     m_context->VSSetConstantBuffers(0, 1, &m_constantBuffer);
 
     //========================================
-    // 5. •`‰æÀs
+    // 5. æç”»å®Ÿè¡Œ
     //========================================
 
     m_context->Draw(m_triangleVertexCount, 0);
 }
 
+//å‰Šé™¤äºˆå®š
 void Renderer::DrawObj()
+{
+        //DrawModel(m_objModel, m_objTransform);
+}
+
+void Renderer::DrawModel(const Model& model, const Transform& transform)
 {
 
     //========================================
-    // 1. ’¸“_ƒf[ƒ^‚Ìİ’è
+    // 1. é ‚ç‚¹ãƒ‡ãƒ¼ã‚¿ã®è¨­å®š
     //========================================
 
+    ID3D11Buffer* vertexBuffer = model.GetVertexBuffer();
+    if (!vertexBuffer)
+    {
+        Debug::Error("Renderer::DrawModel failed : vertexBuffer is null");
+        return;
+    }
 
-    UINT stride = sizeof(Vertex);// 1’¸“_‚ÌƒTƒCƒY
-    UINT offset = 0;             // “Ç‚İ‚İŠJnˆÊ’u
+    if (model.GetVertexCount() == 0)
+    {
+        Debug::Error("Renderer::DrawModel failed : vertexCount is 0");
+        return;
+    }
 
-    // [“xƒeƒXƒg‚ğ—LŒø‰»
+
+    UINT stride = sizeof(Vertex);// 1é ‚ç‚¹ã®ã‚µã‚¤ã‚º
+    UINT offset = 0;             // èª­ã¿è¾¼ã¿é–‹å§‹ä½ç½®
+
+    // æ·±åº¦ãƒ†ã‚¹ãƒˆã‚’æœ‰åŠ¹åŒ–
     m_context->OMSetDepthStencilState(m_depthStencilState, 0);
 
-    // ’¸“_ƒŒƒCƒAƒEƒgİ’è
+    // é ‚ç‚¹ãƒ¬ã‚¤ã‚¢ã‚¦ãƒˆè¨­å®š
     m_context->IASetInputLayout(m_inputLayout);
 
-    // OBJ—p‚Ì’¸“_ƒoƒbƒtƒ@‚ğƒZƒbƒg
-    m_context->IASetVertexBuffers(0, 1, &m_objVertexBuffer, &stride, &offset);
+    // OBJç”¨ã®é ‚ç‚¹ãƒãƒƒãƒ•ã‚¡ã‚’ã‚»ãƒƒãƒˆ
+    m_context->IASetVertexBuffers(0, 1, &vertexBuffer, &stride, &offset);
 
-    // OŠpŒ`‚Æ‚µ‚Ä•`‰æ
+    // ä¸‰è§’å½¢ã¨ã—ã¦æç”»
     m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-
-    //========================================
-    // 2. ƒVƒF[ƒ_[İ’è
+    // 2. ã‚·ã‚§ãƒ¼ãƒ€ãƒ¼ãƒ»ãƒ†ã‚¯ã‚¹ãƒãƒ£è¨­å®š
     //========================================
     m_context->VSSetShader(m_vertexShader, nullptr, 0);
     m_context->PSSetShader(m_pixelShader, nullptr, 0);
 
+    // ModelãŒæŒã¤ãƒ†ã‚¯ã‚¹ãƒãƒ£ã‚’ãƒ”ã‚¯ã‚»ãƒ«ã‚·ã‚§ãƒ¼ãƒ€ãƒ¼ã® t0 ã«ã‚»ãƒƒãƒˆã™ã‚‹ã€‚
+    // textureView ãŒ nullptr ã®å ´åˆã¯ã€å‰å›ã‚»ãƒƒãƒˆã•ã‚ŒãŸãƒ†ã‚¯ã‚¹ãƒãƒ£ã‚’è§£é™¤ã™ã‚‹ã€‚
+    ID3D11ShaderResourceView* textureView = model.GetTextureView();
+
+    if (!textureView)
+    {
+        Debug::Warning("Renderer::DrawModel textureView is null");
+    }
+    m_context->PSSetShaderResources(0, 1, &textureView);
+
+    // ãƒ†ã‚¯ã‚¹ãƒãƒ£ã®UVã‚µãƒ³ãƒ—ãƒªãƒ³ã‚°æ–¹æ³•ã‚’ãƒ”ã‚¯ã‚»ãƒ«ã‚·ã‚§ãƒ¼ãƒ€ãƒ¼ã® s0 ã«ã‚»ãƒƒãƒˆã™ã‚‹ã€‚
+    m_context->PSSetSamplers(0, 1, &m_samplerState);
 
     //========================================
-    // 3. s—ñiWVPj‚Ìì¬
+    // 3. è¡Œåˆ—ï¼ˆWVPï¼‰ã®ä½œæˆ
     //========================================
-    
+
 
     //XMMATRIX world = XMMatrixIdentity();
 
-     // ƒ‚ƒfƒ‹‚ğk¬{‰ñ“]
-    XMMATRIX world =
+     // ãƒ¢ãƒ‡ãƒ«ã‚’ç¸®å°ï¼‹å›è»¢
+   /* XMMATRIX world =
         XMMatrixScaling(0.5f, 0.5f, 0.5f) *
-        XMMatrixRotationY(m_objAngle);
+        XMMatrixRotationY(m_objAngle);*/
 
-    // ƒJƒƒ‰İ’è
-    XMVECTOR eye = XMVectorSet(0.0f, 0.0f, -10.0f, 0.0f); // ƒJƒƒ‰ˆÊ’u
-    XMVECTOR target = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f); // Œ©‚é•ûŒü
+    //XMMATRIX world = m_objTransform.GetWorldMatrix();
+    XMMATRIX world = transform.GetWorldMatrix();
+
+    // ã‚«ãƒ¡ãƒ©è¨­å®š
+    XMVECTOR eye = XMVectorSet(0.0f, 0.0f, -10.0f, 0.0f); // ã‚«ãƒ¡ãƒ©ä½ç½®
+    XMVECTOR target = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f); // è¦‹ã‚‹æ–¹å‘
     XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
 
     XMMATRIX view = XMMatrixLookAtLH(eye, target, up);
 
-    //“§‹“Š‰e
+    //é€è¦–æŠ•å½±
     XMMATRIX projection = XMMatrixPerspectiveFovLH(
         XMConvertToRadians(45.0),
-        800.0f / 600.0f,
+        static_cast<float>(m_windowWidth) / static_cast<float>(m_windowHeight),
         0.1f,
         100.0f
     );
 
-    // ÅI•ÏŠ·s—ñ
+    // æœ€çµ‚å¤‰æ›è¡Œåˆ—
     XMMATRIX wvp = world * view * projection;
 
     //========================================
-    // 4. ƒVƒF[ƒ_[‚És—ñ‚ğ‘—‚é
+    // 4. ã‚·ã‚§ãƒ¼ãƒ€ãƒ¼ã«è¡Œåˆ—ã‚’é€ã‚‹
     //========================================
 
     ConstantBuffer cb{};
@@ -647,10 +722,10 @@ void Renderer::DrawObj()
     m_context->VSSetConstantBuffers(0, 1, &m_constantBuffer);
 
     //========================================
-    // 5. •`‰æ
+    // 5. æç”»
     //========================================
 
-    m_context->Draw(m_objVertexCount, 0);
+    m_context->Draw(model.GetVertexCount(), 0);
 
 }
 
@@ -670,12 +745,12 @@ void Renderer::Finalize()
         m_context->Flush();
     }
 
-    // æ‚ÉGPUƒŠƒ\[ƒX—Ş‚ğ‰ğ•ú
-    if (m_objVertexBuffer)
+    // å…ˆã«GPUãƒªã‚½ãƒ¼ã‚¹é¡ã‚’è§£æ”¾
+    /*if (m_objVertexBuffer)
     {
         m_objVertexBuffer->Release();
         m_objVertexBuffer = nullptr;
-    }
+    }*/
 
     if (m_triangleVertexBuffer)
     {
@@ -687,6 +762,13 @@ void Renderer::Finalize()
     {
         m_constantBuffer->Release();
         m_constantBuffer = nullptr;
+    }
+
+
+    if (m_samplerState)
+    {
+        m_samplerState->Release();
+        m_samplerState = nullptr;
     }
 
     if (m_inputLayout)
@@ -731,7 +813,7 @@ void Renderer::Finalize()
         m_renderTargetView = nullptr;
     }
 
-    // ÅŒã‚É–{‘Ì‘¤
+    // æœ€å¾Œã«æœ¬ä½“å´
     if (m_swapChain)
     {
         m_swapChain->Release();
