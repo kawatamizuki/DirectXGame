@@ -131,6 +131,7 @@
   <ItemGroup>
     <ClCompile Include="Camera.cpp" />
     <ClCompile Include="Debug.cpp" />
+    <ClCompile Include="DebugEditor.cpp" />
     <ClCompile Include="External\DirectXTK\WICTextureLoader11.cpp" />
     <ClCompile Include="Game.cpp" />
     <ClCompile Include="GameObject.cpp" />
@@ -157,6 +158,7 @@
   <ItemGroup>
     <ClInclude Include="Camera.h" />
     <ClInclude Include="Debug.h" />
+    <ClInclude Include="DebugEditor.h" />
     <ClInclude Include="DebugMemory.h" />
     <ClInclude Include="External\DirectXTK\WICTextureLoader11.h" />
     <ClInclude Include="Game.h" />

@@ -4,11 +4,12 @@
 #include"InputManager.h"
 #include"SceneManager.h"
 #include "Model.h"
+#include "DebugEditor.h"
+#include "GameContext.h"
+#include "TimeManager.h"
 #include "GameObject.h"
 #include"Camera.h"
 
-#include "GameContext.h"
-#include "TimeManager.h"
 class Game
 {
 public:
@@ -24,6 +25,7 @@ public:
 
 private:
     HWND m_hwnd;
+    DebugEditor m_debugEditor;//imgui—p
     Renderer m_renderer;
     InputManager m_inputManager;
     SceneManager m_sceneManager;

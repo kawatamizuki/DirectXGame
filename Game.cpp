@@ -17,7 +17,11 @@ bool Game::Initialize(HWND hwnd)
         Debug::Error("Game::Initialize failed : Renderer initialize failed");
         return false;
     }
-
+    if (!m_debugEditor.Initialize(hwnd, m_renderer.GetDevice(), m_renderer.GetContext()))
+    {
+        Debug::Error("Game::Initialize failed : DebugEditor initialize failed");
+        return false;
+    }
     m_hwnd = hwnd;
     m_renderer.SetVSyncEnabled(true);//VsyncÇÃê›íË
     m_timeManager.SetTargetFPS(60);
@@ -89,6 +93,7 @@ void Game::Update()
 
 void Game::Draw()
 {
+  
     m_renderer.BeginFrame();
 
     m_sceneManager.Draw();
@@ -100,6 +105,12 @@ void Game::Draw()
         }
     }
    
+     // ImGuiï`âÊ
+    m_debugEditor.BeginFrame();
+    m_debugEditor.Draw();
+    m_debugEditor.EndFrame();
+
+
     m_renderer.EndFrame();
 
     if (!m_renderer.IsVSyncEnabled())
@@ -140,4 +151,5 @@ void Game::Finalize()
 {
     m_sceneManager.Finalize();
     m_renderer.Finalize();
+    m_debugEditor.Finalize();
 }

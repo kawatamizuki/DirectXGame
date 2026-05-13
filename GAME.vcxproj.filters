@@ -117,6 +117,9 @@
     <ClCompile Include="imgui\backends\imgui_impl_win32.cpp">
       <Filter>ソース ファイル\imgui\backends</Filter>
     </ClCompile>
+    <ClCompile Include="DebugEditor.cpp">
+      <Filter>ソース ファイル\Debug</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Window.h">
@@ -211,6 +214,9 @@
     </ClInclude>
     <ClInclude Include="imgui\imstb_truetype.h">
       <Filter>ヘッダー ファイル\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugEditor.h">
+      <Filter>ヘッダー ファイル\Debug</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
