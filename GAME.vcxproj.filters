@@ -31,6 +31,18 @@
     <Filter Include="ソース ファイル\Debug">
       <UniqueIdentifier>{090cb326-b273-4528-9f5d-8201e8676850}</UniqueIdentifier>
     </Filter>
+    <Filter Include="ソース ファイル\imgui">
+      <UniqueIdentifier>{b068241a-30f0-428b-87b8-ac56bf0f66a9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ヘッダー ファイル\imgui">
+      <UniqueIdentifier>{a19b0697-9f51-44e9-92d2-6c6dc27a4c5b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ソース ファイル\imgui\backends">
+      <UniqueIdentifier>{62ec71e1-9138-4545-aff6-af7716e5385c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ヘッダー ファイル\imgui\backends">
+      <UniqueIdentifier>{593fb001-50ae-4a95-a674-708458721c26}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -83,6 +95,27 @@
     </ClCompile>
     <ClCompile Include="TimeManager.cpp">
       <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="imgui\imgui.cpp">
+      <Filter>ソース ファイル\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="imgui\imgui_widgets.cpp">
+      <Filter>ソース ファイル\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="imgui\imgui_tables.cpp">
+      <Filter>ソース ファイル\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="imgui\imgui_draw.cpp">
+      <Filter>ソース ファイル\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="imgui\imgui_demo.cpp">
+      <Filter>ソース ファイル\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="imgui\backends\imgui_impl_dx11.cpp">
+      <Filter>ソース ファイル\imgui\backends</Filter>
+    </ClCompile>
+    <ClCompile Include="imgui\backends\imgui_impl_win32.cpp">
+      <Filter>ソース ファイル\imgui\backends</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -154,6 +187,30 @@
     </ClInclude>
     <ClInclude Include="TimeManager.h">
       <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="imgui\imconfig.h">
+      <Filter>ヘッダー ファイル\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="imgui\imgui.h">
+      <Filter>ヘッダー ファイル\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="imgui\imgui_internal.h">
+      <Filter>ヘッダー ファイル\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="imgui\backends\imgui_impl_dx11.h">
+      <Filter>ヘッダー ファイル\imgui\backends</Filter>
+    </ClInclude>
+    <ClInclude Include="imgui\backends\imgui_impl_win32.h">
+      <Filter>ヘッダー ファイル\imgui\backends</Filter>
+    </ClInclude>
+    <ClInclude Include="imgui\imstb_rectpack.h">
+      <Filter>ヘッダー ファイル\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="imgui\imstb_textedit.h">
+      <Filter>ヘッダー ファイル\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="imgui\imstb_truetype.h">
+      <Filter>ヘッダー ファイル\imgui</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

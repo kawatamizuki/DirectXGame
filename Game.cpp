@@ -19,7 +19,7 @@ bool Game::Initialize(HWND hwnd)
     }
 
     m_hwnd = hwnd;
-    m_renderer.SetVSyncEnabled(false);//Vsync‚Ìİ’è
+    m_renderer.SetVSyncEnabled(true);//Vsync‚Ìİ’è
     m_timeManager.SetTargetFPS(60);
     // SceneManager‚ÖRenderer‚ğ“n‚·
    // m_sceneManager.Init(&m_renderer);

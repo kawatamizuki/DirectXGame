@@ -19,6 +19,7 @@ public:
     void SetVSyncEnabled(bool enabled);
     bool IsVSyncEnabled() const;
     ID3D11Device* GetDevice() const { return m_device.Get(); };
+    ID3D11DeviceContext* GetContext() const { return m_context.Get(); }
     void Update();
     void DrawTriangle();
     void DrawModel(const Model& model, const Transform& transform, const Camera& camera);
