@@ -2,12 +2,21 @@
 #include "Window.h"
 #include "Game.h"
 
+#ifdef _DEBUG
+#include "DebugMemory.h"
+#endif
+
 int WINAPI wWinMain(
     _In_ HINSTANCE hInstance,
     _In_opt_ HINSTANCE hPrevInstance,
     _In_ PWSTR pCmdLine,
     _In_ int nCmdShow)
 {
+
+#ifdef _DEBUG
+    DebugMemory::EnableLeakCheck();
+#endif
+
     Window window;
     if (!window.Initialize(hInstance, nCmdShow))
     {
@@ -36,8 +45,7 @@ int WINAPI wWinMain(
         }
         else
         {
-            game.Update();
-            game.Draw();
+            game.RunFrame();
            
         }
     }
