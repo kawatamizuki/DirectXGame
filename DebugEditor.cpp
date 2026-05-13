@@ -63,7 +63,7 @@ void DebugEditor::Draw()
             );
         }
     }
-
+    ImGui::Text("DeltaTime : %.4f", m_context->time->GetDeltaTime());
 
     ImGui::End();
 }

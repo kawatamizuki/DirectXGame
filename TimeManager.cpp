@@ -115,10 +115,6 @@ void TimeManager::SetTargetFPS(int fps)
 //
 // 目標FPSに必要なフレーム時間へ到達するまで待機する。
 //
-// 60FPSの場合:
-//
-// 1 / 60 = 約16.6ms
-//
 // フレーム処理が16.6ms未満で終わった場合、
 // 残り時間を待機することでFPSを固定する。
 //
@@ -131,8 +127,9 @@ void TimeManager::WaitForTargetFPS()
         return;
     }
 
-    float targetFrameTime =
+    const float targetFrameTime =
         1.0f / static_cast<float>(m_targetFPS);
+
     while (true)
     {
         auto now = Clock::now();
@@ -144,7 +141,7 @@ void TimeManager::WaitForTargetFPS()
         {
             break;
         }
-    }
 
-   
+        std::this_thread::yield();
+    }
 }

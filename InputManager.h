@@ -76,6 +76,7 @@ private:
     XINPUT_STATE m_currentGamePadState;
     XINPUT_STATE m_previousGamePadState;
     bool m_isGamePadConnected;
+    int m_gamePadCheckFrame;
 
     std::unordered_map<InputAction, std::vector<KeyCode>> m_keyboardMapping;
     std::unordered_map<InputAction, std::vector<WORD>> m_gamePadMapping;

@@ -2,6 +2,8 @@
 
 InputManager::InputManager()
     : m_hwnd(nullptr)
+    , m_gamePadCheckFrame(0)
+    , m_isGamePadConnected(false)
 {
     
     m_currentKeys.fill(false);
@@ -65,11 +67,32 @@ void InputManager::Update()
 
     m_previousGamePadState = m_currentGamePadState;
 
-    ZeroMemory(&m_currentGamePadState, sizeof(XINPUT_STATE));
+    //========================================
+    // 未接続時は毎フレーム確認しない
+    //========================================
 
-    DWORD result = XInputGetState(0, &m_currentGamePadState);
+    if (!m_isGamePadConnected)
+    {
+        ++m_gamePadCheckFrame;
 
-    m_isGamePadConnected = (result == ERROR_SUCCESS);
+        if (m_gamePadCheckFrame < 60)
+        {
+            return;
+        }
+
+        m_gamePadCheckFrame = 0;
+    }
+
+    ZeroMemory(
+        &m_currentGamePadState,
+        sizeof(XINPUT_STATE)
+    );
+
+    DWORD result =
+        XInputGetState(0, &m_currentGamePadState);
+
+    m_isGamePadConnected =
+        (result == ERROR_SUCCESS);
 }
 
 void InputManager::SetWindowHandle(HWND hwnd)

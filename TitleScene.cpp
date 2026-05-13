@@ -26,13 +26,13 @@ void TitleScene::Update()
     {
         m_sceneManager->ChangeScene(SceneName::Game);
     }
-    Debug::Log("TitleScene::Update");
+ 
 
 }
 
 void TitleScene::Draw()
 {
-    Debug::Log("TitleScene::Draw");
+
 }
 
 void TitleScene::Finalize()

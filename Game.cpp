@@ -21,7 +21,7 @@ bool Game::Initialize(HWND hwnd)
 
     m_hwnd = hwnd;
 
-    m_renderer.SetVSyncEnabled(true);
+    m_renderer.SetVSyncEnabled(false);
     m_timeManager.SetTargetFPS(60);
 
     m_context.renderer = &m_renderer;
@@ -98,38 +98,32 @@ void Game::Update()
 
 void Game::Draw()
 {
-  
     m_renderer.BeginFrame();
 
     m_sceneManager.Draw();
+
     for (auto& obj : m_objects)
     {
         if (obj.model)
         {
-            m_renderer.DrawModel(*obj.model, obj.transform,m_camera);
+            m_renderer.DrawModel(*obj.model, obj.transform, m_camera);
         }
     }
-   
-     // ImGui描画
+
     m_debugEditor.BeginFrame();
     m_debugEditor.Draw();
     m_debugEditor.EndFrame();
-
-
-    m_renderer.EndFrame();
 
     if (!m_renderer.IsVSyncEnabled())
     {
         m_timeManager.WaitForTargetFPS();
     }
 
-    //========================================
-    // フレーム時間更新
-    //========================================
+    m_renderer.EndFrame();
 
     m_timeManager.Update();
-    UpdateWindowTitle();
 
+  
    
 }
 

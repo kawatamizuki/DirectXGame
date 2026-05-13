@@ -50,6 +50,6 @@ struct GameContext
 {
     Renderer* renderer = nullptr;
     InputManager* input = nullptr;
-    TimeManager* time;
+    TimeManager* time=nullptr;
 
 }; 
