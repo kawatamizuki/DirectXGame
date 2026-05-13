@@ -42,9 +42,6 @@ ObjIndex ObjLoader::ParseFaceToken(const std::string& token)
     // "3/5"   Å® position=3, uv=5, normalÇ»Çµ
     // "3"     Å® positionÇÃÇ›
 
-
-
-
     ObjIndex index{};
     index.positionIndex = -1;
     index.texcoordIndex = -1;
@@ -136,6 +133,10 @@ bool ObjLoader::Load(const std::string& filePath, std::vector<ObjVertex>& outVer
         {
             Float2 uv{};
             iss >> uv.u >> uv.v;
+
+            // OBJånÇÃVç¿ïWÇDirectXópÇ…ïœä∑
+            uv.v = 1.0f - uv.v;
+
             texcoords.push_back(uv);
         }
        //========================================

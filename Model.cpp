@@ -47,34 +47,15 @@ namespace
 }
 
 Model::Model()
-    : m_vertexBuffer(nullptr)
-    , m_vertexCount(0)
-    , m_texturePath("")
-    , m_textureView(nullptr)
+    : m_vertexCount(0)
 {
 }
 
 Model::~Model()
 {
-    if (m_textureView)
-    {
-        m_textureView->Release();
-        m_textureView = nullptr;
-    }
+    //m_vertexBuffer.Reset();
+    m_material.Clear();
 
-    if (m_vertexBuffer)
-    {
-        m_vertexBuffer->Release();
-        m_vertexBuffer = nullptr;
-    }
-
-    if (m_textureView)
-    {
-        m_textureView->Release();
-        m_textureView = nullptr;
-    }
-
-    m_texturePath.clear();
     m_vertexCount = 0;
 }
 
@@ -90,16 +71,13 @@ bool Model::LoadFromObj(ID3D11Device* device, const std::string& filePath)
     }
 
     // すでに読み込み済みなら一旦解放
-    if (m_vertexBuffer)
-    {
-        m_vertexBuffer->Release();
-        m_vertexBuffer = nullptr;
-    }
+    m_vertexBuffer.Reset();
+
     m_vertexCount = 0;
 
 
     //==========================================================
-    // renderInitializeの10番目. OBJモデル用の頂点バッファを作る
+    //  OBJモデル用の頂点バッファを作る
     //==========================================================
     std::vector<ObjVertex> objVertices;//頂点データ
     std::string texturePath;//テクスチャのパス
@@ -110,31 +88,36 @@ bool Model::LoadFromObj(ID3D11Device* device, const std::string& filePath)
         return false;
     }
 
-    m_texturePath = texturePath;
+    m_material.Clear();
+    m_material.SetTexturePath(texturePath);
 
-    if (!m_texturePath.empty())
+    if (!texturePath.empty())
     {
-        Debug::Info("Loading texture : " + m_texturePath);
+        Debug::Info("Loading texture : " + texturePath);
 
-        std::wstring wpath = ToWideString(m_texturePath);
+        std::wstring wpath = ToWideString(texturePath);
+
+        ID3D11ShaderResourceView* textureView = nullptr;
 
         HRESULT hr = DirectX::CreateWICTextureFromFile(
             device,
             wpath.c_str(),
             nullptr,
-            &m_textureView
+            &textureView
         );
-
-        
 
         if (FAILED(hr))
         {
-            Debug::Error("Texture load failed : " + m_texturePath);
-            m_textureView = nullptr;
+            Debug::Error("Texture load failed : " + texturePath);
         }
         else
         {
-            Debug::Info("Texture load success : " + m_texturePath);
+            Debug::Info("Texture load success : " + texturePath);
+
+            m_material.SetTextureView(textureView);
+
+            textureView->Release();
+            textureView = nullptr;
         }
     }
     else
@@ -186,7 +169,7 @@ bool Model::LoadFromObj(ID3D11Device* device, const std::string& filePath)
     D3D11_SUBRESOURCE_DATA initData = {};
     initData.pSysMem = convertedVertices.data();
 
-    HRESULT hr = device->CreateBuffer(&bufferDesc, &initData, &m_vertexBuffer);
+    HRESULT hr = device->CreateBuffer(&bufferDesc, &initData, m_vertexBuffer.GetAddressOf());
     if (FAILED(hr))
     {
         Debug::Error("Model::LoadFromObj failed : CreateBuffer failed");
@@ -202,7 +185,7 @@ bool Model::LoadFromObj(ID3D11Device* device, const std::string& filePath)
 
 ID3D11Buffer* Model::GetVertexBuffer() const
 {
-    return m_vertexBuffer;
+    return m_vertexBuffer.Get();
 }
 
 UINT Model::GetVertexCount() const
@@ -210,12 +193,22 @@ UINT Model::GetVertexCount() const
     return m_vertexCount;
 }
 
-const std::string& Model::GetTexturePath() const
+//const std::string& Model::GetTexturePath() const
+//{
+//    return m_texturePath;
+//}
+//
+//ID3D11ShaderResourceView* Model::GetTextureView() const
+//{
+//    return m_textureView;
+//}
+
+Material& Model::GetMaterial()
 {
-    return m_texturePath;
+    return m_material;
 }
 
-ID3D11ShaderResourceView* Model::GetTextureView() const
+const Material& Model::GetMaterial() const
 {
-    return m_textureView;
+    return m_material;
 }

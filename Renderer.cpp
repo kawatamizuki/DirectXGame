@@ -1,8 +1,15 @@
 ﻿#include <d3dcompiler.h>
+//#include <dxgidebug.h>
+#pragma comment(lib, "dxguid.lib")
+#pragma comment(lib, "d3d11.lib")
+#pragma comment(lib, "d3dcompiler.lib")
+
 #include "Renderer.h"
 #include"Vertex.h"
 #include "ObjLoader.h"
 #include"Debug.h"
+
+
 
 using namespace DirectX;
 
@@ -12,34 +19,22 @@ struct ConstantBuffer
     XMMATRIX WVP;
 };
 
+struct MaterialBuffer
+{
+    int hasTexture;
+    float padding[3];
+};
 
 
-#pragma comment(lib, "d3d11.lib")
-#pragma comment(lib, "d3dcompiler.lib")
 
 
 Renderer::Renderer()
-    : m_device(nullptr)
-    , m_context(nullptr)
-    , m_swapChain(nullptr)
-    , m_renderTargetView(nullptr)
-    , m_depthStencilBuffer(nullptr)
-    , m_depthStencilView(nullptr)
-    , m_depthStencilState(nullptr)
-    , m_vertexShader(nullptr)
-    , m_pixelShader(nullptr)
-    , m_inputLayout(nullptr)
-    , m_samplerState(nullptr)
-    ,m_windowWidth(0)
+    :
+     m_windowWidth(0)
     ,m_windowHeight(0)
-   // , m_vertexBuffer(nullptr)
-    , m_constantBuffer(nullptr)
-    //, m_vertexCount(0)
-    , m_triangleVertexBuffer(nullptr)
     , m_triangleVertexCount(0)
-   /* , m_objVertexBuffer(nullptr)
-    , m_objVertexCount(0)*/
-
+    , m_vsyncEnabled(true)
+   
 
 {
 }
@@ -48,6 +43,8 @@ Renderer::~Renderer()
 {
     //Finalize();
 }
+
+
 
 bool Renderer::Initialize(HWND hwnd)
 {
@@ -84,19 +81,40 @@ bool Renderer::Initialize(HWND hwnd)
    // Context : 描画命令を出すための本体
    // SwapChain : 描画結果を画面に表示するための仕組み
 
+    UINT createDeviceFlags = 0;
+
+#ifdef _DEBUG
+    createDeviceFlags |= D3D11_CREATE_DEVICE_DEBUG;
+#endif
+
+    //========================================
+    // DirectX Debug Layer
+    //========================================
+
+    // Debugビルド時のみDirectXのデバッグ機能を有効化する。
+    //
+    // これを有効にすると:
+    //
+    // - Release忘れ
+    // - 不正なGPUリソース使用
+    // - 無効な描画設定
+    // - シェーダー関連エラー
+    //
+    // などをVisual Studioの出力ウィンドウへ表示してくれる。
+    
     HRESULT hr = D3D11CreateDeviceAndSwapChain(
         nullptr,
         D3D_DRIVER_TYPE_HARDWARE,
         nullptr,
-        0,
+        createDeviceFlags,
         nullptr,
         0,
         D3D11_SDK_VERSION,
         &scDesc,
-        &m_swapChain,
-        &m_device,
+        m_swapChain.GetAddressOf(),
+        m_device.GetAddressOf(),
         nullptr,
-        &m_context
+        m_context.GetAddressOf()
     );
 
     if (FAILED(hr))
@@ -110,16 +128,22 @@ bool Renderer::Initialize(HWND hwnd)
     //========================================
 
     // スワップチェインからバックバッファを取り出す
-    ID3D11Texture2D* backBuffer = nullptr;
-    hr = m_swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backBuffer);
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> backBuffer;
+
+    hr = m_swapChain->GetBuffer(
+        0,
+        __uuidof(ID3D11Texture2D),
+        reinterpret_cast<void**>(backBuffer.GetAddressOf())
+    );
+
     if (FAILED(hr))
     {
         Debug::Error("SwapChain::GetBuffer failed");
         return false;
     }
     //描画先として使える形にする
-    hr = m_device->CreateRenderTargetView(backBuffer, nullptr, &m_renderTargetView);
-    backBuffer->Release();
+    hr = m_device->CreateRenderTargetView(backBuffer.Get(), nullptr, m_renderTargetView.GetAddressOf());
+  
 
     if (FAILED(hr))
     {
@@ -142,14 +166,14 @@ bool Renderer::Initialize(HWND hwnd)
     depthDesc.SampleDesc.Count = 1;
     depthDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
 
-    hr = m_device->CreateTexture2D(&depthDesc, nullptr, &m_depthStencilBuffer);
+    hr = m_device->CreateTexture2D(&depthDesc, nullptr, m_depthStencilBuffer.GetAddressOf());
     if (FAILED(hr))
     {
         Debug::Error("CreateTexture2D for depth buffer failed");
         return false;
     }
     // 深度バッファを描画時に使うためのビューを作成
-    hr = m_device->CreateDepthStencilView(m_depthStencilBuffer, nullptr, &m_depthStencilView);
+    hr = m_device->CreateDepthStencilView(m_depthStencilBuffer.Get(), nullptr, m_depthStencilView.GetAddressOf());
     if (FAILED(hr))
     {
         Debug::Error("CreateDepthStencilView failed");
@@ -163,7 +187,7 @@ bool Renderer::Initialize(HWND hwnd)
     dsDesc.DepthFunc = D3D11_COMPARISON_LESS;
     dsDesc.StencilEnable = FALSE;
 
-    hr = m_device->CreateDepthStencilState(&dsDesc, &m_depthStencilState);
+    hr = m_device->CreateDepthStencilState(&dsDesc, m_depthStencilState.GetAddressOf());
     if (FAILED(hr))
     {
         Debug::Error("CreateDepthStencilState failed");
@@ -196,9 +220,9 @@ bool Renderer::Initialize(HWND hwnd)
    // 5. シェーダーをコンパイルして作成する
    //========================================
 
-    ID3DBlob* vsBlob = nullptr;
-    ID3DBlob* psBlob = nullptr;
-    ID3DBlob* errorBlob = nullptr;
+    Microsoft::WRL::ComPtr<ID3DBlob> vsBlob;
+    Microsoft::WRL::ComPtr<ID3DBlob> psBlob;
+    Microsoft::WRL::ComPtr<ID3DBlob> errorBlob;
 
     const wchar_t* kShaderFile = L"SimpleShader.hlsl";
     const char* kVSMain = "VSMain";
@@ -225,7 +249,7 @@ bool Renderer::Initialize(HWND hwnd)
     samplerDesc.MinLOD = 0;
     samplerDesc.MaxLOD = D3D11_FLOAT32_MAX;
 
-    hr = m_device->CreateSamplerState(&samplerDesc, &m_samplerState);
+    hr = m_device->CreateSamplerState(&samplerDesc, m_samplerState.GetAddressOf());
     if (FAILED(hr))
     {
         Debug::Error("CreateSamplerState failed");
@@ -242,7 +266,7 @@ bool Renderer::Initialize(HWND hwnd)
     cbDesc.ByteWidth = sizeof(ConstantBuffer);
     cbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 
-     hr = m_device->CreateBuffer(&cbDesc, nullptr, &m_constantBuffer);
+     hr = m_device->CreateBuffer(&cbDesc, nullptr, m_constantBuffer.GetAddressOf());
      if (FAILED(hr))
      {
          Debug::Error("CreateBuffer for ConstantBuffer failed");
@@ -258,8 +282,8 @@ bool Renderer::Initialize(HWND hwnd)
         "vs_5_0",
         0,
         0,
-        &vsBlob,
-        &errorBlob
+        vsBlob.GetAddressOf(),
+        errorBlob.GetAddressOf()
     );
 
     if (FAILED(hr))
@@ -268,9 +292,9 @@ bool Renderer::Initialize(HWND hwnd)
 
         if (errorBlob)
         {
-            OutputDebugStringA((char*)errorBlob->GetBufferPointer());//シェーダーのコンパイルエラーを出力
-            errorBlob->Release();
-            errorBlob = nullptr;
+            OutputDebugStringA(
+                static_cast<char*>(errorBlob->GetBufferPointer())
+            );
         }
 
         return false;
@@ -287,8 +311,8 @@ bool Renderer::Initialize(HWND hwnd)
         "ps_5_0",
         0,
         0,
-        &psBlob,
-        &errorBlob
+        psBlob.GetAddressOf(),
+        errorBlob.GetAddressOf()
     );
 
 
@@ -296,17 +320,11 @@ bool Renderer::Initialize(HWND hwnd)
     {
         Debug::Error("Pixel shader compile failed");
 
-        if (vsBlob)
-        {
-            vsBlob->Release();
-            vsBlob = nullptr;
-        }
-
         if (errorBlob)
         {
-            OutputDebugStringA((char*)errorBlob->GetBufferPointer());
-            errorBlob->Release();
-            errorBlob = nullptr;
+            OutputDebugStringA(
+                static_cast<const char*>(errorBlob->GetBufferPointer())
+            );
         }
 
         return false;
@@ -316,53 +334,42 @@ bool Renderer::Initialize(HWND hwnd)
         vsBlob->GetBufferPointer(),
         vsBlob->GetBufferSize(),
         nullptr,
-        &m_vertexShader
+        m_vertexShader.GetAddressOf()
     );
 
     if (FAILED(hr))
     {
         Debug::Error("CreateVertexShader failed");
-
-        if (vsBlob)
-        {
-            vsBlob->Release();
-            vsBlob = nullptr;
-        }
-
-        if (psBlob)
-        {
-            psBlob->Release();
-            psBlob = nullptr;
-        }
-
         return false;
     }
 
-
+   
     // コンパイルしたピクセルシェーダーをGPUで使える形にする
     hr = m_device->CreatePixelShader(
         psBlob->GetBufferPointer(),
         psBlob->GetBufferSize(),
         nullptr,
-        &m_pixelShader
+        m_pixelShader.GetAddressOf()
     );
 
     if (FAILED(hr))
     {
         Debug::Error("CreatePixelShader failed");
+        return false;
+    }
 
-        if (vsBlob)
-        {
-            vsBlob->Release();
-            vsBlob = nullptr;
-        }
+    //========================================
+   // 8. マテリアルバッファを作成する
+   //========================================
+    D3D11_BUFFER_DESC materialCbDesc = {};
+    materialCbDesc.Usage = D3D11_USAGE_DEFAULT;
+    materialCbDesc.ByteWidth = sizeof(MaterialBuffer);
+    materialCbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 
-        if (psBlob)
-        {
-            psBlob->Release();
-            psBlob = nullptr;
-        }
-
+    hr = m_device->CreateBuffer(&materialCbDesc, nullptr, m_materialBuffer.GetAddressOf());
+    if (FAILED(hr))
+    {
+        Debug::Error("CreateBuffer for MaterialBuffer failed");
         return false;
     }
 
@@ -386,12 +393,11 @@ bool Renderer::Initialize(HWND hwnd)
         _countof(layout),
         vsBlob->GetBufferPointer(),
         vsBlob->GetBufferSize(),
-        &m_inputLayout
+        m_inputLayout.GetAddressOf()
     );
 
     // シェーダー作成後はコンパイル結果のBlobは不要
-    vsBlob->Release();
-    psBlob->Release();
+ 
     if (FAILED(hr))
     {
         Debug::Error("CreateInputLayout failed");
@@ -425,7 +431,7 @@ bool Renderer::Initialize(HWND hwnd)
     D3D11_SUBRESOURCE_DATA triangleInitData = {};
     triangleInitData.pSysMem = triangleVertices;
 
-    hr = m_device->CreateBuffer(&bufferDesc, &triangleInitData, &m_triangleVertexBuffer);
+    hr = m_device->CreateBuffer(&bufferDesc, &triangleInitData, m_triangleVertexBuffer.GetAddressOf());
     if (FAILED(hr))
     {
         Debug::Error("CreateBuffer for triangle vertex buffer failed");
@@ -434,68 +440,13 @@ bool Renderer::Initialize(HWND hwnd)
 
     m_triangleVertexCount = _countof(triangleVertices);
     Debug::Info("Triangle vertex buffer created. vertexCount = " + std::to_string(m_triangleVertexCount));
+
+
     //========================================
-    // 10. OBJモデル用の頂点バッファを作る
+    // 10. OBJモデル用の頂点バッファを作る（移行済み）
     //========================================
-    //std::vector<ObjVertex> objVertices;
-
-    //if (!ObjLoader::Load("Models/cube.obj", objVertices))
-    //{
-    //    Debug::Error("ObjLoader::Load failed (Models/cube.obj)");
-    //    return false;
-    //}
-
-    //Debug::Info("OBJ loaded successfully. vertexCount = " + std::to_string(objVertices.size()));
-
-    //// OBJファイルを読み込み、ObjVertexの配列として受け取る
-    //m_objVertexCount = static_cast<UINT>(objVertices.size());
-    //Debug::Info("Triangle vertex buffer created. vertexCount = " + std::to_string(m_triangleVertexCount));
-
-    //// 現在の描画用Vertex構造体に変換する
-    //std::vector<Vertex> objConverted;
-    //objConverted.reserve(objVertices.size());
-
-    //for (const auto& v : objVertices)
-    //{
-    //    objConverted.push_back({
-    //        v.x, v.y, v.z,
-    //        v.nx, v.ny, v.nz,
-    //        v.u, v.v,
-    //        v.r, v.g, v.b, v.a
-    //        });
-    //}
-
-    //// OBJ用頂点バッファを作成
-    //D3D11_BUFFER_DESC objBufferDesc = {};
-    //objBufferDesc.Usage = D3D11_USAGE_DEFAULT;
-    //objBufferDesc.ByteWidth = sizeof(Vertex) * static_cast<UINT>(objConverted.size());
-    //objBufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-    //  
-    //D3D11_SUBRESOURCE_DATA objInitData = {};
-    //objInitData.pSysMem = objConverted.data();
-
-    //hr = m_device->CreateBuffer(&objBufferDesc, &objInitData, &m_objVertexBuffer);
-    //if (FAILED(hr))
-    //{
-    //    Debug::Error("CreateBuffer for OBJ vertex buffer failed");
-    //    return false;
-    //}
-
-    //Debug::Info(
-    //    "OBJ vertex buffer created. vertexCount = " +
-    //    std::to_string(objConverted.size())
-    //);
-
-    /*if (!m_objModel.LoadFromObj(m_device, "Models/cube.obj"))
-    {
-        Debug::Error("Renderer::Initialize failed : m_objModel.LoadFromObj failed");
-        return false;
-    }
-
-    m_objTransform.position = { 0.0f, 0.0f, 0.0f };
-    m_objTransform.rotation = { 0.0f, 0.0f, 0.0f };
-    m_objTransform.scale = { 0.5f, 0.5f, 0.5f };*/
-
+    
+   
     Debug::Info("Renderer initialized successfully");
 
     return true;
@@ -521,19 +472,35 @@ void Renderer::BeginFrame()
     // このフレームで使う描画先を設定する
     // m_renderTargetView  : 色を書き込む先
     // m_depthStencilView  : 深度(Z値)を書き込む先
-    m_context->OMSetRenderTargets(1, &m_renderTargetView, m_depthStencilView);
+    ID3D11RenderTargetView* renderTargetView = m_renderTargetView.Get();
+
+    m_context->OMSetRenderTargets(
+        1,
+        &renderTargetView,
+        m_depthStencilView.Get()
+    );
 
     // 深度テストのルールをGPUに設定する
     // 例: 手前のピクセルだけ描画する
-    m_context->OMSetDepthStencilState(m_depthStencilState, 0);
+    m_context->OMSetDepthStencilState(m_depthStencilState.Get(), 0);
 
     // 画面全体を clearColor で塗りつぶして初期化する
     // 前のフレームの絵が残らないようにする
-    m_context->ClearRenderTargetView(m_renderTargetView, clearColor);
+    m_context->ClearRenderTargetView(m_renderTargetView.Get(), clearColor);
 
     // 深度バッファを 1.0f (一番奥) で初期化する
     // 前のフレームのZ情報が残らないようにする
-    m_context->ClearDepthStencilView(m_depthStencilView, D3D11_CLEAR_DEPTH, 1.0f, 0);
+    m_context->ClearDepthStencilView(m_depthStencilView.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
+}
+
+void Renderer::SetVSyncEnabled(bool enabled)
+{
+    m_vsyncEnabled = enabled;
+}
+
+bool Renderer::IsVSyncEnabled() const
+{
+    return m_vsyncEnabled;
 }
 
 void Renderer::Update()
@@ -553,13 +520,21 @@ void Renderer::DrawTriangle()
     UINT offset = 0;             // 読み込み開始位置
 
     // 深度テストを有効化（手前のものを優先表示）
-    m_context->OMSetDepthStencilState(m_depthStencilState, 0);
+    m_context->OMSetDepthStencilState(m_depthStencilState.Get(), 0);
 
     // 頂点の構造（POSITION, COLOR）をGPUに伝える
-    m_context->IASetInputLayout(m_inputLayout);
+    m_context->IASetInputLayout(m_inputLayout.Get());
 
     // 使用する頂点バッファをセット（今回は三角形）
-    m_context->IASetVertexBuffers(0, 1, &m_triangleVertexBuffer, &stride, &offset);
+    ID3D11Buffer* triangleVertexBuffer = m_triangleVertexBuffer.Get();
+
+    m_context->IASetVertexBuffers(
+        0,
+        1,
+        &triangleVertexBuffer,
+        &stride,
+        &offset
+    );
 
     // 三角形リストとして描画する設定
     m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -569,10 +544,10 @@ void Renderer::DrawTriangle()
     //========================================
 
     // 頂点変換を行うシェーダー
-    m_context->VSSetShader(m_vertexShader, nullptr, 0);
+    m_context->VSSetShader(m_vertexShader.Get(), nullptr, 0);
 
     // 色を決めるシェーダー
-    m_context->PSSetShader(m_pixelShader, nullptr, 0);
+    m_context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
 
     //========================================
     // 3. 行列（WVP）の作成
@@ -607,9 +582,15 @@ void Renderer::DrawTriangle()
     cb.WVP = XMMatrixTranspose(wvp);// HLSL用に転置
 
     // GPUにデータ送信
-    m_context->UpdateSubresource(m_constantBuffer, 0, nullptr, &cb, 0, 0);
+    m_context->UpdateSubresource(m_constantBuffer.Get(), 0, nullptr, &cb, 0, 0);
     // 頂点シェーダーにバッファをセット
-    m_context->VSSetConstantBuffers(0, 1, &m_constantBuffer);
+    ID3D11Buffer* constantBuffer = m_constantBuffer.Get();
+
+    m_context->VSSetConstantBuffers(
+        0,
+        1,
+        &constantBuffer
+    );
 
     //========================================
     // 5. 描画実行
@@ -618,13 +599,8 @@ void Renderer::DrawTriangle()
     m_context->Draw(m_triangleVertexCount, 0);
 }
 
-//削除予定
-void Renderer::DrawObj()
-{
-        //DrawModel(m_objModel, m_objTransform);
-}
 
-void Renderer::DrawModel(const Model& model, const Transform& transform)
+void Renderer::DrawModel(const Model& model, const Transform& transform, const Camera& camera)
 {
 
     //========================================
@@ -649,10 +625,10 @@ void Renderer::DrawModel(const Model& model, const Transform& transform)
     UINT offset = 0;             // 読み込み開始位置
 
     // 深度テストを有効化
-    m_context->OMSetDepthStencilState(m_depthStencilState, 0);
+    m_context->OMSetDepthStencilState(m_depthStencilState.Get(), 0);
 
     // 頂点レイアウト設定
-    m_context->IASetInputLayout(m_inputLayout);
+    m_context->IASetInputLayout(m_inputLayout.Get());
 
     // OBJ用の頂点バッファをセット
     m_context->IASetVertexBuffers(0, 1, &vertexBuffer, &stride, &offset);
@@ -660,23 +636,139 @@ void Renderer::DrawModel(const Model& model, const Transform& transform)
     // 三角形として描画
     m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
+    //========================================
     // 2. シェーダー・テクスチャ設定
     //========================================
-    m_context->VSSetShader(m_vertexShader, nullptr, 0);
-    m_context->PSSetShader(m_pixelShader, nullptr, 0);
+    m_context->VSSetShader(m_vertexShader.Get(), nullptr, 0);
+    m_context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
 
-    // Modelが持つテクスチャをピクセルシェーダーの t0 にセットする。
-    // textureView が nullptr の場合は、前回セットされたテクスチャを解除する。
-    ID3D11ShaderResourceView* textureView = model.GetTextureView();
 
-    if (!textureView)
+    //========================================
+    // Material情報を取得
+    //========================================
+
+    // Model が保持している Material を取得する。
+    // 今後 Material は:
+    //
+    // - テクスチャ
+    // - 色
+    // - ライティング設定
+    // - シェーダー設定
+    //
+    // などを持つ予定。
+    const Material& material = model.GetMaterial();
+
+
+    //========================================
+    // テクスチャ情報を取得
+    //========================================
+
+    // Material が保持しているテクスチャを取得する。
+    // nullptr の場合は「テクスチャなしモデル」を意味する。
+
+    ID3D11ShaderResourceView* textureView = material.GetTextureView();
+
+    //========================================
+    // Material定数バッファ更新
+    //========================================
+
+    // ピクセルシェーダーへ渡す Material 用データ。
+    // 今は「テクスチャがあるかどうか」だけ渡している。
+
+    MaterialBuffer materialBuffer{};
+    materialBuffer.hasTexture = material.HasTexture() ? 1 : 0;
+
+
+    // hasTexture:
+    // 1 = テクスチャあり
+    // 0 = テクスチャなし
+    //
+    // HLSL側ではこの値を見て:
+    //
+    // if(hasTexture == 1)
+    // {
+    //     texture.Sample(...)
+    // }
+    //
+    // のように描画方法を分岐する。
+
+    // GPUへ MaterialBuffer の内容を送信する。
+    // UpdateSubresource は CPU側データをGPUバッファへコピーする処理。
+    m_context->UpdateSubresource(
+        m_materialBuffer.Get(),
+        0,
+        nullptr,
+        &materialBuffer,
+        0,
+        0
+    );
+
+    //========================================
+    // デバッグ確認
+    //========================================
+
+    // テクスチャなしモデルの場合。
+    // 例:
+    //
+    // - 色のみモデル
+    // - 当たり判定表示
+    // - デバッグ用メッシュ
+    //
+    // などでも描画できるようにする予定。
+    if (!material.HasTexture())
     {
-        Debug::Warning("Renderer::DrawModel textureView is null");
+       // Debug::Warning("Renderer::DrawModel material has no texture");
     }
-    m_context->PSSetShaderResources(0, 1, &textureView);
+    //========================================
+    // Material定数バッファをピクセルシェーダーへ渡す
+    //========================================
 
-    // テクスチャのUVサンプリング方法をピクセルシェーダーの s0 にセットする。
-    m_context->PSSetSamplers(0, 1, &m_samplerState);
+    // register(b1) の MaterialBuffer に対応。
+    // VS側ではなくPS側で使用するため PSSetConstantBuffers を使う。
+    ID3D11Buffer* materialConstantBuffer = m_materialBuffer.Get();
+    m_context->PSSetConstantBuffers(
+        1,
+        1,
+        &materialConstantBuffer
+    );
+
+    //========================================
+    // テクスチャをピクセルシェーダーへ渡す
+    //========================================
+
+    // register(t0) の Texture2D diffuseTexture に対応。
+    //
+    // textureView が nullptr の場合は、
+    // 「テクスチャ未設定」として扱われる。
+    //
+    // nullptr を渡すことで、前回描画したモデルの
+    // テクスチャが残る問題を防ぐ。
+    m_context->PSSetShaderResources(
+        0,
+        1,
+        &textureView
+    );
+   
+    //========================================
+    // サンプラー設定
+    //========================================
+
+    // register(s0) の SamplerState に対応。
+    //
+    // UV座標を使ってテクスチャを読む時の設定。
+    // 現在は:
+    //
+    // - LinearFilter
+    // - Wrap
+    //
+    // を使用している。
+    ID3D11SamplerState* samplerState = m_samplerState.Get();
+
+    m_context->PSSetSamplers(
+        0,
+        1,
+        &samplerState
+    );
 
     //========================================
     // 3. 行列（WVP）の作成
@@ -691,22 +783,22 @@ void Renderer::DrawModel(const Model& model, const Transform& transform)
         XMMatrixRotationY(m_objAngle);*/
 
     //XMMATRIX world = m_objTransform.GetWorldMatrix();
-    XMMATRIX world = transform.GetWorldMatrix();
+    //XMMATRIX world = transform.GetWorldMatrix();
 
     // カメラ設定
-    XMVECTOR eye = XMVectorSet(0.0f, 0.0f, -10.0f, 0.0f); // カメラ位置
-    XMVECTOR target = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f); // 見る方向
-    XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    XMMATRIX world = transform.GetWorldMatrix();
+    XMMATRIX view = camera.GetViewMatrix();
+    XMMATRIX projection = camera.GetProjectionMatrix();
 
-    XMMATRIX view = XMMatrixLookAtLH(eye, target, up);
+    
 
-    //透視投影
-    XMMATRIX projection = XMMatrixPerspectiveFovLH(
-        XMConvertToRadians(45.0),
-        static_cast<float>(m_windowWidth) / static_cast<float>(m_windowHeight),
-        0.1f,
-        100.0f
-    );
+    ////透視投影
+    //XMMATRIX projection = XMMatrixPerspectiveFovLH(
+    //    XMConvertToRadians(45.0),
+    //    static_cast<float>(m_windowWidth) / static_cast<float>(m_windowHeight),
+    //    0.1f,
+    //    100.0f
+    //);
 
     // 最終変換行列
     XMMATRIX wvp = world * view * projection;
@@ -718,8 +810,14 @@ void Renderer::DrawModel(const Model& model, const Transform& transform)
     ConstantBuffer cb{};
     cb.WVP = XMMatrixTranspose(wvp);
 
-    m_context->UpdateSubresource(m_constantBuffer, 0, nullptr, &cb, 0, 0);
-    m_context->VSSetConstantBuffers(0, 1, &m_constantBuffer);
+    m_context->UpdateSubresource(m_constantBuffer.Get(), 0, nullptr, &cb, 0, 0);
+    ID3D11Buffer* constantBuffer = m_constantBuffer.Get();
+
+    m_context->VSSetConstantBuffers(
+        0,
+        1,
+        &constantBuffer
+    );
 
     //========================================
     // 5. 描画
@@ -731,7 +829,9 @@ void Renderer::DrawModel(const Model& model, const Transform& transform)
 
 void Renderer::EndFrame()
 {
-    m_swapChain->Present(1, 0);
+    UINT syncInterval = m_vsyncEnabled ? 1 : 0;
+
+    m_swapChain->Present(syncInterval, 0);
 }
 
 void Renderer::Finalize()
@@ -745,92 +845,21 @@ void Renderer::Finalize()
         m_context->Flush();
     }
 
-    // 先にGPUリソース類を解放
-    /*if (m_objVertexBuffer)
-    {
-        m_objVertexBuffer->Release();
-        m_objVertexBuffer = nullptr;
-    }*/
-
-    if (m_triangleVertexBuffer)
-    {
-        m_triangleVertexBuffer->Release();
-        m_triangleVertexBuffer = nullptr;
-    }
-
-    if (m_constantBuffer)
-    {
-        m_constantBuffer->Release();
-        m_constantBuffer = nullptr;
-    }
-
-
-    if (m_samplerState)
-    {
-        m_samplerState->Release();
-        m_samplerState = nullptr;
-    }
-
-    if (m_inputLayout)
-    {
-        m_inputLayout->Release();
-        m_inputLayout = nullptr;
-    }
-
-    if (m_pixelShader)
-    {
-        m_pixelShader->Release();
-        m_pixelShader = nullptr;
-    }
-
-    if (m_vertexShader)
-    {
-        m_vertexShader->Release();
-        m_vertexShader = nullptr;
-    }
-
-    if (m_depthStencilState)
-    {
-        m_depthStencilState->Release();
-        m_depthStencilState = nullptr;
-    }
-
-    if (m_depthStencilView)
-    {
-        m_depthStencilView->Release();
-        m_depthStencilView = nullptr;
-    }
-
-    if (m_depthStencilBuffer)
-    {
-        m_depthStencilBuffer->Release();
-        m_depthStencilBuffer = nullptr;
-    }
-
-    if (m_renderTargetView)
-    {
-        m_renderTargetView->Release();
-        m_renderTargetView = nullptr;
-    }
-
-    // 最後に本体側
-    if (m_swapChain)
-    {
-        m_swapChain->Release();
-        m_swapChain = nullptr;
-    }
-
-    if (m_context)
-    {
-        m_context->Release();
-        m_context = nullptr;
-    }
-
-    if (m_device)
-    {
-        m_device->Release();
-        m_device = nullptr;
-    }
+    m_triangleVertexBuffer.Reset();
+    m_materialBuffer.Reset();
+    m_constantBuffer.Reset();
+    m_samplerState.Reset();
+    m_inputLayout.Reset();
+    m_pixelShader.Reset();
+    m_vertexShader.Reset();
+    m_depthStencilState.Reset();
+    m_depthStencilView.Reset();
+    m_depthStencilBuffer.Reset();
+    m_renderTargetView.Reset();
+    m_swapChain.Reset();
+    m_context.Reset();
+    m_device.Reset();
 
     Debug::Info("Renderer Finalize successfully");
 }
+

@@ -23,6 +23,15 @@ cbuffer ConstantBuffer : register(b0)
     matrix WVP;
 };
 
+// Material用の定数バッファ
+// C++側の MaterialBuffer と対応している。
+// register(b1) なので、C++側では PSSetConstantBuffers(1, 1, &m_materialBuffer) で渡す。
+cbuffer MaterialBuffer : register(b1)
+{
+    int hasTexture; // 1ならテクスチャあり、0ならテクスチャなし
+    float3 padding; // 16バイト境界に合わせるための詰め物
+};
+
 
 PSInput VSMain(VSInput input)
 {
@@ -41,24 +50,18 @@ PSInput VSMain(VSInput input)
 
 float4 PSMain(PSInput input) : SV_TARGET
 {
-    //テクスチャ読み込みをする前
-    //return input.color;
+       // テクスチャなしの場合
+    // diffuseTexture.Sample() は行わず、頂点カラーをそのまま使う。
+    if (hasTexture == 0)
+    {
+        return input.color;
+    }
     
-    // NG例:
-    // OBJのUVとDirectXで読み込んだ画像のV方向が逆になる場合がある。
-    // そのまま input.uv を使うと、テクスチャの上下が合わず
-    // 黒く見えたり、意図しない表示になることがある。
-    //
-    // float4 texColor = diffuseTexture.Sample(textureSampler, input.uv);
-    // return float4(texColor.rgb, 1.0f);
-
-    //objloader側で修正予定
-    
-    // V方向を反転して、OBJのUVとDirectXのテクスチャ座標を合わせる
-    float2 uv = float2(input.uv.x, 1.0f - input.uv.y);
+     // UV反転はここでは行わない。
+    // ObjLoader側で DirectX 用に変換しておく。
+    float2 uv = input.uv;
 
     float4 texColor = diffuseTexture.Sample(textureSampler, uv);
 
-    // alphaを1.0に固定して、不透明として表示する
     return float4(texColor.rgb, 1.0f);
 }
