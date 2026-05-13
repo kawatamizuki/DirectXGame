@@ -44,11 +44,12 @@
 
 class Renderer;
 class InputManager;
-class Camera;
+class TimeManager;
 
 struct GameContext
 {
     Renderer* renderer = nullptr;
     InputManager* input = nullptr;
+    TimeManager* time;
 
 }; 

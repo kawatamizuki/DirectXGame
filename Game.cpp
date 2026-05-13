@@ -12,25 +12,30 @@ Game::~Game()
 
 bool Game::Initialize(HWND hwnd)
 {
+
     if (!m_renderer.Initialize(hwnd))
     {
         Debug::Error("Game::Initialize failed : Renderer initialize failed");
         return false;
     }
-    if (!m_debugEditor.Initialize(hwnd, m_renderer.GetDevice(), m_renderer.GetContext()))
+
+    m_hwnd = hwnd;
+
+    m_renderer.SetVSyncEnabled(true);
+    m_timeManager.SetTargetFPS(60);
+
+    m_context.renderer = &m_renderer;
+    m_context.input = &m_inputManager;
+    m_context.time = &m_timeManager;
+
+    if (!m_debugEditor.Initialize(hwnd, &m_context))
     {
         Debug::Error("Game::Initialize failed : DebugEditor initialize failed");
         return false;
     }
-    m_hwnd = hwnd;
-    m_renderer.SetVSyncEnabled(true);//Vsync‚Ìİ’è
-    m_timeManager.SetTargetFPS(60);
-    // SceneManager‚ÖRenderer‚ğ“n‚·
-   // m_sceneManager.Init(&m_renderer);
-    m_context.renderer = &m_renderer;
-    m_context.input = &m_inputManager;
 
     m_sceneManager.Init(&m_context);
+    
 
     //“§‹“Š‰e
     m_camera.SetPosition(0.0f, 0.0f, -10.0f);
@@ -149,7 +154,7 @@ void Game::UpdateWindowTitle()
 
 void Game::Finalize()
 {
+    m_debugEditor.Finalize();
     m_sceneManager.Finalize();
     m_renderer.Finalize();
-    m_debugEditor.Finalize();
 }
