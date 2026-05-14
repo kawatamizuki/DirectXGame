@@ -16,12 +16,15 @@ DirectX11を用いた描画処理の学習と、就職作品としての開発�
   ├ Scene
   ├ Input
   ├ Time
-  └ Debug
+  ├ Debug / Editor
+  ├ GameObject / Transform
+  └ Window Resize
 
 ## 使用技術
 - C++
 - DirectX11
 - HLSL
+- Dear ImGui
 - Visual Studio
 - Git / GitHub
 
@@ -31,120 +34,69 @@ DirectX11を用いた描画処理の学習と、就職作品としての開発�
 3. 実行する
 ## 実行結果
 
+### Debug Editor
+
+![DebugEditor](docs/debug_editor/debug_editor.png)
+
+### Resizable
+![ResizableBefore](docs/debug_editor/resizable_before.png)
+
+![ResizableAfter](docs/debug_editor/resizable_after.png)
 
 ## 理解したこと
 
-### SceneManager と責務分離
-Scene 基底クラスと SceneManager を実装し、
-タイトル画面やゲーム画面などをシーン単位で切り替える構造を学びました。
+### ImGuiによるデバッグエディタ
 
-また、Game が SceneManager を保持し、
-各 Scene は GameContext 経由で Renderer や InputManager を利用することで、
-依存関係を減らしつつ責務を分離する重要性を理解しました。
+Dear ImGuiを導入し、ゲーム実行中に内部状態を確認・編集できるデバッグエディタを実装しました。
 
-RunFrame() を導入し、
+現在は以下の情報を表示・編集できます。
 
-Update
-↓
-Draw
+- FPS / DeltaTime
+- VSync状態
+- GameObject一覧
+- 選択中ObjectのTransform
+- Position / Rotation / Scaleの編集
 
-という1フレームの流れを整理することで、
-ゲームループの管理構造について理解を深めました。
+また、Inspector表示では内部処理用のラジアン値をGUI上では度数として扱うことで、編集しやすい形にしました。
 
-### InputManager と入力抽象化
-InputManager を実装し、
-キーボード・マウス・XInput によるコントローラー入力に対応しました。
+DebugEditorはGameContext経由でRenderer、TimeManager、GameObject一覧へアクセスする構造にし、引数が増え続ける問題を避けました。
 
-また、InputAction を導入し、
+### ウィンドウリサイズ対応
 
-- Decide
-- Cancel
+ウィンドウサイズ変更時にSwapChain、RenderTargetView、DepthStencilView、Viewportを再生成する処理を実装しました。
 
-などのゲーム内アクションへ入力を割り当てることで、
-入力デバイスに依存しない設計の重要性を理解しました。
+また、サイズ変更時にCameraのProjection行列も更新することで、最大化やウィンドウサイズ変更後も描画比率やGUIのクリック位置がずれないようにしました。
 
-これにより、
-
-Enter
-Aボタン
-マウスクリック
-
-など複数入力を同一アクションとして扱えるようになりました。
-
-### ComPtr とリソース管理
-DirectXリソースの一部を ComPtr 化し、
-COMオブジェクトの参照カウント管理について理解しました。
-
-Get() と GetAddressOf() の用途の違いを学び、
-
-- 既存ポインタを参照する場合
-- 新しくポインタを受け取る場合
-
-で使い分ける必要があることを理解しました。
-
-また、不適切な GetAddressOf() の使用によって、
-既存リソースが解放される可能性があることも学びました。
-
-### カメラとView / Projection行列
-Camera クラスを実装し、
-
-- Position（カメラ位置）
-- Target（注視点）
-- Projection（透視投影）
-
-を用いて3D空間を画面へ描画する流れを学びました。
-
-また、
-
-- View行列
-- Projection行列
-- World行列
-
-を組み合わせて最終的なWVP行列を作成することで、
-3Dモデルが正しく描画されることを理解しました。
-
-特に、
-
-Position = カメラ位置
-Target = カメラが見ている方向
-
-であることを理解し、
-
-「カメラを移動する」
-のではなく、
-
-「どこからどこを見るか」
-
-によって視点が決定されることを学びました。
-
-さらに、Position と Target が同一座標になると、
-視線方向ベクトルが0になり、
-View行列が破綻することも確認しました。
-
+WindowはGameを直接保持せず、リサイズ通知をコールバックで渡す構造にすることで、WindowとGameの依存を減らしました。
 
 ## 現在の課題
 
 
-- MTLの複数マテリアル未対応
-- DeltaTimeを直接書かずに扱える更新設計（GameObject / Component / Physics）の整理
-- 描画処理が Game クラスへ集中している
-- InputAction の再バインド機能未実装
-- ImGui などデバッグツール未導入
-- ライティング未実装
-- リソース管理の整理途中
-- プロジェクトのファイル構成が荒れている
+- 複数マテリアル対応
+- カメラ制御（追従 / 自由視点）
+- ライティング（法線の活用）
+- デバッグエディタの拡張
+  - Object生成
+  - 画面上のObject選択
+  - Gizmoによる移動・回転・拡縮
+- ステージエディタ作成
+- ステージデータの保存 / 読み込み
+- サウンドシステム
+- リソース管理の整理
+
 
 
 ## 今後の実装予定
 
-- 複数マテリアル対応
-- カメラ制御（追従 / 自由視点）
-- ライティング（法線の活用）
-- ImGuiによるデバッグツール作成
-- ステージエディタ作成
-- サウンドシステム
-- コードの整理（不要コード削除・構造改善）
-- プロジェクトファイルの整理
+- デバッグエディタ拡張
+  - Gizmo操作
+  - Object生成
+  - Scene上でのObject選択
+
+- 初期マップ作成
+- カメラ制御
+- フィールド移動実装
+
 
 ## 制作意図
 DirectX を用いたゲーム開発の基礎理解と、設計・描画・管理の流れを段階的に学ぶために制作しています。  
