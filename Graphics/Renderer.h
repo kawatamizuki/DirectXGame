@@ -16,11 +16,14 @@ public:
 
     bool Initialize(HWND hwnd);
     void BeginFrame();
+    void Resize(UINT width, UINT height);
     void SetVSyncEnabled(bool enabled);
     bool IsVSyncEnabled() const;
     ID3D11Device* GetDevice() const { return m_device.Get(); };
     ID3D11DeviceContext* GetContext() const { return m_context.Get(); }
     void Update();
+    UINT GetWindowWidth() const { return m_windowWidth; }
+    UINT GetWindowHeight() const { return m_windowHeight; }
     void DrawTriangle();
     void DrawModel(const Model& model, const Transform& transform, const Camera& camera);
     void EndFrame();

@@ -4,6 +4,7 @@
 
 #ifdef _DEBUG
 #include "DebugMemory.h"
+
 #endif
 
 int WINAPI wWinMain(
@@ -24,10 +25,17 @@ int WINAPI wWinMain(
     }
 
     Game game;
+   
     if (!game.Initialize(window.GetHWND()))
     {
         return -1;
     }
+
+    window.SetResizeCallback(
+        [&game](UINT width, UINT height)
+        {
+            game.OnResize(width, height);
+        });
 
     MSG msg = {};
 

@@ -17,6 +17,7 @@ public:
     ~Game();
 
     bool Initialize(HWND hwnd);
+    void OnResize(UINT width, UINT height);
     void RunFrame();
     void Update();
     void Draw();

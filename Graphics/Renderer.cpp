@@ -55,11 +55,15 @@ bool Renderer::Initialize(HWND hwnd)
     //========================================
 
     // 初期ウィンドウサイズとバックバッファ設定
-    constexpr UINT kDefaultWindowWidth = 800;
-    constexpr UINT kDefaultWindowHeight = 600;
 
-    m_windowWidth = kDefaultWindowWidth;
-    m_windowHeight = kDefaultWindowHeight;
+    D3D11_VIEWPORT viewport = {};
+    RECT rect;
+    GetClientRect(hwnd, &rect);
+
+     m_windowWidth = (float)(rect.right - rect.left);
+     m_windowHeight = (float)(rect.bottom - rect.top);
+
+  
 
     constexpr UINT kBackBufferCount = 1;
     constexpr UINT kSampleCount = 1;
@@ -200,15 +204,10 @@ bool Renderer::Initialize(HWND hwnd)
     // ウィンドウのクライアント領域を取得し、
     // その範囲全体に描画するよう設定する
     
-    D3D11_VIEWPORT viewport = {};
-    RECT rect;
-    GetClientRect(hwnd, &rect);
+   
 
-    float width = (float)(rect.right - rect.left);
-    float height = (float)(rect.bottom - rect.top);
-
-    viewport.Width = width;
-    viewport.Height = height;
+    viewport.Width = m_windowWidth;
+    viewport.Height = m_windowHeight;
     viewport.MinDepth = 0.0f;
     viewport.MaxDepth = 1.0f;
     viewport.TopLeftX = 0.0f;
@@ -491,6 +490,163 @@ void Renderer::BeginFrame()
     // 深度バッファを 1.0f (一番奥) で初期化する
     // 前のフレームのZ情報が残らないようにする
     m_context->ClearDepthStencilView(m_depthStencilView.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
+}
+
+
+void Renderer::Resize(UINT width, UINT height)
+{
+
+    //========================================
+    // 無効サイズ防止
+    //========================================
+
+    if (width == 0 || height == 0)
+    {
+        return;
+    }
+
+    //========================================
+    // 新しいウィンドウサイズ保存
+    //========================================
+    m_windowWidth = width;
+    m_windowHeight = height;
+
+    //========================================
+    // 現在の描画先を解除
+    //========================================
+    //
+    // RenderTargetViewを破棄する前に、
+    // GPUへセットされた状態を解除する必要がある。
+    if (m_context)
+    {
+        m_context->OMSetRenderTargets(0, nullptr, nullptr);
+    }
+
+    //========================================
+    // 古い描画リソース破棄
+    //========================================
+    //
+    // サイズ変更前の:
+    //
+    // - RenderTargetView
+    // - DepthStencilView
+    // - DepthBuffer
+    //
+    // を解放する。
+    //
+    m_renderTargetView.Reset();
+    m_depthStencilView.Reset();
+    m_depthStencilBuffer.Reset();
+
+
+    //========================================
+    // SwapChainバッファサイズ変更
+    //========================================
+    //
+    // バックバッファを
+    // 新しいウィンドウサイズへ変更する。
+    //
+    HRESULT hr = m_swapChain->ResizeBuffers(
+        0,
+        m_windowWidth,
+        m_windowHeight,
+        DXGI_FORMAT_UNKNOWN,
+        0
+    );
+
+    
+    if (FAILED(hr))
+    {
+        Debug::Error("SwapChain ResizeBuffers failed");
+        return;
+    }
+
+    //========================================
+    // 新しいバックバッファ取得
+    //========================================
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> backBuffer;
+
+    hr = m_swapChain->GetBuffer(
+        0,
+        __uuidof(ID3D11Texture2D),
+        reinterpret_cast<void**>(backBuffer.GetAddressOf())
+    );
+
+    if (FAILED(hr))
+    {
+        Debug::Error("SwapChain GetBuffer failed");
+        return;
+    }
+
+    //========================================
+    // 新しいRenderTargetView作成
+    //========================================
+    hr = m_device->CreateRenderTargetView(
+        backBuffer.Get(),
+        nullptr,
+        m_renderTargetView.GetAddressOf()
+    );
+
+    if (FAILED(hr))
+    {
+        Debug::Error("CreateRenderTargetView failed");
+        return;
+    }
+
+    //========================================
+    // 新しいDepthBuffer作成
+    //========================================
+    D3D11_TEXTURE2D_DESC depthDesc = {};
+    depthDesc.Width = m_windowWidth;
+    depthDesc.Height = m_windowHeight;
+    depthDesc.MipLevels = 1;
+    depthDesc.ArraySize = 1;
+    depthDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    depthDesc.SampleDesc.Count = 1;
+    depthDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+
+    hr = m_device->CreateTexture2D(
+        &depthDesc,
+        nullptr,
+        m_depthStencilBuffer.GetAddressOf()
+    );
+
+    if (FAILED(hr))
+    {
+        Debug::Error("Create depth buffer failed");
+        return;
+    }
+
+    //========================================
+    // 新しいDepthStencilView作成
+    //========================================
+    hr = m_device->CreateDepthStencilView(
+        m_depthStencilBuffer.Get(),
+        nullptr,
+        m_depthStencilView.GetAddressOf()
+    );
+
+    if (FAILED(hr))
+    {
+        Debug::Error("CreateDepthStencilView failed");
+        return;
+    }
+
+    //========================================
+    // Viewport更新
+    //========================================
+    //
+    // 描画範囲を新しいサイズへ更新する。
+    //
+    D3D11_VIEWPORT viewport = {};
+    viewport.Width = static_cast<float>(m_windowWidth);
+    viewport.Height = static_cast<float>(m_windowHeight);
+    viewport.MinDepth = 0.0f;
+    viewport.MaxDepth = 1.0f;
+    viewport.TopLeftX = 0.0f;
+    viewport.TopLeftY = 0.0f;
+
+    m_context->RSSetViewports(1, &viewport);
 }
 
 void Renderer::SetVSyncEnabled(bool enabled)

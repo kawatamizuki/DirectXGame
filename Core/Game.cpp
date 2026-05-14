@@ -1,6 +1,7 @@
 #include "Game.h"
 #include "Debug.h"
 
+
 Game::Game()
     : m_hwnd(nullptr)
 {
@@ -23,16 +24,20 @@ bool Game::Initialize(HWND hwnd)
 
     m_renderer.SetVSyncEnabled(false);
     m_timeManager.SetTargetFPS(60);
-
     m_context.renderer = &m_renderer;
     m_context.input = &m_inputManager;
     m_context.time = &m_timeManager;
+    m_context.objects = &m_objects;
+#ifdef ENABLE_EDITOR
 
     if (!m_debugEditor.Initialize(hwnd, &m_context))
     {
         Debug::Error("Game::Initialize failed : DebugEditor initialize failed");
         return false;
     }
+#endif
+
+   
 
     m_sceneManager.Init(&m_context);
     
@@ -43,7 +48,8 @@ bool Game::Initialize(HWND hwnd)
     m_camera.SetProjection(
         //Ž‹–ìŠp
         DirectX::XMConvertToRadians(45.0f),
-        800.0f / 600.0f,
+        static_cast<float>(m_renderer.GetWindowWidth()) /
+        static_cast<float>(m_renderer.GetWindowHeight()),
         0.1f,
         100.0f
     );
@@ -71,9 +77,21 @@ bool Game::Initialize(HWND hwnd)
     m_kennyObject.transform.scale = { 5.0f, 5.0f, 5.0f };
     m_objects.push_back(m_kennyObject);
 
-   
+ 
 
     return true;
+}
+
+void Game::OnResize(UINT width, UINT height)
+{
+    m_renderer.Resize(width, height);
+
+    m_camera.SetProjection(
+        DirectX::XMConvertToRadians(45.0f),
+        static_cast<float>(width) / static_cast<float>(height),
+        0.1f,
+        100.0f
+    );
 }
 
 void Game::RunFrame()
@@ -109,11 +127,11 @@ void Game::Draw()
             m_renderer.DrawModel(*obj.model, obj.transform, m_camera);
         }
     }
-
+#ifdef ENABLE_EDITOR
     m_debugEditor.BeginFrame();
     m_debugEditor.Draw();
     m_debugEditor.EndFrame();
-
+#endif
     if (!m_renderer.IsVSyncEnabled())
     {
         m_timeManager.WaitForTargetFPS();
@@ -148,7 +166,9 @@ void Game::UpdateWindowTitle()
 
 void Game::Finalize()
 {
+#ifdef ENABLE_EDITOR
     m_debugEditor.Finalize();
+#endif
     m_sceneManager.Finalize();
     m_renderer.Finalize();
 }

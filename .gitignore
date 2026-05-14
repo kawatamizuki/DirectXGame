@@ -1,9 +1,59 @@
+# Visual Studio
 .vs/
-x64/
+*.vcxproj.user
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build directories
 Debug/
-*.log
-*.tlog
+Release/
+x64/
+x86/
+[Bb]in/
+[Oo]bj/
+
+# ImGui
+imgui.ini
+
+# Intermediate and build files
 *.obj
-*.exe
+*.idb
 *.pdb
 *.ilk
+*.exp
+*.lib
+*.log
+*.tlog
+*.lastbuildstate
+*.recipe
+
+# Executables
+*.exe
+*.out
+*.app
+
+# DirectX Shader Compiler outputs
+*.cso
+
+# Windows generated files
+Thumbs.db
+Desktop.ini
+
+# Temporary files
+*.tmp
+*.cache
+
+# Ignore compiled shader debug files
+*.fxc
+
+# Keep documentation and images
+!docs/
+!docs/**
+
+# Keep README
+!README.md
+
+
+
