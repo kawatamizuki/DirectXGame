@@ -6,6 +6,7 @@
 #include <vector>
 #include <unordered_map>
 #include "InputAction.h"
+#include "EditorInputAction.h"
 #include"KeyCode.h"
 
 //========================================
@@ -66,6 +67,12 @@ public:
     bool IsActionPressed(InputAction action) const;
     bool IsActionReleased(InputAction action) const;
 
+    //デバッグ用
+    bool IsEditorActionDown(EditorInputAction action) const;
+    bool IsEditorActionPressed(EditorInputAction action) const;
+    bool IsEditorActionReleased(EditorInputAction action) const;
+
+
 
 
 private:
@@ -79,5 +86,8 @@ private:
     int m_gamePadCheckFrame;
 
     std::unordered_map<InputAction, std::vector<KeyCode>> m_keyboardMapping;
+    std::unordered_map<EditorInputAction, std::vector<KeyCode>> m_editorKeyboardMapping;//デバッグ用
     std::unordered_map<InputAction, std::vector<WORD>> m_gamePadMapping;
+
+
 };

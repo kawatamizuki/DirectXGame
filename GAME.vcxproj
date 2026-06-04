@@ -76,7 +76,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>ENABLE_EDITOR;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -92,7 +92,7 @@
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -105,7 +105,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>ENABLE_EDITOR;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -121,7 +121,7 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -135,6 +135,7 @@
     <ClCompile Include="Core\Window.cpp" />
     <ClCompile Include="DebugTools\Debug.cpp" />
     <ClCompile Include="DebugTools\DebugEditor.cpp" />
+    <ClCompile Include="DebugTools\DebugRenderer.cpp" />
     <ClCompile Include="External\DirectXTK\WICTextureLoader11.cpp" />
     <ClCompile Include="Graphics\Camera.cpp" />
     <ClCompile Include="Graphics\Material.cpp" />
@@ -149,6 +150,8 @@
     <ClCompile Include="imgui\imgui_tables.cpp" />
     <ClCompile Include="imgui\imgui_widgets.cpp" />
     <ClCompile Include="Input\InputManager.cpp" />
+    <ClCompile Include="Math\Collision.cpp" />
+    <ClCompile Include="Math\Ray.cpp" />
     <ClCompile Include="Object\GameObject.cpp" />
     <ClCompile Include="Object\Transform.cpp" />
     <ClCompile Include="Scene\GameScene.cpp" />
@@ -163,6 +166,7 @@
     <ClInclude Include="DebugTools\Debug.h" />
     <ClInclude Include="DebugTools\DebugEditor.h" />
     <ClInclude Include="DebugTools\DebugMemory.h" />
+    <ClInclude Include="DebugTools\DebugRenderer.h" />
     <ClInclude Include="External\DirectXTK\WICTextureLoader11.h" />
     <ClInclude Include="Graphics\Camera.h" />
     <ClInclude Include="Graphics\Material.h" />
@@ -178,9 +182,12 @@
     <ClInclude Include="imgui\imstb_rectpack.h" />
     <ClInclude Include="imgui\imstb_textedit.h" />
     <ClInclude Include="imgui\imstb_truetype.h" />
+    <ClInclude Include="Input\EditorInputAction.h" />
     <ClInclude Include="Input\InputAction.h" />
     <ClInclude Include="Input\InputManager.h" />
     <ClInclude Include="Input\KeyCode.h" />
+    <ClInclude Include="Math\Collision.h" />
+    <ClInclude Include="Math\Ray.h" />
     <ClInclude Include="Object\GameObject.h" />
     <ClInclude Include="Object\Transform.h" />
     <ClInclude Include="Scene\GameScene.h" />
@@ -195,6 +202,15 @@
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
+      <FileType>Document</FileType>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="DebugLineShader.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Vertex</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Vertex</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Vertex</ShaderType>
       <FileType>Document</FileType>
     </None>
   </ItemGroup>

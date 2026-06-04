@@ -11,14 +11,23 @@ DirectX11を用いた描画処理の学習と、就職作品としての開発�
 
 ## 現在の実装内容
 
-  ├ 描画
-  ├ モデル / Material
-  ├ Scene
-  ├ Input
-  ├ Time
-  ├ Debug / Editor
-  ├ GameObject / Transform
-  └ Window Resize
+├ 描画
+├ モデル / Material
+├ Scene
+├ Input
+├ Time
+├ Debug / Editor
+│ ├ Inspector
+│ ├ Object Selection
+│ ├ Ray Picking
+│ ├ Bounds (AABB / OBB)
+│ ├ Move Gizmo
+│ ├ Rotate Gizmo
+│ ├ World / Local Gizmo
+│ ├ Free Camera
+│ └ Focus Selected Object
+├ GameObject / Transform
+└ Window Resize
 
 ## 使用技術
 - C++
@@ -36,66 +45,73 @@ DirectX11を用いた描画処理の学習と、就職作品としての開発�
 
 ### Debug Editor
 
-![DebugEditor](docs/debug_editor/debug_editor.png)
+![DebugEditor](docs/debug_editor/debugeditor_rotate.png)
 
-### Resizable
-![ResizableBefore](docs/debug_editor/resizable_before.png)
-
-![ResizableAfter](docs/debug_editor/resizable_after.png)
 
 ## 理解したこと
 
 ### ImGuiによるデバッグエディタ
 
-Dear ImGuiを導入し、ゲーム実行中に内部状態を確認・編集できるデバッグエディタを実装しました。
+Dear ImGuiを用いてゲーム実行中に内部状態を確認・編集できるデバッグエディタを実装しました。
 
-現在は以下の情報を表示・編集できます。
+現在は以下の機能に対応しています。
 
-- FPS / DeltaTime
-- VSync状態
-- GameObject一覧
-- 選択中ObjectのTransform
-- Position / Rotation / Scaleの編集
+- FPS / DeltaTime表示
+- VSync状態表示
+- GameObject一覧表示
+- 選択中ObjectのTransform編集
+- Position / Rotation / Scale編集
+- Scene上でのObject選択（Ray Picking）
+- AABB / OBB表示
+- Move Gizmoによる位置編集
+- Rotate Gizmoによる回転編集
+- World / Local Gizmo切り替え
+- Free Camera
+- Focus Selected Object (Fキー)
 
-また、Inspector表示では内部処理用のラジアン値をGUI上では度数として扱うことで、編集しやすい形にしました。
+Move Gizmoではマウス移動量を軸方向へ投影する方式を採用し、任意の軸方向への移動を実現しました。
 
-DebugEditorはGameContext経由でRenderer、TimeManager、GameObject一覧へアクセスする構造にし、引数が増え続ける問題を避けました。
+Rotate Gizmoでは回転リングを表示し、リング平面上でのマウス操作による回転編集を実装しています。
 
-### ウィンドウリサイズ対応
+また、Gizmoはカメラとの距離に応じてサイズを自動調整することで、画面上で一定の大きさに見えるようにしています。
 
-ウィンドウサイズ変更時にSwapChain、RenderTargetView、DepthStencilView、Viewportを再生成する処理を実装しました。
+DebugEditorはGameContext経由でRenderer、Camera、InputManager、TimeManager、GameObject一覧へアクセスする構造にし、依存関係の肥大化を防いでいます。
 
-また、サイズ変更時にCameraのProjection行列も更新することで、最大化やウィンドウサイズ変更後も描画比率やGUIのクリック位置がずれないようにしました。
-
-WindowはGameを直接保持せず、リサイズ通知をコールバックで渡す構造にすることで、WindowとGameの依存を減らしました。
 
 ## 現在の課題
 
+- Rotate Gizmoの改善
+  - Quaternion対応
+  - Unityライクな回転操作
 
-- 複数マテリアル対応
-- カメラ制御（追従 / 自由視点）
-- ライティング（法線の活用）
-- デバッグエディタの拡張
-  - Object生成
-  - 画面上のObject選択
-  - Gizmoによる移動・回転・拡縮
+- Scale Gizmo実装
+
+- Undo / Redo
+
+- Object生成 / 削除
+
 - ステージエディタ作成
+
 - ステージデータの保存 / 読み込み
+
 - サウンドシステム
+
 - リソース管理の整理
+
+- ライティング
 
 
 
 ## 今後の実装予定
 
-- デバッグエディタ拡張
-  - Gizmo操作
-  - Object生成
-  - Scene上でのObject選択
-
-- 初期マップ作成
-- カメラ制御
-- フィールド移動実装
+- Scale Gizmo
+- Undo / Redo
+- Object生成 / 削除
+- Scene Hierarchy
+- ステージエディタ
+- JSON保存 / 読み込み
+- ライティング
+- サウンドシステム
 
 
 ## 制作意図
