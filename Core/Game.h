@@ -26,11 +26,12 @@ public:
     void Finalize();
 
 private:
-    static constexpr int kGridWidth = 10;
-    static constexpr int kGridHeight = 10;
+    static constexpr int kMaxGridWidth = 30;
+    static constexpr int kMaxGridHeight = 30;
 
     bool TryGetMouseGridCell(int& gridX, int& gridZ) const;
     void UpdateBuildingPlacement();
+    void UpdateCameraForGrid();
     DirectX::XMFLOAT3 GridToWorld(int gridX, int gridZ) const;
 
     HWND m_hwnd;
@@ -47,9 +48,11 @@ private:
     GameObject m_cubeObject;
     std::vector<GameObject> m_objects;
 
-    std::array<bool, kGridWidth * kGridHeight> m_occupiedCells{};
-    int m_selectedGridX = kGridWidth / 2;
-    int m_selectedGridZ = kGridHeight / 2;
+    std::array<bool, kMaxGridWidth * kMaxGridHeight> m_occupiedCells{};
+    int m_gridWidth = 10;
+    int m_gridHeight = 10;
+    int m_selectedGridX = 5;
+    int m_selectedGridZ = 5;
     POINT m_lastMousePosition = { -1, -1 };
 };
 

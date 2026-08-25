@@ -2,6 +2,9 @@
 #include "Debug.h"
 #include <algorithm>
 #include <cmath>
+#ifdef ENABLE_EDITOR
+#include "imgui.h"
+#endif
 
 
 Game::Game()
@@ -56,6 +59,7 @@ bool Game::Initialize(HWND hwnd)
         0.1f,
         100.0f
     );
+    UpdateCameraForGrid();
 
 
     if (!m_cubeModel.LoadFromObj(m_renderer.GetDevice(), "Models/cube.obj"))
@@ -102,12 +106,12 @@ void Game::Draw()
 
     m_sceneManager.Draw();
 
-    for (int z = 0; z < kGridHeight; ++z)
+    for (int z = 0; z < m_gridHeight; ++z)
     {
-        for (int x = 0; x < kGridWidth; ++x)
+        for (int x = 0; x < m_gridWidth; ++x)
         {
             const bool selected = x == m_selectedGridX && z == m_selectedGridZ;
-            const bool occupied = m_occupiedCells[z * kGridWidth + x];
+            const bool occupied = m_occupiedCells[z * kMaxGridWidth + x];
 
             Transform tileTransform;
             tileTransform.position = GridToWorld(x, z);
@@ -143,7 +147,7 @@ void Game::Draw()
         }
     }
 
-    if (!m_occupiedCells[m_selectedGridZ * kGridWidth + m_selectedGridX])
+    if (!m_occupiedCells[m_selectedGridZ * kMaxGridWidth + m_selectedGridX])
     {
         Transform previewTransform;
         previewTransform.position = GridToWorld(m_selectedGridX, m_selectedGridZ);
@@ -159,6 +163,22 @@ void Game::Draw()
 #ifdef ENABLE_EDITOR
     m_debugEditor.BeginFrame();
     m_debugEditor.Draw();
+
+    ImGui::Begin("Grid Settings");
+    bool gridSizeChanged = false;
+    gridSizeChanged |= ImGui::SliderInt("Width", &m_gridWidth, 1, kMaxGridWidth);
+    gridSizeChanged |= ImGui::SliderInt("Depth", &m_gridHeight, 1, kMaxGridHeight);
+    ImGui::Text("Current size: %d x %d", m_gridWidth, m_gridHeight);
+    ImGui::TextUnformatted("Left click / A: Place");
+    ImGui::TextUnformatted("Right click / B: Remove");
+    ImGui::End();
+
+    if (gridSizeChanged)
+    {
+        m_selectedGridX = (std::min)(m_selectedGridX, m_gridWidth - 1);
+        m_selectedGridZ = (std::min)(m_selectedGridZ, m_gridHeight - 1);
+        UpdateCameraForGrid();
+    }
     m_debugEditor.EndFrame();
 #endif
     if (!m_renderer.IsVSyncEnabled())
@@ -205,9 +225,9 @@ void Game::Finalize()
 DirectX::XMFLOAT3 Game::GridToWorld(int gridX, int gridZ) const
 {
     return {
-        static_cast<float>(gridX) - (static_cast<float>(kGridWidth) - 1.0f) * 0.5f,
+        static_cast<float>(gridX) - (static_cast<float>(m_gridWidth) - 1.0f) * 0.5f,
         0.0f,
-        static_cast<float>(gridZ) - (static_cast<float>(kGridHeight) - 1.0f) * 0.5f
+        static_cast<float>(gridZ) - (static_cast<float>(m_gridHeight) - 1.0f) * 0.5f
     };
 }
 
@@ -262,10 +282,10 @@ bool Game::TryGetMouseGridCell(int& gridX, int& gridZ) const
 
     const float worldX = rayStart.x + rayDirection.x * distance;
     const float worldZ = rayStart.z + rayDirection.z * distance;
-    gridX = static_cast<int>(std::floor(worldX + static_cast<float>(kGridWidth) * 0.5f));
-    gridZ = static_cast<int>(std::floor(worldZ + static_cast<float>(kGridHeight) * 0.5f));
+    gridX = static_cast<int>(std::floor(worldX + static_cast<float>(m_gridWidth) * 0.5f));
+    gridZ = static_cast<int>(std::floor(worldZ + static_cast<float>(m_gridHeight) * 0.5f));
 
-    return gridX >= 0 && gridX < kGridWidth && gridZ >= 0 && gridZ < kGridHeight;
+    return gridX >= 0 && gridX < m_gridWidth && gridZ >= 0 && gridZ < m_gridHeight;
 }
 
 void Game::UpdateBuildingPlacement()
@@ -293,18 +313,18 @@ void Game::UpdateBuildingPlacement()
     }
     if (m_inputManager.IsGamePadButtonPressed(XINPUT_GAMEPAD_DPAD_RIGHT))
     {
-        m_selectedGridX = (std::min)(kGridWidth - 1, m_selectedGridX + 1);
+        m_selectedGridX = (std::min)(m_gridWidth - 1, m_selectedGridX + 1);
     }
     if (m_inputManager.IsGamePadButtonPressed(XINPUT_GAMEPAD_DPAD_UP))
     {
-        m_selectedGridZ = (std::min)(kGridHeight - 1, m_selectedGridZ + 1);
+        m_selectedGridZ = (std::min)(m_gridHeight - 1, m_selectedGridZ + 1);
     }
     if (m_inputManager.IsGamePadButtonPressed(XINPUT_GAMEPAD_DPAD_DOWN))
     {
         m_selectedGridZ = (std::max)(0, m_selectedGridZ - 1);
     }
 
-    const int selectedIndex = m_selectedGridZ * kGridWidth + m_selectedGridX;
+    const int selectedIndex = m_selectedGridZ * kMaxGridWidth + m_selectedGridX;
     if (m_inputManager.IsActionPressed(InputAction::Decide) && !m_occupiedCells[selectedIndex])
     {
         m_occupiedCells[selectedIndex] = true;
@@ -313,5 +333,12 @@ void Game::UpdateBuildingPlacement()
     {
         m_occupiedCells[selectedIndex] = false;
     }
+}
+
+void Game::UpdateCameraForGrid()
+{
+    const float size = static_cast<float>((std::max)(m_gridWidth, m_gridHeight));
+    m_camera.SetPosition(size, size * 1.2f, -size * 1.2f);
+    m_camera.SetTarget(0.0f, 0.0f, 0.0f);
 }
 
