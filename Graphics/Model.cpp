@@ -1,6 +1,6 @@
 #include <Windows.h>
 #include <vector>
-#include <cmath>
+
 #include "Model.h"
 #include"Vertex.h"
 #include "ObjLoader.h"
@@ -81,33 +81,12 @@ bool Model::LoadFromObj(ID3D11Device* device, const std::string& filePath)
     //==========================================================
     std::vector<ObjVertex> objVertices;//頂点データ
     std::string texturePath;//テクスチャのパス
-    DirectX::XMFLOAT3 boundsMin;
-    DirectX::XMFLOAT3 boundsMax;
 
-    if (!ObjLoader::Load(filePath, objVertices, texturePath,boundsMin, boundsMax))
+    if (!ObjLoader::Load(filePath, objVertices, texturePath))
     {
         Debug::Error("Model::LoadFromObj failed : ObjLoader::Load failed : " + filePath);
         return false;
     }
-
-    // OBJ頂点から計算したローカルBounds
-    m_boundsMin = boundsMin;
-    m_boundsMax = boundsMax;
-
-    // AABBサイズからBoundingSphere半径を計算
-    DirectX::XMFLOAT3 half =
-    {
-        (m_boundsMax.x - m_boundsMin.x) * 0.5f,
-        (m_boundsMax.y - m_boundsMin.y) * 0.5f,
-        (m_boundsMax.z - m_boundsMin.z) * 0.5f
-    };
-
-    m_boundingRadius =
-        sqrtf(
-            half.x * half.x +
-            half.y * half.y +
-            half.z * half.z
-        );
 
     m_material.Clear();
     m_material.SetTexturePath(texturePath);

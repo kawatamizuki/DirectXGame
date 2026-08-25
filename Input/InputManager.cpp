@@ -33,69 +33,6 @@ InputManager::InputManager()
     {
         KeyCode::Escape
     };
-
-    //========================================
-    // Editor用キーボード割り当て
-    //========================================
-
-    m_editorKeyboardMapping[EditorInputAction::FreeCameraLook] =
-    {
-        KeyCode::MouseRight
-    };
-
-    m_editorKeyboardMapping[EditorInputAction::FreeCameraForward] =
-    {
-        KeyCode::W
-    };
-
-    m_editorKeyboardMapping[EditorInputAction::FreeCameraBackward] =
-    {
-        KeyCode::S
-    };
-
-    m_editorKeyboardMapping[EditorInputAction::FreeCameraLeft] =
-    {
-        KeyCode::A
-    };
-
-    m_editorKeyboardMapping[EditorInputAction::FreeCameraRight] =
-    {
-        KeyCode::D
-    };
-
-    m_editorKeyboardMapping[EditorInputAction::FreeCameraUp] =
-    {
-        KeyCode::E
-    };
-
-    m_editorKeyboardMapping[EditorInputAction::FreeCameraDown] =
-    {
-        KeyCode::Q
-    };
-
-    m_editorKeyboardMapping[EditorInputAction::FreeCameraFast] =
-    {
-        KeyCode::Shift
-    };
-
-    m_editorKeyboardMapping[EditorInputAction::FocusSelected] =
-    {
-        KeyCode::F
-    };
-    m_editorKeyboardMapping[EditorInputAction::GizmoMove] =
-    {
-        KeyCode::W
-    };
-
-    m_editorKeyboardMapping[EditorInputAction::GizmoRotate] =
-    {
-        KeyCode::R
-    };
-
-    m_editorKeyboardMapping[EditorInputAction::GizmoScale] =
-    {
-        KeyCode::E
-    };
     //========================================
     // GamePad割り当て
     //========================================
@@ -283,69 +220,6 @@ bool InputManager::IsKeyPressed(KeyCode key) const
 bool InputManager::IsKeyReleased(KeyCode key) const
 {
     return IsKeyReleased(static_cast<int>(key));
-}
-
-bool InputManager::IsEditorActionDown(EditorInputAction action) const
-{
-    auto it =
-        m_editorKeyboardMapping.find(action);
-
-    if (it == m_editorKeyboardMapping.end())
-    {
-        return false;
-    }
-
-    for (KeyCode key : it->second)
-    {
-        if (IsKeyDown(key))
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-bool InputManager::IsEditorActionPressed(EditorInputAction action) const
-{
-    auto it =
-        m_editorKeyboardMapping.find(action);
-
-    if (it == m_editorKeyboardMapping.end())
-    {
-        return false;
-    }
-
-    for (KeyCode key : it->second)
-    {
-        if (IsKeyPressed(key))
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-bool InputManager::IsEditorActionReleased(EditorInputAction action) const
-{
-    auto it =
-        m_editorKeyboardMapping.find(action);
-
-    if (it == m_editorKeyboardMapping.end())
-    {
-        return false;
-    }
-
-    for (KeyCode key : it->second)
-    {
-        if (IsKeyReleased(key))
-        {
-            return true;
-        }
-    }
-
-    return false;
 }
 
 bool InputManager::IsActionDown(InputAction action) const

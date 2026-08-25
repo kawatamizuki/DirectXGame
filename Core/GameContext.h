@@ -45,16 +45,12 @@
 class Renderer;
 class InputManager;
 class TimeManager;
-class Camera;
-class DebugRenderer;
 
 struct GameContext
 {
     Renderer* renderer = nullptr;
-    DebugRenderer* debugRenderer = nullptr;
     InputManager* input = nullptr;
     TimeManager* time=nullptr;
-    Camera* camera = nullptr;
     std::vector<GameObject>* objects=nullptr;
 
 }; 

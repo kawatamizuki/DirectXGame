@@ -25,8 +25,6 @@ bool Game::Initialize(HWND hwnd)
     m_renderer.SetVSyncEnabled(false);
     m_timeManager.SetTargetFPS(60);
     m_context.renderer = &m_renderer;
-    m_context.debugRenderer = &m_debugRenderer;
-    m_context.camera = &m_camera;
     m_context.input = &m_inputManager;
     m_context.time = &m_timeManager;
     m_context.objects = &m_objects;
@@ -37,13 +35,6 @@ bool Game::Initialize(HWND hwnd)
         Debug::Error("Game::Initialize failed : DebugEditor initialize failed");
         return false;
     }
-
-    if (!m_debugRenderer.Initialize(m_renderer.GetDevice(),m_renderer.GetContext()))
-    {
-        Debug::Error("Game::Initialize failed : DebugRenderer initialize failed");
-        return false;
-    }
-   
 #endif
 
    
@@ -108,7 +99,6 @@ void Game::RunFrame()
     m_timeManager.BeginFrame();
     Update();
     Draw();
-
 }
 
 void Game::Update()
@@ -116,15 +106,12 @@ void Game::Update()
    
     m_inputManager.Update();
     m_sceneManager.Update();
-    m_timeManager.Update();
     for (auto& obj : m_objects)
     {
-        //obj.transform.rotation.y += 0.01f;
+        obj.transform.rotation.y += 0.01f;
     }
-#ifdef ENABLE_EDITOR
-    m_debugEditor.BeginFrame();
-    m_debugEditor.Update();
-#endif
+  
+   
 }
 
 void Game::Draw()
@@ -141,11 +128,8 @@ void Game::Draw()
         }
     }
 #ifdef ENABLE_EDITOR
-  
-
-   
+    m_debugEditor.BeginFrame();
     m_debugEditor.Draw();
-    m_debugRenderer.Flush(m_camera);
     m_debugEditor.EndFrame();
 #endif
     if (!m_renderer.IsVSyncEnabled())
@@ -155,7 +139,7 @@ void Game::Draw()
 
     m_renderer.EndFrame();
 
-  
+    m_timeManager.Update();
 
   
    
