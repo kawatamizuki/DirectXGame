@@ -19,6 +19,8 @@ imgui.ini
 
 # Intermediate and build files
 *.obj
+!Models/cube.obj
+!Models/character-female-f.obj
 *.idb
 *.pdb
 *.ilk

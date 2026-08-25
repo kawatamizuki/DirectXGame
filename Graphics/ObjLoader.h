@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 #include <string>
+#include <DirectXMath.h>
 
 struct ObjVertex
 {
@@ -21,8 +22,13 @@ struct ObjIndex
 class ObjLoader
 {
 public:
-    static bool Load(const std::string& filePath, std::vector<ObjVertex>& outVertices, std::string& outTexturePath);
-
+ static bool Load(
+    const std::string& filePath,
+    std::vector<ObjVertex>& outVertices,
+    std::string& outTexturePath,
+    DirectX::XMFLOAT3& outBoundsMin,
+    DirectX::XMFLOAT3& outBoundsMax
+);
 private:
     //static int ParseVertexIndex(const std::string& token);//Å‰À•W‚¾‚¯‚ğ“Ç‚İ‚Ş‚½‚ß‚Éì‚Á‚½‰¼ŠÖ”i‚ ‚Æ‚Åíœj
     static ObjIndex ParseFaceToken(const std::string& token);

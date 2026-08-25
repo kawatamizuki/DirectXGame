@@ -5,6 +5,7 @@
 #include"SceneManager.h"
 #include "Model.h"
 #include "DebugEditor.h"
+#include"DebugRenderer.h"
 #include "GameContext.h"
 #include "TimeManager.h"
 #include "GameObject.h"
@@ -27,6 +28,7 @@ public:
 private:
     HWND m_hwnd;
     DebugEditor m_debugEditor;//imgui用
+    DebugRenderer m_debugRenderer;//ワイヤーフレームなどデバッグ用の描画
     Renderer m_renderer;
     InputManager m_inputManager;
     SceneManager m_sceneManager;
