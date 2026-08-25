@@ -4,13 +4,11 @@ class WorldTime
 {
 public:
     void Update(float deltaSeconds);
-
     int GetDay() const;
     int GetHour() const;
     int GetMinute() const;
     float GetTimeOfDay01() const;
     float GetDaylight01() const;
-
     void SetHour(float hour);
     float GetMinutesPerRealSecond() const { return m_minutesPerRealSecond; }
     void SetMinutesPerRealSecond(float value);

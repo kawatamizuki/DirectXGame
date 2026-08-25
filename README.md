@@ -11,73 +11,46 @@ DirectX11を用いた描画処理の学習と、就職作品としての開発�
 
 ## 現在の実装内容
 
-  ├ 描画
-  ├ モデル / Material
-  ├ Scene
-  ├ Input
-  ├ Time
-  ├ Debug / Editor
-  ├ GameObject / Transform
-  └ Window Resize
+├ 描画
+├ モデル / Material
+├ Scene
+├ Input
+├ Time
+├ Debug / Editor
+│ ├ Inspector
+│ ├ Object Selection
+│ ├ Ray Picking
+│ ├ Bounds (AABB / OBB)
+│ ├ Move Gizmo
+│ ├ Rotate Gizmo
+│ ├ World / Local Gizmo
+│ ├ Free Camera
+│ └ Focus Selected Object
+├ GameObject / Transform
+├ Window Resize
+└ Simulation
+  ├ Grid Building / Road Placement
+  ├ Extensible Placement Catalog
+  ├ Road NPC Pathfinding
+  ├ Frame-independent World Time
+  └ Time HUD / Shader Time Buffer
 
-### グリッド建物配置（プロトタイプ）
+### シミュレーションゲーム機能
 
-10×10のマス目から配置場所を選び、仮の建物を設置できます。
+- 1～30マスの範囲で変更できる地面グリッド
+- マウスまたはコントローラーによる建物・道路配置
+- House / Shop、Asphalt / Stoneの種類選択
+- モデル・上書きテクスチャ・色・サイズを定義できる配置物カタログ
+- 上下左右につながった道路を探索して移動するNPC
+- DeltaTimeで進むゲーム内の日数・時刻
+- 右上の時間HUDと将来の昼夜シェーダー用時間データ
 
-- マウス移動: マスを選択
-- 左クリック: 建物を配置
-- 右クリック: 選択中の建物を撤去
-- コントローラー十字キー: マスを選択
-- Aボタン: 建物を配置
-- Bボタン: 選択中の建物を撤去
+Debug版では従来の高度なエディターと `Simulation Settings` を同時に利用できます。
+`Placement Input` をOFFにすると、配置の誤操作を防いでギズモ・Pickingを操作できます。
+右ドラッグは従来どおりフリーカメラ、配置物の撤去はEscまたはコントローラーBです。
 
-緑色は配置可能な選択マス、赤色は建物が配置済みの選択マスです。
-青色の直方体は配置前のプレビュー、茶色の直方体は配置済みの仮建物です。
-
-デバッグビルドでは `Grid Settings` ウィンドウの `Width` と `Depth` から、
-地面を1×1～30×30マスの範囲で変更できます。地面を縮小して非表示になった範囲の
-建物は保持され、再び地面を広げると表示されます。
-
-### 道路とNPC（プロトタイプ）
-
-デバッグビルドの `Grid Settings` で `Road` を選択すると道路配置モードになります。
-
-- 左クリック / Aボタン: 道路を配置
-- 右クリック / Bボタン: 道路を撤去
-- `Building`: 建物配置モードへ戻す
-- `NPC Speed`: NPCの移動速度を変更
-
-道路を1マス以上設置すると黄色の仮NPCが出現します。NPCは上下左右につながった道路だけを使い、
-接続されている道路の端から端まで自動的に往復します。道路が途切れた場合は、現在位置から
-到達できる道路で経路を再計算します。
-
-### 配置物カタログ
-
-建物と道路は `Simulation/PlacementDefinition.h` の配置物カタログで管理します。
-ID、表示名、種類、OBJモデル、上書きテクスチャ、サイズ、表示位置、色、プレビュー色を
-1つの定義として追加できます。デバッグGUIの `Type` から種類を選択でき、現在は仮素材として
-建物2種類（House / Shop）、道路2種類（Asphalt / Stone）を用意しています。
-
-OBJが参照するMTLのテクスチャに加え、定義の `texturePath` を指定すると任意の画像で
-上書きできます。実素材を追加するときは、配置処理を変更せずカタログへ項目を追加します。
-
-### ゲーム内時間と時間HUD
-
-ゲーム内時間は実時間のDeltaTimeを使って更新するため、フレームレートに依存しません。
-初期時刻は1日目の08:00で、標準では実時間1秒につきゲーム内10分進みます。
-
-- 右上HUD: 日数と時刻を常時表示
-- `Hour`: デバッグ中の時刻変更
-- `Minutes / real second`: 時間倍率の変更
-- `Pause time`: 時間の一時停止
-- `Time HUD offset / opacity`: HUD位置と透明度の調整
-
-描画側には毎フレーム `timeOfDay01`（1日の進行度）と `daylight01`（昼の明るさ）を
-HLSLの `WorldTimeBuffer` として渡しています。今後の昼夜・照明シェーダーはこの値を利用できます。
-
-HUDは `UI/HudElementLayout.h` にアンカー、座標、基準点、サイズ、透明度、素材パスを持つ
-再利用可能なレイアウト定義を用意しています。時間表示以外のUI素材も同じ形式で追加し、
-画面上の任意位置へ配置できる構成です。
+Release版ではデバッグ用設定ウィンドウを表示せず、ゲーム用の時間HUDのみ表示します。
+初期ウィンドウサイズは1920×1080です。
 
 ## 使用技術
 - C++
@@ -95,69 +68,75 @@ HUDは `UI/HudElementLayout.h` にアンカー、座標、基準点、サイズ�
 
 ### Debug Editor
 
-![DebugEditor](docs/debug_editor/debug_editor.png)
+![DebugEditor](docs/debug_editor/debugeditor_rotate.png)
 
-### Resizable
-![ResizableBefore](docs/debug_editor/resizable_before.png)
-
-![ResizableAfter](docs/debug_editor/resizable_after.png)
 
 ## 理解したこと
 
 ### ImGuiによるデバッグエディタ
 
-Dear ImGuiを導入し、ゲーム実行中に内部状態を確認・編集できるデバッグエディタを実装しました。
+Dear ImGuiを用いてゲーム実行中に内部状態を確認・編集できるデバッグエディタを実装しました。
 
-現在は以下の情報を表示・編集できます。
+現在は以下の機能に対応しています。
 
-- FPS / DeltaTime
-- VSync状態
-- GameObject一覧
-- 選択中ObjectのTransform
-- Position / Rotation / Scaleの編集
+- FPS / DeltaTime表示
+- VSync状態表示
+- GameObject一覧表示
+- 選択中ObjectのTransform編集
+- Position / Rotation / Scale編集
+- Scene上でのObject選択（Ray Picking）
+- AABB / OBB表示
+- Move Gizmoによる位置編集
+- Rotate Gizmoによる回転編集
+- World / Local Gizmo切り替え
+- Free Camera
+- Focus Selected Object (Fキー)
 
-また、Inspector表示では内部処理用のラジアン値をGUI上では度数として扱うことで、編集しやすい形にしました。
+Move Gizmoではマウス移動量を軸方向へ投影する方式を採用し、任意の軸方向への移動を実現しました。
 
-DebugEditorはGameContext経由でRenderer、TimeManager、GameObject一覧へアクセスする構造にし、引数が増え続ける問題を避けました。
+Rotate Gizmoでは回転リングを表示し、リング平面上でのマウス操作による回転編集を実装しています。
 
-### ウィンドウリサイズ対応
+また、Gizmoはカメラとの距離に応じてサイズを自動調整することで、画面上で一定の大きさに見えるようにしています。
 
-ウィンドウサイズ変更時にSwapChain、RenderTargetView、DepthStencilView、Viewportを再生成する処理を実装しました。
+DebugEditorはGameContext経由でRenderer、Camera、InputManager、TimeManager、GameObject一覧へアクセスする構造にし、依存関係の肥大化を防いでいます。
 
-また、サイズ変更時にCameraのProjection行列も更新することで、最大化やウィンドウサイズ変更後も描画比率やGUIのクリック位置がずれないようにしました。
-
-WindowはGameを直接保持せず、リサイズ通知をコールバックで渡す構造にすることで、WindowとGameの依存を減らしました。
 
 ## 現在の課題
 
+- Rotate Gizmoの改善
+  - Quaternion対応
+  - Unityライクな回転操作
 
-- 複数マテリアル対応
-- カメラ制御（追従 / 自由視点）
-- ライティング（法線の活用）
-- デバッグエディタの拡張
-  - Object生成
-  - 画面上のObject選択
-  - Gizmoによる移動・回転・拡縮
+- Scale Gizmo実装
+
+- Undo / Redo
+
+- Object生成 / 削除
+
 - ステージエディタ作成
+
 - ステージデータの保存 / 読み込み
+
 - サウンドシステム
+
 - リソース管理の整理
+
+- ライティング
 
 
 
 ## 今後の実装予定
 
-- デバッグエディタ拡張
-  - Gizmo操作
-  - Object生成
-  - Scene上でのObject選択
-
-- 初期マップ作成
-- カメラ制御
-- フィールド移動実装
+- Scale Gizmo
+- Undo / Redo
+- Object生成 / 削除
+- Scene Hierarchy
+- ステージエディタ
+- JSON保存 / 読み込み
+- ライティング
+- サウンドシステム
 
 
 ## 制作意図
 DirectX を用いたゲーム開発の基礎理解と、設計・描画・管理の流れを段階的に学ぶために制作しています。  
 機能を一つずつ実装しながら、ゲームとして完成度を高めていく予定です。
-

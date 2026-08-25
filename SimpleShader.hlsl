@@ -33,8 +33,6 @@ cbuffer MaterialBuffer : register(b1)
     float4 tint;
 };
 
-// The renderer updates this every frame. Future day/night shaders can use these
-// values without changing the simulation clock or game code.
 cbuffer WorldTimeBuffer : register(b2)
 {
     float timeOfDay01;
@@ -75,4 +73,3 @@ float4 PSMain(PSInput input) : SV_TARGET
 
     return float4(texColor.rgb, 1.0f) * tint;
 }
-

@@ -159,6 +159,15 @@
     <ClCompile Include="Simulation\WorldTime.cpp">
       <Filter>ソース ファイル\Simulation</Filter>
     </ClCompile>
+    <ClCompile Include="Math\Collision.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="Math\Ray.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\DebugRenderer.cpp">
+      <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="External\DirectXTK\WICTextureLoader11.h">
@@ -266,9 +275,24 @@
     <ClInclude Include="UI\HudElementLayout.h">
       <Filter>ヘッダー ファイル\UI</Filter>
     </ClInclude>
+    <ClInclude Include="Math\Collision.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="Math\Ray.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\DebugRenderer.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
+    <ClInclude Include="Input\EditorInputAction.h">
+      <Filter>ヘッダー ファイル\Input</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="SimpleShader.hlsl">
+      <Filter>リソース ファイル</Filter>
+    </None>
+    <None Include="DebugLineShader.hlsl">
       <Filter>リソース ファイル</Filter>
     </None>
   </ItemGroup>

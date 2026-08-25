@@ -1,9 +1,12 @@
-#include "ObjLoader.h"
-#include"Debug.h"
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
+#include <cfloat> 
+#include <algorithm>
+
+#include "ObjLoader.h"
+#include"Debug.h"
 
 namespace
 {
@@ -82,8 +85,16 @@ ObjIndex ObjLoader::ParseFaceToken(const std::string& token)
     return index;
 }
 
-bool ObjLoader::Load(const std::string& filePath, std::vector<ObjVertex>& outVertices, std::string& outTexturePath)
+bool ObjLoader::Load(
+    const std::string& filePath,
+    std::vector<ObjVertex>& outVertices,
+    std::string& outTexturePath,
+    DirectX::XMFLOAT3& outBoundsMin,
+    DirectX::XMFLOAT3& outBoundsMax) 
 {
+    //一旦初期化
+    outBoundsMin = { FLT_MAX, FLT_MAX, FLT_MAX };
+    outBoundsMax = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
     //一旦中身をクリア
     outVertices.clear();
     outTexturePath.clear();
@@ -125,6 +136,14 @@ bool ObjLoader::Load(const std::string& filePath, std::vector<ObjVertex>& outVer
             Float3 pos{};
             iss >> pos.x >> pos.y >> pos.z;
             positions.push_back(pos);
+
+            outBoundsMin.x = std::min(outBoundsMin.x, pos.x);
+            outBoundsMin.y = std::min(outBoundsMin.y, pos.y);
+            outBoundsMin.z = std::min(outBoundsMin.z, pos.z);
+
+            outBoundsMax.x = std::max(outBoundsMax.x, pos.x);
+            outBoundsMax.y = std::max(outBoundsMax.y, pos.y);
+            outBoundsMax.z = std::max(outBoundsMax.z, pos.z);
         }
        //========================================
        // UV座標（vt）

@@ -384,7 +384,6 @@ bool Renderer::Initialize(HWND hwnd)
     worldTimeCbDesc.Usage = D3D11_USAGE_DEFAULT;
     worldTimeCbDesc.ByteWidth = sizeof(WorldTimeBuffer);
     worldTimeCbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-
     hr = m_device->CreateBuffer(&worldTimeCbDesc, nullptr, m_worldTimeBuffer.GetAddressOf());
     if (FAILED(hr))
     {
@@ -518,7 +517,6 @@ void Renderer::SetWorldTime(float timeOfDay01, float daylight01)
     buffer.timeOfDay01 = timeOfDay01;
     buffer.daylight01 = daylight01;
     m_context->UpdateSubresource(m_worldTimeBuffer.Get(), 0, nullptr, &buffer, 0, 0);
-
     ID3D11Buffer* constantBuffer = m_worldTimeBuffer.Get();
     m_context->PSSetConstantBuffers(2, 1, &constantBuffer);
 }
@@ -791,8 +789,7 @@ void Renderer::DrawModel(
     const Model& model,
     const Transform& transform,
     const Camera& camera,
-    const XMFLOAT4& tint
-)
+    const DirectX::XMFLOAT4& tint)
 {
 
     //========================================
@@ -1056,5 +1053,4 @@ void Renderer::Finalize()
 
     Debug::Info("Renderer Finalize successfully");
 }
-
 

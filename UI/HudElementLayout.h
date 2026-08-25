@@ -3,14 +3,7 @@
 #include <DirectXMath.h>
 #include <string>
 
-enum class HudAnchor
-{
-    TopLeft,
-    TopRight,
-    BottomLeft,
-    BottomRight,
-    Center
-};
+enum class HudAnchor { TopLeft, TopRight, BottomLeft, BottomRight, Center };
 
 struct HudElementLayout
 {

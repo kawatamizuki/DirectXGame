@@ -8,30 +8,18 @@ namespace
 {
     std::wstring ToWideStringForTexture(const std::string& value)
     {
-        if (value.empty())
-        {
-            return L"";
-        }
-
-        const int size = MultiByteToWideChar(
-            CP_ACP, 0, value.c_str(), -1, nullptr, 0);
+        if (value.empty()) return L"";
+        const int size = MultiByteToWideChar(CP_ACP, 0, value.c_str(), -1, nullptr, 0);
         std::wstring result(size, L'\0');
-        MultiByteToWideChar(
-            CP_ACP, 0, value.c_str(), -1, &result[0], size);
-        if (!result.empty() && result.back() == L'\0')
-        {
-            result.pop_back();
-        }
+        MultiByteToWideChar(CP_ACP, 0, value.c_str(), -1, &result[0], size);
+        if (!result.empty() && result.back() == L'\0') result.pop_back();
         return result;
     }
 }
 
 bool Model::LoadTextureOverride(ID3D11Device* device, const std::string& texturePath)
 {
-    if (!device || texturePath.empty())
-    {
-        return false;
-    }
+    if (!device || texturePath.empty()) return false;
 
     ID3D11ShaderResourceView* textureView = nullptr;
     const std::wstring widePath = ToWideStringForTexture(texturePath);

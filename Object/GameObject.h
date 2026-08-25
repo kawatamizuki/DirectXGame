@@ -7,4 +7,7 @@ class GameObject
 public:
     Model* model = nullptr;
     Transform transform;
+    
+private:
+    
 };

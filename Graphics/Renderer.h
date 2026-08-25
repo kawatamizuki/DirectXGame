@@ -30,8 +30,7 @@ public:
         const Model& model,
         const Transform& transform,
         const Camera& camera,
-        const DirectX::XMFLOAT4& tint = { 1.0f, 1.0f, 1.0f, 1.0f }
-    );
+        const DirectX::XMFLOAT4& tint = { 1.0f, 1.0f, 1.0f, 1.0f });
     void EndFrame();
     void Finalize();
     
@@ -68,4 +67,3 @@ private:
     UINT m_triangleVertexCount;
 
 };
-

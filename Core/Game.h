@@ -1,22 +1,25 @@
 #pragma once
+
 #include <windows.h>
-#include "Renderer.h"
-#include"InputManager.h"
-#include"SceneManager.h"
-#include "Model.h"
-#include "DebugEditor.h"
-#include "GameContext.h"
-#include "TimeManager.h"
-#include "GameObject.h"
-#include"Camera.h"
-#include "PlacementDefinition.h"
-#include "WorldTime.h"
-#include "HudElementLayout.h"
 #include <array>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include "Renderer.h"
+#include "InputManager.h"
+#include "SceneManager.h"
+#include "Model.h"
+#include "DebugEditor.h"
+#include "DebugRenderer.h"
+#include "GameContext.h"
+#include "TimeManager.h"
+#include "GameObject.h"
+#include "Camera.h"
+#include "PlacementDefinition.h"
+#include "WorldTime.h"
+#include "HudElementLayout.h"
 
 class Game
 {
@@ -42,29 +45,32 @@ private:
     void RebuildNpcPath();
     bool FindFirstRoad(int& gridX, int& gridZ) const;
     int CellIndex(int gridX, int gridZ) const;
+    void UpdateCameraForGrid();
+    DirectX::XMFLOAT3 GridToWorld(int gridX, int gridZ) const;
     const PlacementDefinition& GetSelectedDefinition() const;
     const Model& GetPlacementModel(const PlacementDefinition& definition) const;
     bool LoadPlacementModels();
+    void DrawPlacementSettings();
     void DrawTimeHud();
-    void UpdateCameraForGrid();
-    DirectX::XMFLOAT3 GridToWorld(int gridX, int gridZ) const;
 
-    HWND m_hwnd;
-    DebugEditor m_debugEditor;//imgui用
+    HWND m_hwnd = nullptr;
+    DebugEditor m_debugEditor;
+    DebugRenderer m_debugRenderer;
     Renderer m_renderer;
     InputManager m_inputManager;
     SceneManager m_sceneManager;
     TimeManager m_timeManager;
     Camera m_camera;
-
     GameContext m_context;
 
     Model m_cubeModel;
-    PlacementCatalog m_placementCatalog;
-    std::unordered_map<std::string, std::unique_ptr<Model>> m_placementModels;
+    Model m_kennyModel;
     GameObject m_cubeObject;
+    GameObject m_kennyObject;
     std::vector<GameObject> m_objects;
 
+    PlacementCatalog m_placementCatalog;
+    std::unordered_map<std::string, std::unique_ptr<Model>> m_placementModels;
     std::array<int, kMaxGridWidth * kMaxGridHeight> m_buildingCells{};
     std::array<int, kMaxGridWidth * kMaxGridHeight> m_roadCells{};
     PlacementKind m_placementMode = PlacementKind::Building;
@@ -75,6 +81,7 @@ private:
     int m_selectedGridX = 5;
     int m_selectedGridZ = 5;
     POINT m_lastMousePosition = { -1, -1 };
+    bool m_enablePlacementInput = true;
 
     bool m_npcActive = false;
     int m_npcGridX = 0;
@@ -90,4 +97,3 @@ private:
         { -12.0f, 12.0f }, { 1.0f, 0.0f }, { 180.0f, 48.0f }, 0.75f, true
     };
 };
-
