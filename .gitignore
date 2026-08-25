@@ -19,7 +19,6 @@ imgui.ini
 
 # Intermediate and build files
 *.obj
-!Models/cube.obj
 *.idb
 *.pdb
 *.ilk

@@ -16,7 +16,6 @@ public:
 
     bool Initialize(HWND hwnd);
     void BeginFrame();
-    void SetWorldTime(float timeOfDay01, float daylight01);
     void Resize(UINT width, UINT height);
     void SetVSyncEnabled(bool enabled);
     bool IsVSyncEnabled() const;
@@ -26,11 +25,7 @@ public:
     UINT GetWindowWidth() const { return m_windowWidth; }
     UINT GetWindowHeight() const { return m_windowHeight; }
     void DrawTriangle();
-    void DrawModel(
-        const Model& model,
-        const Transform& transform,
-        const Camera& camera,
-        const DirectX::XMFLOAT4& tint = { 1.0f, 1.0f, 1.0f, 1.0f });
+    void DrawModel(const Model& model, const Transform& transform, const Camera& camera);
     void EndFrame();
     void Finalize();
     
@@ -50,19 +45,18 @@ private:
     Microsoft::WRL::ComPtr<ID3D11SamplerState> m_samplerState;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_constantBuffer;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_materialBuffer;
-    Microsoft::WRL::ComPtr<ID3D11Buffer> m_worldTimeBuffer;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_triangleVertexBuffer;
 
-    //Vsync„Çí‰Ωø„ÅÜ„ÅãÂê¶„Åã
+    //VsyncÇégÇ§Ç©î€Ç©
     bool m_vsyncEnabled;
 
-    //„Ç¶„Ç£„É≥„Éâ„Ç¶„Çµ„Ç§„Ç∫
+    //ÉEÉBÉìÉhÉEÉTÉCÉY
     UINT m_windowWidth;
     UINT m_windowHeight;
 
    
 
-    // ‰∏âËßíÂΩ¢Áî®
+    // éOäpå`óp
     //ID3D11Buffer* m_triangleVertexBuffer;
     UINT m_triangleVertexCount;
 

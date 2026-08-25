@@ -1,6 +1,6 @@
 #include "Window.h"
 
-#ifdef ENABLE_IMGUI
+#ifdef ENABLE_EDITOR
 #include "imgui_impl_win32.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(
@@ -40,7 +40,7 @@ bool Window::Initialize(HINSTANCE hInstance, int nCmdShow)
         L"GAME",
         WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT,
-        1920, 1080,
+        800, 600,
         nullptr,
         nullptr,
         hInstance,
@@ -109,7 +109,7 @@ LRESULT Window::HandleMessage(
     WPARAM wparam,
     LPARAM lparam)
 {
-#ifdef ENABLE_IMGUI
+#ifdef ENABLE_EDITOR
     if (ImGui_ImplWin32_WndProcHandler(
         hwnd,
         msg,

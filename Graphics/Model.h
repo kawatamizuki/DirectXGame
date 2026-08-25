@@ -14,7 +14,6 @@ public:
     ~Model();
 
     bool LoadFromObj(ID3D11Device* device, const std::string& filePath);
-    bool LoadTextureOverride(ID3D11Device* device, const std::string& texturePath);
 
     ID3D11Buffer* GetVertexBuffer() const;
     UINT GetVertexCount() const;

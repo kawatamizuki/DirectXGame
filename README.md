@@ -27,30 +27,7 @@ DirectX11を用いた描画処理の学習と、就職作品としての開発�
 │ ├ Free Camera
 │ └ Focus Selected Object
 ├ GameObject / Transform
-├ Window Resize
-└ Simulation
-  ├ Grid Building / Road Placement
-  ├ Extensible Placement Catalog
-  ├ Road NPC Pathfinding
-  ├ Frame-independent World Time
-  └ Time HUD / Shader Time Buffer
-
-### シミュレーションゲーム機能
-
-- 1～30マスの範囲で変更できる地面グリッド
-- マウスまたはコントローラーによる建物・道路配置
-- House / Shop、Asphalt / Stoneの種類選択
-- モデル・上書きテクスチャ・色・サイズを定義できる配置物カタログ
-- 上下左右につながった道路を探索して移動するNPC
-- DeltaTimeで進むゲーム内の日数・時刻
-- 右上の時間HUDと将来の昼夜シェーダー用時間データ
-
-Debug版では従来の高度なエディターと `Simulation Settings` を同時に利用できます。
-`Placement Input` をOFFにすると、配置の誤操作を防いでギズモ・Pickingを操作できます。
-右ドラッグは従来どおりフリーカメラ、配置物の撤去はEscまたはコントローラーBです。
-
-Release版ではデバッグ用設定ウィンドウを表示せず、ゲーム用の時間HUDのみ表示します。
-初期ウィンドウサイズは1920×1080です。
+└ Window Resize
 
 ## 使用技術
 - C++
