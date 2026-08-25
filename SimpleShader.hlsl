@@ -5,31 +5,32 @@ SamplerState textureSampler : register(s0);
 
 struct VSInput
 {
-    float3 position : POSITION; // ’¸“_ˆÊ’u
-    float3 normal : NORMAL; // –@ü
+    float3 position : POSITION; // é ‚ç‚¹ä½ç½®
+    float3 normal : NORMAL; // æ³•ç·š
     float2 uv : TEXCOORD; // UV
-    float4 color : COLOR; // F
+    float4 color : COLOR; // è‰²
 };
 
 struct PSInput
 {
-    float4 position : SV_POSITION; // ‰æ–ÊÀ•W
-    float3 normal : NORMAL; // –@üi‚»‚Ì‚Ü‚Ü“n‚·j
-    float2 uv : TEXCOORD; // UVi‚»‚Ì‚Ü‚Ü“n‚·j
-    float4 color : COLOR; // F
+    float4 position : SV_POSITION; // ç”»é¢åº§æ¨™
+    float3 normal : NORMAL; // æ³•ç·šï¼ˆãã®ã¾ã¾æ¸¡ã™ï¼‰
+    float2 uv : TEXCOORD; // UVï¼ˆãã®ã¾ã¾æ¸¡ã™ï¼‰
+    float4 color : COLOR; // è‰²
 };
 cbuffer ConstantBuffer : register(b0)
 {
     matrix WVP;
 };
 
-// Material—p‚Ì’è”ƒoƒbƒtƒ@
-// C++‘¤‚Ì MaterialBuffer ‚Æ‘Î‰‚µ‚Ä‚¢‚éB
-// register(b1) ‚È‚Ì‚ÅAC++‘¤‚Å‚Í PSSetConstantBuffers(1, 1, &m_materialBuffer) ‚Å“n‚·B
+// Materialç”¨ã®å®šæ•°ãƒãƒƒãƒ•ã‚¡
+// C++å´ã® MaterialBuffer ã¨å¯¾å¿œã—ã¦ã„ã‚‹ã€‚
+// register(b1) ãªã®ã§ã€C++å´ã§ã¯ PSSetConstantBuffers(1, 1, &m_materialBuffer) ã§æ¸¡ã™ã€‚
 cbuffer MaterialBuffer : register(b1)
 {
-    int hasTexture; // 1‚È‚çƒeƒNƒXƒ`ƒƒ‚ ‚èA0‚È‚çƒeƒNƒXƒ`ƒƒ‚È‚µ
-    float3 padding; // 16ƒoƒCƒg‹«ŠE‚É‡‚í‚¹‚é‚½‚ß‚Ì‹l‚ß•¨
+    int hasTexture; // 1ãªã‚‰ãƒ†ã‚¯ã‚¹ãƒãƒ£ã‚ã‚Šã€0ãªã‚‰ãƒ†ã‚¯ã‚¹ãƒãƒ£ãªã—
+    float3 padding; // 16ãƒã‚¤ãƒˆå¢ƒç•Œã«åˆã‚ã›ã‚‹ãŸã‚ã®è©°ã‚ç‰©
+    float4 tint;
 };
 
 
@@ -37,10 +38,10 @@ PSInput VSMain(VSInput input)
 {
     PSInput output;
 
-    // ’¸“_À•W‚ğWVP‚Å•ÏŠ·
+    // é ‚ç‚¹åº§æ¨™ã‚’WVPã§å¤‰æ›
     output.position = mul(float4(input.position, 1.0f), WVP);
 
-    // ¡‚Í‚»‚Ì‚Ü‚Ü“n‚·i‚Ü‚¾ŒvZ‚µ‚È‚¢j
+    // ä»Šã¯ãã®ã¾ã¾æ¸¡ã™ï¼ˆã¾ã è¨ˆç®—ã—ãªã„ï¼‰
     output.normal = input.normal;
     output.uv = input.uv;
     output.color = input.color;
@@ -50,18 +51,19 @@ PSInput VSMain(VSInput input)
 
 float4 PSMain(PSInput input) : SV_TARGET
 {
-       // ƒeƒNƒXƒ`ƒƒ‚È‚µ‚Ìê‡
-    // diffuseTexture.Sample() ‚Ís‚í‚¸A’¸“_ƒJƒ‰[‚ğ‚»‚Ì‚Ü‚Üg‚¤B
+       // ãƒ†ã‚¯ã‚¹ãƒãƒ£ãªã—ã®å ´åˆ
+    // diffuseTexture.Sample() ã¯è¡Œã‚ãšã€é ‚ç‚¹ã‚«ãƒ©ãƒ¼ã‚’ãã®ã¾ã¾ä½¿ã†ã€‚
     if (hasTexture == 0)
     {
-        return input.color;
+        return input.color * tint;
     }
     
-     // UV”½“]‚Í‚±‚±‚Å‚Ís‚í‚È‚¢B
-    // ObjLoader‘¤‚Å DirectX —p‚É•ÏŠ·‚µ‚Ä‚¨‚­B
+     // UVåè»¢ã¯ã“ã“ã§ã¯è¡Œã‚ãªã„ã€‚
+    // ObjLoaderå´ã§ DirectX ç”¨ã«å¤‰æ›ã—ã¦ãŠãã€‚
     float2 uv = input.uv;
 
     float4 texColor = diffuseTexture.Sample(textureSampler, uv);
 
-    return float4(texColor.rgb, 1.0f);
+    return float4(texColor.rgb, 1.0f) * tint;
 }
+

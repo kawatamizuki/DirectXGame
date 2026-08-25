@@ -25,7 +25,12 @@ public:
     UINT GetWindowWidth() const { return m_windowWidth; }
     UINT GetWindowHeight() const { return m_windowHeight; }
     void DrawTriangle();
-    void DrawModel(const Model& model, const Transform& transform, const Camera& camera);
+    void DrawModel(
+        const Model& model,
+        const Transform& transform,
+        const Camera& camera,
+        const DirectX::XMFLOAT4& tint = { 1.0f, 1.0f, 1.0f, 1.0f }
+    );
     void EndFrame();
     void Finalize();
     
@@ -47,17 +52,18 @@ private:
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_materialBuffer;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_triangleVertexBuffer;
 
-    //VsyncÇégÇ§Ç©î€Ç©
+    //Vsync„Çí‰Ωø„ÅÜ„ÅãÂê¶„Åã
     bool m_vsyncEnabled;
 
-    //ÉEÉBÉìÉhÉEÉTÉCÉY
+    //„Ç¶„Ç£„É≥„Éâ„Ç¶„Çµ„Ç§„Ç∫
     UINT m_windowWidth;
     UINT m_windowHeight;
 
    
 
-    // éOäpå`óp
+    // ‰∏âËßíÂΩ¢Áî®
     //ID3D11Buffer* m_triangleVertexBuffer;
     UINT m_triangleVertexCount;
 
 };
+

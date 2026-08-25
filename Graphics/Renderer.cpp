@@ -1,4 +1,4 @@
-﻿#include <d3dcompiler.h>
+#include <d3dcompiler.h>
 //#include <dxgidebug.h>
 #pragma comment(lib, "dxguid.lib")
 #pragma comment(lib, "d3d11.lib")
@@ -23,6 +23,7 @@ struct MaterialBuffer
 {
     int hasTexture;
     float padding[3];
+    XMFLOAT4 tint;
 };
 
 
@@ -756,7 +757,12 @@ void Renderer::DrawTriangle()
 }
 
 
-void Renderer::DrawModel(const Model& model, const Transform& transform, const Camera& camera)
+void Renderer::DrawModel(
+    const Model& model,
+    const Transform& transform,
+    const Camera& camera,
+    const XMFLOAT4& tint
+)
 {
 
     //========================================
@@ -833,6 +839,7 @@ void Renderer::DrawModel(const Model& model, const Transform& transform, const C
 
     MaterialBuffer materialBuffer{};
     materialBuffer.hasTexture = material.HasTexture() ? 1 : 0;
+    materialBuffer.tint = tint;
 
 
     // hasTexture:
@@ -1018,4 +1025,5 @@ void Renderer::Finalize()
 
     Debug::Info("Renderer Finalize successfully");
 }
+
 
