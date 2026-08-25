@@ -393,6 +393,16 @@ bool Game::LoadPlacementModels()
 
 void Game::DrawPlacementSettings()
 {
+    // Keep the existing Debug Editor layout intact. The simulation panel is an
+    // additional tool, so place it below the time HUD on the right instead of
+    // letting ImGui open it on top of the original editor window.
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const ImVec2 panelPosition = {
+        viewport->WorkPos.x + viewport->WorkSize.x - 16.0f,
+        viewport->WorkPos.y + 76.0f
+    };
+    ImGui::SetNextWindowPos(panelPosition, ImGuiCond_Always, { 1.0f, 0.0f });
+    ImGui::SetNextWindowSize({ 360.0f, 460.0f }, ImGuiCond_FirstUseEver);
     ImGui::Begin("Simulation Settings");
     bool gridSizeChanged = false;
     gridSizeChanged |= ImGui::SliderInt("Width", &m_gridWidth, 1, kMaxGridWidth);
