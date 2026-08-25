@@ -16,6 +16,7 @@ public:
 
     bool Initialize(HWND hwnd);
     void BeginFrame();
+    void SetWorldTime(float timeOfDay01, float daylight01);
     void Resize(UINT width, UINT height);
     void SetVSyncEnabled(bool enabled);
     bool IsVSyncEnabled() const;
@@ -50,6 +51,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D11SamplerState> m_samplerState;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_constantBuffer;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_materialBuffer;
+    Microsoft::WRL::ComPtr<ID3D11Buffer> m_worldTimeBuffer;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_triangleVertexBuffer;
 
     //Vsyncを使うか否か

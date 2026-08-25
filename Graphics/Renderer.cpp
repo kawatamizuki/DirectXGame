@@ -26,6 +26,13 @@ struct MaterialBuffer
     XMFLOAT4 tint;
 };
 
+struct WorldTimeBuffer
+{
+    float timeOfDay01;
+    float daylight01;
+    float padding[2];
+};
+
 
 
 
@@ -373,6 +380,18 @@ bool Renderer::Initialize(HWND hwnd)
         return false;
     }
 
+    D3D11_BUFFER_DESC worldTimeCbDesc = {};
+    worldTimeCbDesc.Usage = D3D11_USAGE_DEFAULT;
+    worldTimeCbDesc.ByteWidth = sizeof(WorldTimeBuffer);
+    worldTimeCbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+
+    hr = m_device->CreateBuffer(&worldTimeCbDesc, nullptr, m_worldTimeBuffer.GetAddressOf());
+    if (FAILED(hr))
+    {
+        Debug::Error("CreateBuffer for WorldTimeBuffer failed");
+        return false;
+    }
+
     //========================================
     // 8. 入力レイアウトを作る
     //========================================
@@ -491,6 +510,17 @@ void Renderer::BeginFrame()
     // 深度バッファを 1.0f (一番奥) で初期化する
     // 前のフレームのZ情報が残らないようにする
     m_context->ClearDepthStencilView(m_depthStencilView.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
+}
+
+void Renderer::SetWorldTime(float timeOfDay01, float daylight01)
+{
+    WorldTimeBuffer buffer{};
+    buffer.timeOfDay01 = timeOfDay01;
+    buffer.daylight01 = daylight01;
+    m_context->UpdateSubresource(m_worldTimeBuffer.Get(), 0, nullptr, &buffer, 0, 0);
+
+    ID3D11Buffer* constantBuffer = m_worldTimeBuffer.Get();
+    m_context->PSSetConstantBuffers(2, 1, &constantBuffer);
 }
 
 
@@ -1010,6 +1040,7 @@ void Renderer::Finalize()
 
     m_triangleVertexBuffer.Reset();
     m_materialBuffer.Reset();
+    m_worldTimeBuffer.Reset();
     m_constantBuffer.Reset();
     m_samplerState.Reset();
     m_inputLayout.Reset();

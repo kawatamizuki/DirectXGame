@@ -1,6 +1,6 @@
 #include "Window.h"
 
-#ifdef ENABLE_EDITOR
+#ifdef ENABLE_IMGUI
 #include "imgui_impl_win32.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(
@@ -109,7 +109,7 @@ LRESULT Window::HandleMessage(
     WPARAM wparam,
     LPARAM lparam)
 {
-#ifdef ENABLE_EDITOR
+#ifdef ENABLE_IMGUI
     if (ImGui_ImplWin32_WndProcHandler(
         hwnd,
         msg,

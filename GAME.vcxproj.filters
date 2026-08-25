@@ -67,6 +67,15 @@
     <Filter Include="ヘッダー ファイル\Scene">
       <UniqueIdentifier>{b26076ed-f374-4158-80d4-5584fd4eace2}</UniqueIdentifier>
     </Filter>
+    <Filter Include="ソース ファイル\Simulation">
+      <UniqueIdentifier>{8D1EA7F7-95BB-45D5-8818-4E164DB49B91}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ヘッダー ファイル\Simulation">
+      <UniqueIdentifier>{A1B4A1B4-CF5D-467A-A506-B269583459ED}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ヘッダー ファイル\UI">
+      <UniqueIdentifier>{23E7268D-4885-4F4E-9130-66C3EE364FA6}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="External\DirectXTK\WICTextureLoader11.cpp">
@@ -123,6 +132,9 @@
     <ClCompile Include="Graphics\Model.cpp">
       <Filter>ソース ファイル\Graphics</Filter>
     </ClCompile>
+    <ClCompile Include="Graphics\ModelTexture.cpp">
+      <Filter>ソース ファイル\Graphics</Filter>
+    </ClCompile>
     <ClCompile Include="Graphics\ObjLoader.cpp">
       <Filter>ソース ファイル\Graphics</Filter>
     </ClCompile>
@@ -143,6 +155,9 @@
     </ClCompile>
     <ClCompile Include="Scene\TitleScene.cpp">
       <Filter>ソース ファイル\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="Simulation\WorldTime.cpp">
+      <Filter>ソース ファイル\Simulation</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -241,6 +256,15 @@
     </ClInclude>
     <ClInclude Include="Scene\TitleScene.h">
       <Filter>ヘッダー ファイル\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="Simulation\PlacementDefinition.h">
+      <Filter>ヘッダー ファイル\Simulation</Filter>
+    </ClInclude>
+    <ClInclude Include="Simulation\WorldTime.h">
+      <Filter>ヘッダー ファイル\Simulation</Filter>
+    </ClInclude>
+    <ClInclude Include="UI\HudElementLayout.h">
+      <Filter>ヘッダー ファイル\UI</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
