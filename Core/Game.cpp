@@ -218,6 +218,7 @@ void Game::Draw()
     m_debugEditor.BeginFrame();
 #ifdef ENABLE_EDITOR
     m_debugEditor.Draw();
+#endif
 
     ImGui::Begin("Grid Settings");
     bool gridSizeChanged = false;
@@ -298,7 +299,6 @@ void Game::Draw()
         }
         UpdateCameraForGrid();
     }
-#endif
     DrawTimeHud();
     m_debugEditor.EndFrame();
     if (!m_renderer.IsVSyncEnabled())

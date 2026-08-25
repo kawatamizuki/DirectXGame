@@ -40,7 +40,7 @@ bool Window::Initialize(HINSTANCE hInstance, int nCmdShow)
         L"GAME",
         WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT,
-        800, 600,
+        1920, 1080,
         nullptr,
         nullptr,
         hInstance,
