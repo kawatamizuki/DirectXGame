@@ -19,8 +19,13 @@ imgui.ini
 
 # Intermediate and build files
 *.obj
-!Models/cube.obj
-!Models/character-female-f.obj
+!Models/Debug/
+!Models/Debug/cube.obj
+!Models/Characters/Kenney/Runtime/character-female-f.obj
+!Models/Characters/Kenney/Source/OBJ/
+!Models/Characters/Kenney/Source/OBJ/**
+!Models/Roads/Kenney/Source/OBJ/
+!Models/Roads/Kenney/Source/OBJ/**
 *.idb
 *.pdb
 *.ilk

@@ -64,13 +64,13 @@ bool Game::Initialize(HWND hwnd)
     );
 
 
-    if (!m_cubeModel.LoadFromObj(m_renderer.GetDevice(), "Models/cube.obj"))
+    if (!m_cubeModel.LoadFromObj(m_renderer.GetDevice(), "Models/Debug/cube.obj"))
     {
         Debug::Error("Game::Initialize failed : Model load failed");
         return false;
     }
 
-    if (!m_kennyModel.LoadFromObj(m_renderer.GetDevice(), "Models/character-female-f.obj"))
+    if (!m_kennyModel.LoadFromObj(m_renderer.GetDevice(), "Models/Characters/Kenney/Runtime/character-female-f.obj"))
     {
         Debug::Error("Game::Initialize failed : KennyModel load failed");
         return false;
