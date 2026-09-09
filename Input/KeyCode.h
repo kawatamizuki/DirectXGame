@@ -49,4 +49,7 @@ enum class KeyCode
     MouseMiddle = VK_MBUTTON,
     MouseX1 = VK_XBUTTON1,
     MouseX2 = VK_XBUTTON2,
+
+    LeftControl = VK_LCONTROL,
+    RightControl = VK_RCONTROL,
 };

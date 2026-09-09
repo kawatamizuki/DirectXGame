@@ -125,8 +125,6 @@ void DebugEditor::UpdatePicking()
 // 選択中Objectをドラッグ移動する
 void DebugEditor::UpdateDragging()
 {
-
-
     // Context不正なら終了
     if (!m_context ||
         !m_context->objects ||
@@ -142,205 +140,192 @@ void DebugEditor::UpdateDragging()
         return;
     }
 
-    if (ImGui::GetIO().WantCaptureMouse && !m_isDraggingObject)
+    if (ImGui::GetIO().WantCaptureMouse &&
+        !m_isDraggingObject &&
+        !m_isDraggingGizmo)
     {
         return;
     }
-
-
 
     // 選択中Object取得
     GameObject& obj =
         (*m_context->objects)[m_selectedObjectIndex];
 
-
     // =========================
     // Gizmo軸ドラッグ開始
     // =========================
-  if (!m_isDraggingGizmo &&
-    m_hoveredAxis != GizmoAxis::None &&
-    m_context->input->IsActionPressed(InputAction::Decide))
-{
-      m_isDraggingGizmo = true;
-    m_activeAxis = m_hoveredAxis;
-    m_dragObjectIndex = m_selectedObjectIndex;
+    if (!m_isDraggingGizmo &&
+        m_hoveredAxis != GizmoAxis::None &&
+        m_context->input->IsActionPressed(InputAction::Decide))
+    {
+        m_dragStartTransform =
+            obj.transform;
 
-    m_axisDragStartObjectPos =
-        obj.transform.position;
+        m_isDraggingGizmo = true;
+        m_activeAxis = m_hoveredAxis;
+        m_dragObjectIndex = m_selectedObjectIndex;
 
-    GetCursorPos(&m_axisDragStartMousePos);
-    ScreenToClient(GetActiveWindow(), &m_axisDragStartMousePos);
+        m_axisDragStartObjectPos =
+            obj.transform.position;
 
-    return;
-}
+        GetCursorPos(&m_axisDragStartMousePos);
+        ScreenToClient(GetActiveWindow(), &m_axisDragStartMousePos);
+
+        return;
+    }
 
     // =========================
     // Gizmo軸ドラッグ中
     // =========================
-
-  if (m_isDraggingGizmo &&
-      m_context->input->IsActionDown(InputAction::Decide))
-  {
-      // =========================
-      // 現在マウス座標取得
-      // =========================
-      POINT currentMousePos;
-
-      GetCursorPos(&currentMousePos);
-
-      ScreenToClient(
-          GetActiveWindow(),
-          &currentMousePos
-      );
-
-      // =========================
-      // ドラッグ開始時からの
-      // マウス移動量
-      // =========================
-      DirectX::XMFLOAT2 mouseDelta =
-      {
-          static_cast<float>(
-              currentMousePos.x -
-              m_axisDragStartMousePos.x
-          ),
-
-          static_cast<float>(
-              currentMousePos.y -
-              m_axisDragStartMousePos.y
-          )
-      };
-
-      // =========================
-      // 現在ドラッグ中軸方向
-      // =========================
-      DirectX::XMFLOAT3 axisDir =
-          GetAxisDirection(m_activeAxis, obj);
-
-      using namespace DirectX;
-
-      // =========================
-      // ドラッグ開始時Object位置
-      // =========================
-      XMFLOAT3 startPos =
-          m_axisDragStartObjectPos;
-
-      // =========================
-      // 3D軸の開始位置
-      // =========================
-      XMFLOAT3 axisStart =
-          startPos;
-
-      // =========================
-      // 3D軸の終了位置
-      // =========================
-      // 軸方向へ1伸ばす
-      XMFLOAT3 axisEnd =
-      {
-          startPos.x + axisDir.x,
-          startPos.y + axisDir.y,
-          startPos.z + axisDir.z
-      };
-
-      // =========================
-      // Screen変換用
-      // =========================
-      XMFLOAT2 axisStartScreen;
-      XMFLOAT2 axisEndScreen;
-
-      // =========================
-      // 3D軸を画面座標へ変換
-      // =========================
-      if (WorldToScreen(
-          axisStart,
-          axisStartScreen) &&
-
-          WorldToScreen(
-              axisEnd,
-              axisEndScreen))
-      {
-          // =========================
-          // 画面上の軸方向
-          // =========================
-          XMFLOAT2 screenAxis =
-          {
-              axisEndScreen.x -
-              axisStartScreen.x,
-
-              axisEndScreen.y -
-              axisStartScreen.y
-          };
-
-          // =========================
-          // 長さ計算
-          // =========================
-          float length =
-              sqrtf(
-                  screenAxis.x * screenAxis.x +
-                  screenAxis.y * screenAxis.y
-              );
-
-          // 長さ0防止
-          if (length > 0.0001f)
-          {
-              // =========================
-              // 正規化
-              // =========================
-              screenAxis.x /= length;
-              screenAxis.y /= length;
-
-              // =========================
-              // マウス移動量を
-              // 軸方向へ投影
-              // =========================
-              float projected =
-                  mouseDelta.x * screenAxis.x +
-                  mouseDelta.y * screenAxis.y;
-
-              // =========================
-              // 移動速度
-              // =========================
-              float moveScale = 0.02f;
-
-              // =========================
-              // 実際の移動量
-              // =========================
-              float moveAmount =
-                  projected * moveScale;
-
-              // =========================
-              // 軸方向へ移動
-              // =========================
-              obj.transform.position.x =
-                  m_axisDragStartObjectPos.x +
-                  axisDir.x * moveAmount;
-
-              obj.transform.position.y =
-                  m_axisDragStartObjectPos.y +
-                  axisDir.y * moveAmount;
-
-              obj.transform.position.z =
-                  m_axisDragStartObjectPos.z +
-                  axisDir.z * moveAmount;
-          }
-      }
-
-      return;
-  }
-  
-
-    // =========================
-    // Gizmo軸ドラッグ終了
-    // =========================
     if (m_isDraggingGizmo &&
-        !m_context->input->IsActionDown(InputAction::Decide))
+        m_context->input->IsActionDown(InputAction::Decide))
     {
-        m_isDraggingGizmo = false;
-        m_activeAxis = GizmoAxis::None;
-        m_dragObjectIndex = -1;
+        // =========================
+        // 現在マウス座標取得
+        // =========================
+        POINT currentMousePos;
+
+        GetCursorPos(&currentMousePos);
+
+        ScreenToClient(
+            GetActiveWindow(),
+            &currentMousePos
+        );
+
+        // =========================
+        // ドラッグ開始時からの
+        // マウス移動量
+        // =========================
+        DirectX::XMFLOAT2 mouseDelta =
+        {
+            static_cast<float>(
+                currentMousePos.x -
+                m_axisDragStartMousePos.x
+            ),
+
+            static_cast<float>(
+                currentMousePos.y -
+                m_axisDragStartMousePos.y
+            )
+        };
+
+        // =========================
+        // 現在ドラッグ中軸方向
+        // =========================
+        DirectX::XMFLOAT3 axisDir =
+            GetAxisDirection(m_activeAxis, obj);
+
+        using namespace DirectX;
+
+        // =========================
+        // ドラッグ開始時Object位置
+        // =========================
+        XMFLOAT3 startPos =
+            m_axisDragStartObjectPos;
+
+        // =========================
+        // 3D軸の開始位置
+        // =========================
+        XMFLOAT3 axisStart =
+            startPos;
+
+        // =========================
+        // 3D軸の終了位置
+        // =========================
+        // 軸方向へ1伸ばす
+        XMFLOAT3 axisEnd =
+        {
+            startPos.x + axisDir.x,
+            startPos.y + axisDir.y,
+            startPos.z + axisDir.z
+        };
+
+        // =========================
+        // Screen変換用
+        // =========================
+        XMFLOAT2 axisStartScreen;
+        XMFLOAT2 axisEndScreen;
+
+        // =========================
+        // 3D軸を画面座標へ変換
+        // =========================
+        if (WorldToScreen(
+            axisStart,
+            axisStartScreen) &&
+
+            WorldToScreen(
+                axisEnd,
+                axisEndScreen))
+        {
+            // =========================
+            // 画面上の軸方向
+            // =========================
+            XMFLOAT2 screenAxis =
+            {
+                axisEndScreen.x -
+                axisStartScreen.x,
+
+                axisEndScreen.y -
+                axisStartScreen.y
+            };
+
+            // =========================
+            // 長さ計算
+            // =========================
+            float length =
+                sqrtf(
+                    screenAxis.x * screenAxis.x +
+                    screenAxis.y * screenAxis.y
+                );
+
+            // 長さ0防止
+            if (length > 0.0001f)
+            {
+                // =========================
+                // 正規化
+                // =========================
+                screenAxis.x /= length;
+                screenAxis.y /= length;
+
+                // =========================
+                // マウス移動量を
+                // 軸方向へ投影
+                // =========================
+                float projected =
+                    mouseDelta.x * screenAxis.x +
+                    mouseDelta.y * screenAxis.y;
+
+                // =========================
+                // 移動速度
+                // =========================
+                float moveScale = 0.02f;
+
+                // =========================
+                // 実際の移動量
+                // =========================
+                float moveAmount =
+                    projected * moveScale;
+
+                // =========================
+                // 軸方向へ移動
+                // =========================
+                obj.transform.position.x =
+                    m_axisDragStartObjectPos.x +
+                    axisDir.x * moveAmount;
+
+                obj.transform.position.y =
+                    m_axisDragStartObjectPos.y +
+                    axisDir.y * moveAmount;
+
+                obj.transform.position.z =
+                    m_axisDragStartObjectPos.z +
+                    axisDir.z * moveAmount;
+            }
+        }
+
         return;
     }
 
-   
     // =========================
     // ドラッグ用平面
     // =========================
@@ -370,8 +355,6 @@ void DebugEditor::UpdateDragging()
         planeNormal = { 1.0f, 0.0f, 0.0f };
         break;
     }
-       
-
 
     // =========================
     // ドラッグ開始
@@ -396,6 +379,13 @@ void DebugEditor::UpdateDragging()
 
             m_dragObjectIndex =
                 m_selectedObjectIndex;
+
+            // =========================
+            // Undo用
+            // ドラッグ開始時のTransformを保存
+            // =========================
+            m_dragStartTransform =
+                obj.transform;
 
             // =========================
             // Object中心との差分保存
@@ -453,11 +443,302 @@ void DebugEditor::UpdateDragging()
     if (m_isDraggingObject &&
         !m_context->input->IsActionDown(InputAction::Decide))
     {
+        // =========================
+        // Undo登録
+        // =========================
+        PushTransformCommand(
+            m_dragObjectIndex,
+            m_dragStartTransform,
+            obj.transform
+        );
+
         m_isDraggingObject = false;
         m_dragObjectIndex = -1;
     }
 }
+void DebugEditor::UpdateScaleGizmoDrag()
+{
+    //========================================================
+    // Contextチェック
+    //
+    // 必要な情報が存在しない場合は処理しない
+    //========================================================
+    if (!m_context ||
+        !m_context->objects ||
+        !m_context->input ||
+        m_selectedObjectIndex < 0 ||
+        m_selectedObjectIndex >= static_cast<int>(m_context->objects->size()))
+    {
+        return;
+    }
 
+    //========================================================
+    // 選択中Object取得
+    //========================================================
+    GameObject& obj =
+        (*m_context->objects)[m_selectedObjectIndex];
+
+    //========================================================
+    // Modelが無いObjectは操作対象外
+    //========================================================
+    if (!obj.model)
+    {
+        return;
+    }
+
+    using namespace DirectX;
+
+    
+
+    //========================================================
+    // Scale Gizmoドラッグ開始
+    //========================================================
+    if (!m_isDraggingGizmo &&
+        m_hoveredAxis != GizmoAxis::None &&
+        m_context->input->IsActionPressed(InputAction::Decide))
+    {
+        m_dragStartTransform =obj.transform;
+        m_isDraggingGizmo = true;
+        m_activeAxis = m_hoveredAxis;
+        m_dragObjectIndex = m_selectedObjectIndex;
+
+        //====================================================
+        // ドラッグ開始時のScaleを保存
+        //
+        // ドラッグ中はこの値を基準にしてScale量を計算する
+        //====================================================
+        m_scaleDragStartScale =
+            obj.transform.scale;
+
+        //====================================================
+        // ドラッグ開始時のマウス位置保存
+        //====================================================
+        GetCursorPos(&m_axisDragStartMousePos);
+
+        ScreenToClient(
+            GetActiveWindow(),
+            &m_axisDragStartMousePos
+        );
+
+        return;
+    }
+
+    //========================================================
+    // Scale Gizmoドラッグ中
+    //========================================================
+    if (m_isDraggingGizmo &&
+        m_context->input->IsActionDown(InputAction::Decide))
+    {
+        //====================================================
+        // 現在のマウス座標取得
+        //====================================================
+        POINT currentMousePos;
+
+        GetCursorPos(&currentMousePos);
+
+        ScreenToClient(
+            GetActiveWindow(),
+            &currentMousePos
+        );
+
+        //====================================================
+        // ドラッグ開始位置からのマウス移動量
+        //====================================================
+        XMFLOAT2 mouseDelta =
+        {
+            static_cast<float>(
+                currentMousePos.x -
+                m_axisDragStartMousePos.x
+            ),
+
+            static_cast<float>(
+                currentMousePos.y -
+                m_axisDragStartMousePos.y
+            )
+        };
+
+        //====================================================
+        // Centerハンドルの場合
+        //
+        // 特定の3D軸ではなく、
+        // 画面上の左右ドラッグ量で比率維持Scaleする
+        //====================================================
+        if (m_activeAxis == GizmoAxis::Center)
+        {
+            float scaleSpeed =
+                0.01f;
+
+            float scaleAmount =
+                mouseDelta.x * scaleSpeed;
+
+            float factor =
+                1.0f + scaleAmount;
+
+            factor =
+                (std::max)(0.01f, factor);
+
+            obj.transform.scale.x =
+                m_scaleDragStartScale.x * factor;
+
+            obj.transform.scale.y =
+                m_scaleDragStartScale.y * factor;
+
+            obj.transform.scale.z =
+                m_scaleDragStartScale.z * factor;
+
+            //================================================
+            // Scale下限
+            //================================================
+            obj.transform.scale.x =
+                (std::max)(0.01f, obj.transform.scale.x);
+
+            obj.transform.scale.y =
+                (std::max)(0.01f, obj.transform.scale.y);
+
+            obj.transform.scale.z =
+                (std::max)(0.01f, obj.transform.scale.z);
+
+            return;
+        }
+
+        //====================================================
+        // X/Y/Z軸Scale用の軸方向取得
+        //
+        // Centerではここを通らない
+        //====================================================
+        XMFLOAT3 axisDir =
+            GetAxisDirection(
+                m_activeAxis,
+                obj
+            );
+
+        //====================================================
+        // Gizmo中心
+        //====================================================
+        XMFLOAT3 origin =
+            obj.transform.position;
+
+        //====================================================
+        // 軸方向へ1伸ばした位置
+        //
+        // 画面上での軸方向を求めるために使用
+        //====================================================
+        XMFLOAT3 axisEnd =
+        {
+            origin.x + axisDir.x,
+            origin.y + axisDir.y,
+            origin.z + axisDir.z
+        };
+
+        XMFLOAT2 originScreen;
+        XMFLOAT2 axisEndScreen;
+
+        //====================================================
+        // 3D座標を画面座標へ変換
+        //====================================================
+        if (WorldToScreen(origin, originScreen) &&
+            WorldToScreen(axisEnd, axisEndScreen))
+        {
+            //================================================
+            // 画面上の軸方向ベクトル
+            //================================================
+            XMFLOAT2 screenAxis =
+            {
+                axisEndScreen.x - originScreen.x,
+                axisEndScreen.y - originScreen.y
+            };
+
+            //================================================
+            // 軸ベクトル長さ
+            //================================================
+            float length =
+                sqrtf(
+                    screenAxis.x * screenAxis.x +
+                    screenAxis.y * screenAxis.y
+                );
+
+            if (length > 0.0001f)
+            {
+                //============================================
+                // 正規化
+                //============================================
+                screenAxis.x /= length;
+                screenAxis.y /= length;
+
+                //============================================
+                // マウス移動量を画面上の軸方向へ投影
+                //
+                // 軸に沿ってどれだけドラッグしたかを求める
+                //============================================
+                float projected =
+                    mouseDelta.x * screenAxis.x +
+                    mouseDelta.y * screenAxis.y;
+
+                //============================================
+                // Scale速度
+                //============================================
+                float scaleSpeed =
+                    0.01f;
+
+                //============================================
+                // Scale変化量
+                //============================================
+                float scaleAmount =
+                    projected * scaleSpeed;
+
+                //============================================
+                // 毎フレーム開始時Scaleに戻す
+                //============================================
+                obj.transform.scale =
+                    m_scaleDragStartScale;
+
+                //============================================
+                // 操作中の軸だけScale変更
+                //============================================
+                switch (m_activeAxis)
+                {
+                case GizmoAxis::X:
+                    obj.transform.scale.x =
+                        m_scaleDragStartScale.x +
+                        scaleAmount;
+                    break;
+
+                case GizmoAxis::Y:
+                    obj.transform.scale.y =
+                        m_scaleDragStartScale.y +
+                        scaleAmount;
+                    break;
+
+                case GizmoAxis::Z:
+                    obj.transform.scale.z =
+                        m_scaleDragStartScale.z +
+                        scaleAmount;
+                    break;
+
+                default:
+                    break;
+                }
+
+                //============================================
+                // Scale下限
+                //
+                // 0になると行列が潰れる
+                // マイナスになると反転する
+                //============================================
+                obj.transform.scale.x =
+                    (std::max)(0.01f, obj.transform.scale.x);
+
+                obj.transform.scale.y =
+                    (std::max)(0.01f, obj.transform.scale.y);
+
+                obj.transform.scale.z =
+                    (std::max)(0.01f, obj.transform.scale.z);
+            }
+        }
+
+        return;
+    }
+}
 void DebugEditor::UpdateRotateGizmoDrag()
 {
     if (!m_context ||
@@ -485,6 +766,8 @@ void DebugEditor::UpdateRotateGizmoDrag()
     XMFLOAT3 origin =
         obj.transform.position;
 
+  
+
     // =========================
     // ドラッグ開始
     // =========================
@@ -492,18 +775,29 @@ void DebugEditor::UpdateRotateGizmoDrag()
         m_hoveredAxis != GizmoAxis::None &&
         m_context->input->IsActionPressed(InputAction::Decide))
     {
-        // ドラッグ開始
+        //====================================================
+        // Gizmoドラッグ状態へ移行
+        //====================================================
+        m_dragStartTransform =obj.transform;
         m_isDraggingGizmo = true;
         m_activeAxis = m_hoveredAxis;
         m_dragObjectIndex = m_selectedObjectIndex;
 
-        // 開始時の回転を保存
-        m_rotateDragStartRotation =
-            obj.transform.rotation;
+        //====================================================
+        // ドラッグ開始時のQuaternion姿勢を保存
+        //
+        // ドラッグ中はこの姿勢を基準にして、
+        // 回転差分Quaternionを合成する
+        //====================================================
+        m_rotateDragStartQuat =
+            obj.transform.rotationQuat;
 
-        // 開始時の回転軸を保存
+        //====================================================
+        // ドラッグ開始時の回転軸を保存
+        //
         // ドラッグ中にObjectが回転しても、
-        // 操作中のリング平面がブレないようにする
+        // 操作用リング平面がブレないようにする
+        //====================================================
         m_rotateDragAxis =
             GetAxisDirection(
                 m_activeAxis,
@@ -624,44 +918,122 @@ void DebugEditor::UpdateRotateGizmoDrag()
                 sinValue,
                 dot
             );
+        //====================================================
+        // ドラッグ開始時のQuaternion姿勢
+        //====================================================
+        XMVECTOR startQuat =
+            XMLoadFloat4(
+                &m_rotateDragStartQuat
+            );
 
-        // =========================
-        // 開始時の回転に角度差を加える
-        // =========================
-        obj.transform.rotation =
-            m_rotateDragStartRotation;
+        startQuat =
+            XMQuaternionNormalize(startQuat);
 
-        switch (m_activeAxis)
+        //====================================================
+        // ドラッグ中の回転差分Quaternionを作成
+        //
+        // axisVec : ドラッグ開始時に保存した回転軸
+        // angle   : startVec → currentVec の符号付き角度
+        //====================================================
+        XMVECTOR rotateAxis;
+
+        if (m_gizmoSpace == GizmoSpace::World)
         {
-        case GizmoAxis::X:
-            obj.transform.rotation.x += angle;
-            break;
-
-        case GizmoAxis::Y:
-            obj.transform.rotation.y += angle;
-            break;
-
-        case GizmoAxis::Z:
-            obj.transform.rotation.z += angle;
-            break;
-
-        default:
-            break;
+            rotateAxis = axisVec;
         }
+        else
+        {
+            switch (m_activeAxis)
+            {
+            case GizmoAxis::X:
+                rotateAxis = XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f);
+                break;
+
+            case GizmoAxis::Y:
+                rotateAxis = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+                break;
+
+            case GizmoAxis::Z:
+                rotateAxis = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+                break;
+
+            default:
+                return;
+            }
+        }
+
+        rotateAxis =
+            XMVector3Normalize(rotateAxis);
+
+        XMVECTOR deltaQuat =
+            XMQuaternionRotationAxis(
+                rotateAxis,
+                angle
+            );
+
+        deltaQuat =
+            XMQuaternionNormalize(deltaQuat);
+        //====================================================
+        // Quaternion合成
+        //
+        // World軸回転:
+        //   result = deltaQuat * startQuat
+        //
+        // m_rotateDragAxis はGetAxisDirection()から取得した
+        // World空間上の軸なので、左から差分回転を掛ける
+        //====================================================
+        XMVECTOR resultQuat;
+
+        if (m_gizmoSpace == GizmoSpace::World)
+        {
+            // World軸回転
+            resultQuat =
+                XMQuaternionMultiply(
+                    startQuat,
+                    deltaQuat
+                );
+        }
+        else
+        {
+            // Local軸回転
+            resultQuat =
+                XMQuaternionMultiply(
+                    deltaQuat,
+                    startQuat
+                );
+        }
+        resultQuat =
+            XMQuaternionNormalize(resultQuat);
+
+        XMStoreFloat4(
+            &obj.transform.rotationQuat,
+            resultQuat
+        );
+        //====================================================
+        // TransformへQuaternion姿勢を保存
+        //====================================================
+        XMStoreFloat4(
+            &obj.transform.rotationQuat,
+            resultQuat
+        );
+
+        //====================================================
+        // 念のため正規化
+        //
+        // 回転操作を繰り返したときの誤差蓄積を防ぐ
+        //====================================================
+        obj.transform.NormalizeRotation();
+
+        //========================================================
+        // GizmoでQuaternionを変更したので、
+        // Inspector表示用Euler角も同期する
+        //========================================================
+        obj.transform.SyncEulerFromQuaternion();
 
         return;
     }
 
-    // =========================
-    // ドラッグ終了
-    // =========================
-    if (m_isDraggingGizmo &&
-        !m_context->input->IsActionDown(InputAction::Decide))
-    {
-        m_isDraggingGizmo = false;
-        m_activeAxis = GizmoAxis::None;
-        m_dragObjectIndex = -1;
-    }
+   
 }
 void DebugEditor::UpdateGizmoHover()
 {
@@ -671,13 +1043,11 @@ void DebugEditor::UpdateGizmoHover()
 
         UpdateMoveGizmoHover();
         break;
-
+    case GizmoMode::Scale:
+        UpdateScaleGizmoHover();
+        break;
     case GizmoMode::Rotate:
         UpdateRotateGizmoHover();
-        break;
-
-    case GizmoMode::Scale:
-        m_hoveredAxis = GizmoAxis::None;
         break;
     }
 }
@@ -1089,7 +1459,176 @@ void DebugEditor::UpdateMoveGizmoHover()
         }
     }
 }
+void DebugEditor::UpdateScaleGizmoHover()
+{
+    //========================================================
+    // Scale専用Hover
+    //
+    // 仕組みはMoveと同じだが、
+    // Scale Gizmo専用として分離する
+    //========================================================
 
+    if (m_isDraggingGizmo)
+    {
+        m_hoveredAxis = m_activeAxis;
+        return;
+    }
+
+    m_hoveredAxis = GizmoAxis::None;
+
+
+    if (!m_context ||
+        !m_context->objects ||
+        m_selectedObjectIndex < 0 ||
+        m_selectedObjectIndex >= static_cast<int>(m_context->objects->size()))
+    {
+        return;
+    }
+
+    GameObject& obj =
+        (*m_context->objects)[m_selectedObjectIndex];
+
+    if (!obj.model)
+    {
+        return;
+    }
+
+    using namespace DirectX;
+
+    XMFLOAT3 origin =
+        obj.transform.position;
+
+    XMFLOAT3 cameraPos =
+        m_context->camera->GetPosition();
+
+    float dx = origin.x - cameraPos.x;
+    float dy = origin.y - cameraPos.y;
+    float dz = origin.z - cameraPos.z;
+
+    float distance =
+        sqrtf(dx * dx + dy * dy + dz * dz);
+
+    float targetPixelLength = 120.0f;
+
+    float screenHeight =
+        static_cast<float>(
+            m_context->renderer->GetWindowHeight()
+            );
+
+    float fovY =
+        m_context->camera->GetFovY();
+
+    float viewHeightAtDistance =
+        2.0f * distance * tanf(fovY * 0.5f);
+
+    float worldPerPixel =
+        viewHeightAtDistance / screenHeight;
+
+    float gizmoLength =
+        targetPixelLength * worldPerPixel;
+
+    float startOffset =
+        gizmoLength * 0.1f;
+
+    XMFLOAT3 xDir = GetAxisDirection(GizmoAxis::X, obj);
+    XMFLOAT3 yDir = GetAxisDirection(GizmoAxis::Y, obj);
+    XMFLOAT3 zDir = GetAxisDirection(GizmoAxis::Z, obj);
+
+    auto CheckAxis =
+        [&](GizmoAxis axis, const XMFLOAT3& dir)
+        {
+            XMFLOAT3 start =
+            {
+                origin.x + dir.x * startOffset,
+                origin.y + dir.y * startOffset,
+                origin.z + dir.z * startOffset
+            };
+
+            XMFLOAT3 end =
+            {
+                origin.x + dir.x * gizmoLength,
+                origin.y + dir.y * gizmoLength,
+                origin.z + dir.z * gizmoLength
+            };
+
+            XMFLOAT2 startScreen;
+            XMFLOAT2 endScreen;
+
+            if (!WorldToScreen(start, startScreen) ||
+                !WorldToScreen(end, endScreen))
+            {
+                return;
+            }
+
+            POINT mousePos;
+            GetCursorPos(&mousePos);
+            ScreenToClient(GetActiveWindow(), &mousePos);
+
+            XMFLOAT2 mouseScreen =
+            {
+                static_cast<float>(mousePos.x),
+                static_cast<float>(mousePos.y)
+            };
+
+            float distance =
+                DistancePointToSegment2D(
+                    mouseScreen,
+                    startScreen,
+                    endScreen
+                );
+
+            float threshold = 12.0f;
+
+            if (distance < threshold)
+            {
+                m_hoveredAxis = axis;
+            }
+        };
+
+    //========================================================
+    // 中央Uniform ScaleハンドルHover判定
+    //========================================================
+    {
+        XMFLOAT2 originScreen;
+
+        if (WorldToScreen(origin, originScreen))
+        {
+            POINT mousePos;
+            GetCursorPos(&mousePos);
+            ScreenToClient(GetActiveWindow(), &mousePos);
+
+            XMFLOAT2 mouseScreen =
+            {
+                static_cast<float>(mousePos.x),
+                static_cast<float>(mousePos.y)
+            };
+
+            float dx =
+                mouseScreen.x - originScreen.x;
+
+            float dy =
+                mouseScreen.y - originScreen.y;
+
+            float distance =
+                sqrtf(dx * dx + dy * dy);
+
+            float centerThreshold =
+                18.0f;
+
+            if (distance < centerThreshold)
+            {
+                m_hoveredAxis =
+                    GizmoAxis::Center;
+
+                return;
+            }
+        }
+    }
+
+    CheckAxis(GizmoAxis::X, xDir);
+    CheckAxis(GizmoAxis::Y, yDir);
+    CheckAxis(GizmoAxis::Z, zDir);
+}
 void DebugEditor::UpdateRotateGizmoHover()
 {
     // ========================================
@@ -1314,6 +1853,45 @@ void DebugEditor::UpdateRotateGizmoHover()
         zAxis
     );
 }
+void DebugEditor::EndGizmoDragIfNeeded()
+{
+    if (!m_context ||
+        !m_context->objects ||
+        !m_context->input ||
+        !m_isDraggingGizmo)
+    {
+        return;
+    }
+
+    if (m_context->input->IsActionDown(InputAction::Decide))
+    {
+        return;
+    }
+
+    if (m_dragObjectIndex < 0 ||
+        m_dragObjectIndex >= static_cast<int>(m_context->objects->size()))
+    {
+        m_isDraggingGizmo = false;
+        m_activeAxis = GizmoAxis::None;
+        m_hoveredAxis = GizmoAxis::None;
+        m_dragObjectIndex = -1;
+        return;
+    }
+
+    GameObject& obj =
+        (*m_context->objects)[m_dragObjectIndex];
+
+    PushTransformCommand(
+        m_dragObjectIndex,
+        m_dragStartTransform,
+        obj.transform
+    );
+
+    m_isDraggingGizmo = false;
+    m_activeAxis = GizmoAxis::None;
+    m_hoveredAxis = GizmoAxis::None;
+    m_dragObjectIndex = -1;
+}
 void DebugEditor::UpdateFocusSelected()
 {
     if (!m_context ||
@@ -1387,30 +1965,41 @@ void DebugEditor::Update()
     {
         return;
     }
-
     // =========================
     // 入力 / 操作系
     // =========================
     UpdateFreeCamera();
     UpdateFocusSelected();
+    if (m_context->input->IsEditorActionComboPressed(EditorInputAction::Undo))
+    {
+        Undo();
+    }
+
+    if (m_context->input->IsEditorActionComboPressed(EditorInputAction::Redo))
+    {
+        Redo();
+    }
     UpdateGizmoMode();
     UpdateGizmoHover();
     UpdatePicking();
+
     switch (m_gizmoMode)
     {
     case GizmoMode::Move:
         UpdateDragging();
         break;
-
+    case GizmoMode::Scale:
+        UpdateScaleGizmoDrag();
+        break;
     case GizmoMode::Rotate:
 
         UpdateRotateGizmoDrag();
         break;
 
-    case GizmoMode::Scale:
-        break;
+  
     }
-
+    EndGizmoDragIfNeeded();
+ 
     // =========================
     // Gizmo Hover判定
     // =========================
@@ -1440,41 +2029,20 @@ void DebugEditor::Draw()
     case GizmoMode::Move:
         DrawMoveGizmo();
         break;
-
+    case GizmoMode::Scale:
+        DrawScaleGizmo();
+        break;
     case GizmoMode::Rotate:
         DrawRotateGizmo();
         break;
 
-    case GizmoMode::Scale:
-        break;
+   
     }
 
-    ImGui::SetNextWindowSize(
-        ImVec2(350, 500),
-        ImGuiCond_FirstUseEver
-    );
-
-    ImGui::Begin("Debug Editor");
-
-    DrawPerformance();
-
-    if (ImGui::CollapsingHeader("Debug Draw"))
-    {
-        ImGui::Checkbox("Show Selected Bounds", &m_showSelectedBounds);
-        ImGui::Checkbox("Show All Bounds", &m_showAllBounds);
-    }
-
-    DrawObjects();
-
-    ImGui::Text(
-        "Selected Index : %d",
-        m_selectedObjectIndex
-    );
-
-    DrawEditorSettings();
-    DrawInspector();
-
-    ImGui::End();
+    DrawHierarchyView();
+    DrawInspectorView();
+    DrawEditorSettingsView();
+    DrawDebugView();
 }
 // 選択中ObjectのOBBを描画する
 void DebugEditor::DrawSelectedObjectBounds()
@@ -1531,8 +2099,7 @@ void DebugEditor::DrawAllObjectBounds()
 }
 void DebugEditor::DrawPerformance()
 {
-    if (ImGui::CollapsingHeader("Performance"))
-    {
+    
         if (m_context->time)
         {
             ImGui::Text("FPS : %.1f", m_context->time->GetFPS());
@@ -1546,7 +2113,7 @@ void DebugEditor::DrawPerformance()
                 m_context->renderer->IsVSyncEnabled() ? "ON" : "OFF"
             );
         }
-    }
+    
 }
 
 void DebugEditor::DrawObjects()
@@ -1556,8 +2123,6 @@ void DebugEditor::DrawObjects()
         return;
     }
 
-    if (ImGui::CollapsingHeader("Objects"))
-    {
         int index = 0;
 
         for (const auto& obj : *m_context->objects)
@@ -1575,13 +2140,12 @@ void DebugEditor::DrawObjects()
 
             ++index;
         }
-    }
+    
 }
 
 void DebugEditor::DrawInspector()
 {
-    if (ImGui::CollapsingHeader("Inspector"))
-    {
+   
         if (!m_context->objects ||
             m_selectedObjectIndex < 0 ||
             m_selectedObjectIndex >= static_cast<int>(m_context->objects->size()))
@@ -1593,12 +2157,33 @@ void DebugEditor::DrawInspector()
         GameObject& selectedObject =
             (*m_context->objects)[m_selectedObjectIndex];
 
+        //========================================================
+        // Position
+        //========================================================
         ImGui::DragFloat3(
             "Position",
             &selectedObject.transform.position.x,
             0.1f
         );
 
+        if (ImGui::IsItemActivated())
+        {
+            m_dragStartTransform =
+                selectedObject.transform;
+        }
+
+        if (ImGui::IsItemDeactivatedAfterEdit())
+        {
+            PushTransformCommand(
+                m_selectedObjectIndex,
+                m_dragStartTransform,
+                selectedObject.transform
+            );
+        }
+
+        //========================================================
+        // Rotation
+        //========================================================
         float rotationDegrees[3] =
         {
             DirectX::XMConvertToDegrees(selectedObject.transform.rotation.x),
@@ -1611,14 +2196,34 @@ void DebugEditor::DrawInspector()
             rotationDegrees,
             1.0f))
         {
-            selectedObject.transform.rotation.x =
-                DirectX::XMConvertToRadians(rotationDegrees[0]);
-            selectedObject.transform.rotation.y =
-                DirectX::XMConvertToRadians(rotationDegrees[1]);
-            selectedObject.transform.rotation.z =
-                DirectX::XMConvertToRadians(rotationDegrees[2]);
+            DirectX::XMFLOAT3 euler =
+            {
+                DirectX::XMConvertToRadians(rotationDegrees[0]),
+                DirectX::XMConvertToRadians(rotationDegrees[1]),
+                DirectX::XMConvertToRadians(rotationDegrees[2])
+            };
+
+            selectedObject.transform.SetRotationEuler(euler);
         }
 
+        if (ImGui::IsItemActivated())
+        {
+            m_dragStartTransform =
+                selectedObject.transform;
+        }
+
+        if (ImGui::IsItemDeactivatedAfterEdit())
+        {
+            PushTransformCommand(
+                m_selectedObjectIndex,
+                m_dragStartTransform,
+                selectedObject.transform
+            );
+        }
+
+        //========================================================
+        // Scale
+        //========================================================
         ImGui::DragFloat3(
             "Scale",
             &selectedObject.transform.scale.x,
@@ -1626,13 +2231,27 @@ void DebugEditor::DrawInspector()
             0.01f,
             100.0f
         );
-    }
+
+        if (ImGui::IsItemActivated())
+        {
+            m_dragStartTransform =
+                selectedObject.transform;
+        }
+
+        if (ImGui::IsItemDeactivatedAfterEdit())
+        {
+            PushTransformCommand(
+                m_selectedObjectIndex,
+                m_dragStartTransform,
+                selectedObject.transform
+            );
+        }
+    
 }
 
 void DebugEditor::DrawEditorSettings()
 {
-    if (ImGui::CollapsingHeader("Editor Settings"))
-    {
+    
         const char* moveModeItems[] =
         {
             "Camera Plane",
@@ -1672,7 +2291,213 @@ void DebugEditor::DrawEditorSettings()
             m_gizmoSpace =
                 static_cast<GizmoSpace>(currentGizmoSpace);
         }
+    
+}
+
+void DebugEditor::DrawHierarchyView()
+{
+    float windowHeight =
+        static_cast<float>(
+            m_context->renderer->GetWindowHeight()
+            );
+
+    float margin =
+        8.0f;
+
+    float leftWidth =
+        280.0f;
+
+    float debugHeight =
+        280.0f;
+
+    float bottomHeight =
+        220.0f;
+
+    ImGui::SetNextWindowPos(
+        ImVec2(
+            margin,
+            margin + debugHeight
+        ),
+        ImGuiCond_Always
+    );
+
+    ImGui::SetNextWindowSize(
+        ImVec2(
+            leftWidth,
+            windowHeight - debugHeight - bottomHeight - margin * 3.0f
+        ),
+        ImGuiCond_Always
+    );
+
+    ImGui::Begin(
+        "Hierarchy",
+        nullptr,
+        ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoResize
+    );
+
+    DrawObjects();
+
+    ImGui::Separator();
+
+    ImGui::Text(
+        "Selected Index : %d",
+        m_selectedObjectIndex
+    );
+
+    ImGui::End();
+}
+void DebugEditor::DrawInspectorView()
+{
+    float windowWidth =
+        static_cast<float>(
+            m_context->renderer->GetWindowWidth()
+            );
+
+    float windowHeight =
+        static_cast<float>(
+            m_context->renderer->GetWindowHeight()
+            );
+
+    float margin =
+        8.0f;
+
+    float rightWidth =
+        360.0f;
+
+    float bottomHeight =
+        220.0f;
+
+    ImGui::SetNextWindowPos(
+        ImVec2(
+            windowWidth - rightWidth - margin,
+            margin
+        ),
+        ImGuiCond_Always
+    );
+
+    ImGui::SetNextWindowSize(
+        ImVec2(
+            rightWidth,
+            windowHeight - bottomHeight - margin * 2.0f
+        ),
+        ImGuiCond_Always
+    );
+
+    ImGui::Begin(
+        "Inspector",
+        nullptr,
+        ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoResize
+    );
+
+    DrawInspector();
+
+    ImGui::End();
+}
+
+void DebugEditor::DrawEditorSettingsView()
+{
+    float windowWidth =
+        static_cast<float>(
+            m_context->renderer->GetWindowWidth()
+            );
+
+    float windowHeight =
+        static_cast<float>(
+            m_context->renderer->GetWindowHeight()
+            );
+
+    float margin =
+        8.0f;
+
+    float leftWidth =
+        280.0f;
+
+    float rightWidth =
+        360.0f;
+
+    float bottomHeight =
+        220.0f;
+
+    ImGui::SetNextWindowPos(
+        ImVec2(
+            leftWidth + margin * 2.0f,
+            windowHeight - bottomHeight - margin
+        ),
+        ImGuiCond_Always
+    );
+
+    ImGui::SetNextWindowSize(
+        ImVec2(
+            windowWidth - leftWidth - rightWidth - margin * 4.0f,
+            bottomHeight
+        ),
+        ImGuiCond_Always
+    );
+
+    ImGui::Begin(
+        "Editor Settings",
+        nullptr,
+        ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoResize
+    );
+
+    DrawEditorSettings();
+
+    ImGui::End();
+}
+
+void DebugEditor::DrawDebugView()
+{
+    float margin =
+        8.0f;
+
+    float leftWidth =
+        280.0f;
+
+    float debugHeight =
+        280.0f;
+
+    ImGui::SetNextWindowPos(
+        ImVec2(
+            margin,
+            margin
+        ),
+        ImGuiCond_Always
+    );
+
+    ImGui::SetNextWindowSize(
+        ImVec2(
+            leftWidth,
+            debugHeight
+        ),
+        ImGuiCond_Always
+    );
+
+    ImGui::Begin(
+        "Debug",
+        nullptr,
+        ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoResize
+    );
+
+    DrawPerformance();
+
+    if (ImGui::CollapsingHeader("Debug Draw"))
+    {
+        ImGui::Checkbox(
+            "Show Selected Bounds",
+            &m_showSelectedBounds
+        );
+
+        ImGui::Checkbox(
+            "Show All Bounds",
+            &m_showAllBounds
+        );
     }
+
+    ImGui::End();
 }
 
 void DebugEditor::DrawMoveGizmo()
@@ -1975,29 +2800,11 @@ void DebugEditor::DrawMoveGizmo()
             xColor
         );
     }
-
-    float tipSize =
-        gizmoLength * 0.08f;
-
-    DirectX::XMFLOAT3 xTipMin =
-    {
-        xEnd.x - tipSize,
-        xEnd.y - tipSize,
-        xEnd.z - tipSize
-    };
-
-    DirectX::XMFLOAT3 xTipMax =
-    {
-        xEnd.x + tipSize,
-        xEnd.y + tipSize,
-        xEnd.z + tipSize
-    };
-
-    m_context->debugRenderer->AddOBB(
-        xTipMin,
-        xTipMax,
-        DirectX::XMMatrixIdentity(),
-        xColor
+    DrawMoveAxisArrow(
+        xEnd,
+        xDir,
+        xColor,
+        gizmoLength
     );
 
     // =========================
@@ -2101,25 +2908,11 @@ void DebugEditor::DrawMoveGizmo()
         );
     }
 
-    DirectX::XMFLOAT3 yTipMin =
-    {
-        yEnd.x - tipSize,
-        yEnd.y - tipSize,
-        yEnd.z - tipSize
-    };
-
-    DirectX::XMFLOAT3 yTipMax =
-    {
-        yEnd.x + tipSize,
-        yEnd.y + tipSize,
-        yEnd.z + tipSize
-    };
-
-    m_context->debugRenderer->AddOBB(
-        yTipMin,
-        yTipMax,
-        DirectX::XMMatrixIdentity(),
-        yColor
+    DrawMoveAxisArrow(
+        yEnd,
+        yDir,
+        yColor,
+        gizmoLength
     );
 
     // =========================
@@ -2223,27 +3016,12 @@ void DebugEditor::DrawMoveGizmo()
         );
     }
 
-    DirectX::XMFLOAT3 zTipMin =
-    {
-        zEnd.x - tipSize,
-        zEnd.y - tipSize,
-        zEnd.z - tipSize
-    };
-
-    DirectX::XMFLOAT3 zTipMax =
-    {
-        zEnd.x + tipSize,
-        zEnd.y + tipSize,
-        zEnd.z + tipSize
-    };
-
-    m_context->debugRenderer->AddOBB(
-        zTipMin,
-        zTipMax,
-        DirectX::XMMatrixIdentity(),
-        zColor
+    DrawMoveAxisArrow(
+        zEnd,
+        zDir,
+        zColor,
+        gizmoLength
     );
-
     // =========================
     // Z文字表示
     // =========================
@@ -2257,6 +3035,222 @@ void DebugEditor::DrawMoveGizmo()
             "Z"
         );
     }
+}
+void DebugEditor::DrawScaleGizmo()
+{
+    //========================================================
+    // Contextチェック
+    //========================================================
+    if (!m_context ||
+        !m_context->objects ||
+        !m_context->debugRenderer ||
+        !m_context->camera ||
+        !m_context->renderer ||
+        m_selectedObjectIndex < 0 ||
+        m_selectedObjectIndex >= static_cast<int>(m_context->objects->size()))
+    {
+        return;
+    }
+
+    //========================================================
+    // 選択中Object取得
+    //========================================================
+    GameObject& obj =
+        (*m_context->objects)[m_selectedObjectIndex];
+
+    if (!obj.model)
+    {
+        return;
+    }
+
+    using namespace DirectX;
+
+    //========================================================
+    // Scale Gizmo中心
+    //========================================================
+    XMFLOAT3 origin =
+        obj.transform.position;
+
+    //========================================================
+    // カメラとの距離を求める
+    //========================================================
+    XMFLOAT3 cameraPos =
+        m_context->camera->GetPosition();
+
+    float dx = origin.x - cameraPos.x;
+    float dy = origin.y - cameraPos.y;
+    float dz = origin.z - cameraPos.z;
+
+    float distance =
+        sqrtf(dx * dx + dy * dy + dz * dz);
+
+    //========================================================
+    // 画面上でのGizmo長さ
+    //========================================================
+    float targetPixelLength =
+        110.0f;
+
+    float screenHeight =
+        static_cast<float>(
+            m_context->renderer->GetWindowHeight()
+            );
+
+    float fovY =
+        m_context->camera->GetFovY();
+
+    float viewHeightAtDistance =
+        2.0f * distance * tanf(fovY * 0.5f);
+
+    float worldPerPixel =
+        viewHeightAtDistance / screenHeight;
+
+    float gizmoLength =
+        targetPixelLength * worldPerPixel;
+
+    //========================================================
+    // 中心から少し離して描画開始
+    //========================================================
+    float startOffset =
+        gizmoLength * 0.15f;
+
+    //========================================================
+    // Scale用Boxサイズ
+    //========================================================
+    float boxSize =
+        gizmoLength * 0.14f;
+
+    //========================================================
+    // 各軸方向取得
+    //========================================================
+    XMFLOAT3 xDir =
+        GetAxisDirection(GizmoAxis::X, obj);
+
+    XMFLOAT3 yDir =
+        GetAxisDirection(GizmoAxis::Y, obj);
+
+    XMFLOAT3 zDir =
+        GetAxisDirection(GizmoAxis::Z, obj);
+
+    //========================================================
+    // 表示用Axis
+    //========================================================
+    GizmoAxis displayAxis =
+        m_isDraggingGizmo ?
+        m_activeAxis :
+        m_hoveredAxis;
+
+    //========================================================
+    // Scale軸描画関数
+    //========================================================
+    auto DrawScaleAxis =
+        [&](GizmoAxis axis,
+            const XMFLOAT3& dir,
+            const XMFLOAT4& baseColor)
+        {
+            XMFLOAT4 color =
+                baseColor;
+
+            //============================================
+            // Hover中 / Drag中の軸は黄色
+            //============================================
+            if (displayAxis == axis)
+            {
+                color =
+                {
+                    1.0f,
+                    1.0f,
+                    0.0f,
+                    1.0f
+                };
+            }
+
+            //============================================
+            // 軸の開始位置
+            //============================================
+            XMFLOAT3 start =
+            {
+                origin.x + dir.x * startOffset,
+                origin.y + dir.y * startOffset,
+                origin.z + dir.z * startOffset
+            };
+
+            //============================================
+            // 軸の終了位置
+            //============================================
+            XMFLOAT3 end =
+            {
+                origin.x + dir.x * gizmoLength,
+                origin.y + dir.y * gizmoLength,
+                origin.z + dir.z * gizmoLength
+            };
+
+            //============================================
+            // 軸ライン描画
+            //============================================
+            m_context->debugRenderer->AddLine(
+                start,
+                end,
+                color
+            );
+
+            //============================================
+            // Scale用先端Box描画
+            //============================================
+            DrawScaleAxisBox(
+                end,
+                color,
+                boxSize
+            );
+        };
+
+    //========================================================
+    // X/Y/Z軸描画
+    //========================================================
+    DrawScaleAxis(
+        GizmoAxis::X,
+        xDir,
+        { 0.8f, 0.0f, 0.0f, 1.0f }
+    );
+
+    DrawScaleAxis(
+        GizmoAxis::Y,
+        yDir,
+        { 0.0f, 0.8f, 0.0f, 1.0f }
+    );
+
+    DrawScaleAxis(
+        GizmoAxis::Z,
+        zDir,
+        { 0.0f, 0.2f, 1.0f, 1.0f }
+    );
+
+    //========================================================
+    // 中央Uniform Scaleハンドル
+    //========================================================
+    XMFLOAT4 centerColor =
+    {
+        1.0f,
+        0.0f,
+        1.0f,
+        1.0f
+    };
+
+    if (displayAxis == GizmoAxis::Center)
+    {
+        centerColor =
+        {
+            1.0f,
+            1.0f,
+            0.0f,
+            1.0f
+        };
+    }
+
+    DrawScaleAxisBox(
+        origin,
+        centerColor,
+        boxSize * 1.2f
+    );
 }
 
 void DebugEditor::DrawRotateGizmo()
@@ -2320,103 +3314,7 @@ void DebugEditor::DrawRotateGizmo()
 
     const int segmentCount = 64;
 
-    // ========================================
- // Rotateリングを描画する関数
- // ========================================
- // axis       : 回転軸
- // drawRadius : 描画するリング半径
- // color      : リング色
- // ========================================
-    auto DrawCircle =
-        [&](const XMFLOAT3& axis,
-            float drawRadius,
-            const XMFLOAT4& color)
-        {
-            // 回転軸を正規化
-            XMVECTOR axisVec =
-                XMVector3Normalize(
-                    XMLoadFloat3(&axis)
-                );
-
-            // リング平面を作るための基準ベクトル
-            XMVECTOR up =
-                XMVectorSet(
-                    0.0f,
-                    1.0f,
-                    0.0f,
-                    0.0f
-                );
-
-            // axis と up がほぼ平行だと外積が壊れるため
-            // 別の基準ベクトルを使う
-            if (fabsf(
-                XMVectorGetX(
-                    XMVector3Dot(axisVec, up)
-                )) > 0.99f)
-            {
-                up =
-                    XMVectorSet(
-                        1.0f,
-                        0.0f,
-                        0.0f,
-                        0.0f
-                    );
-            }
-
-            // リング平面上の横方向
-            XMVECTOR right =
-                XMVector3Normalize(
-                    XMVector3Cross(up, axisVec)
-                );
-
-            // リング平面上の縦方向
-            XMVECTOR forward =
-                XMVector3Normalize(
-                    XMVector3Cross(axisVec, right)
-                );
-
-            // リング中心
-            XMVECTOR center =
-                XMLoadFloat3(&origin);
-
-            XMFLOAT3 prevPoint;
-
-            for (int i = 0; i <= segmentCount; ++i)
-            {
-                float t =
-                    static_cast<float>(i) /
-                    static_cast<float>(segmentCount);
-
-                float angle =
-                    t * DirectX::XM_2PI;
-
-                // 円周上の点を作る
-                XMVECTOR point =
-                    center +
-                    right * cosf(angle) * drawRadius +
-                    forward * sinf(angle) * drawRadius;
-
-                XMFLOAT3 currentPoint;
-
-                XMStoreFloat3(
-                    &currentPoint,
-                    point
-                );
-
-                // 1つ前の点と現在の点を線で結ぶ
-                if (i > 0)
-                {
-                    m_context->debugRenderer->AddLine(
-                        prevPoint,
-                        currentPoint,
-                        color
-                    );
-                }
-
-                prevPoint =
-                    currentPoint;
-            }
-        };
+   
 
     XMFLOAT3 xAxis =
         GetAxisDirection(GizmoAxis::X, obj);
@@ -2448,34 +3346,203 @@ void DebugEditor::DrawRotateGizmo()
         XMFLOAT4{ 0.0f, 0.2f, 1.0f, 1.0f };
    
     // ========================================
-// リングの見た目の太さ
-// ========================================
-// worldPerPixel を使うことで、
-// カメラ距離が変わっても画面上の太さが安定する
-// ========================================
+    // リングの見た目の太さ
+    // ========================================
+    // worldPerPixel を使うことで、
+    // カメラ距離が変わっても画面上の太さが安定する
+    // ========================================
     float ringWidth =
         worldPerPixel * 4.0f;
 
     // ========================================
     // Xリング描画
     // ========================================
-    DrawCircle(xAxis, radius - ringWidth, xColor);
-    DrawCircle(xAxis, radius, xColor);
-    DrawCircle(xAxis, radius + ringWidth, xColor);
+    DrawRotateRing(origin, xAxis, radius - ringWidth, xColor);
+    DrawRotateRing(origin, xAxis, radius, xColor);
+    DrawRotateRing(origin, xAxis, radius + ringWidth, xColor);
 
     // ========================================
     // Yリング描画
     // ========================================
-    DrawCircle(yAxis, radius - ringWidth, yColor);
-    DrawCircle(yAxis, radius, yColor);
-    DrawCircle(yAxis, radius + ringWidth, yColor);
+    DrawRotateRing(origin, yAxis, radius - ringWidth, yColor);
+    DrawRotateRing(origin, yAxis, radius, yColor);
+    DrawRotateRing(origin, yAxis, radius + ringWidth, yColor);
 
     // ========================================
     // Zリング描画
     // ========================================
-    DrawCircle(zAxis, radius - ringWidth, zColor);
-    DrawCircle(zAxis, radius, zColor);
-    DrawCircle(zAxis, radius + ringWidth, zColor);
+    DrawRotateRing(origin, zAxis, radius - ringWidth, zColor);
+    DrawRotateRing(origin, zAxis, radius, zColor);
+    DrawRotateRing(origin, zAxis, radius + ringWidth, zColor);
+}
+
+void DebugEditor::DrawMoveAxisArrow(const DirectX::XMFLOAT3& end,const DirectX::XMFLOAT3& dir,const DirectX::XMFLOAT4& color,float gizmoLength)
+{
+    using namespace DirectX;
+
+    float arrowSize =
+        gizmoLength * 0.12f;
+
+    XMFLOAT3 cameraPos =
+        m_context->camera->GetPosition();
+
+    XMVECTOR centerVec =
+        XMLoadFloat3(&end);
+
+    XMVECTOR cameraVec =
+        XMLoadFloat3(&cameraPos);
+
+    XMVECTOR viewDir =
+        XMVector3Normalize(
+            cameraVec - centerVec
+        );
+
+    XMVECTOR axisVec =
+        XMVector3Normalize(
+            XMLoadFloat3(&dir)
+        );
+
+    XMVECTOR sideVec =
+        XMVector3Cross(
+            viewDir,
+            axisVec
+        );
+
+    sideVec =
+        XMVector3Normalize(sideVec);
+
+    XMVECTOR tip =
+        centerVec +
+        axisVec * arrowSize;
+
+    XMVECTOR left =
+        centerVec -
+        axisVec * arrowSize * 0.6f +
+        sideVec * arrowSize;
+
+    XMVECTOR right =
+        centerVec -
+        axisVec * arrowSize * 0.6f -
+        sideVec * arrowSize;
+
+    XMFLOAT3 v0;
+    XMFLOAT3 v1;
+    XMFLOAT3 v2;
+
+    XMStoreFloat3(&v0, tip);
+    XMStoreFloat3(&v1, left);
+    XMStoreFloat3(&v2, right);
+
+    m_context->debugRenderer->AddLine(v0, v1, color);
+    m_context->debugRenderer->AddLine(v1, v2, color);
+    m_context->debugRenderer->AddLine(v2, v0, color);
+}
+
+void DebugEditor::DrawScaleAxisBox( const DirectX::XMFLOAT3& end,const DirectX::XMFLOAT4& color,float boxSize)
+{
+    DirectX::XMFLOAT3 boxMin =
+    {
+        end.x - boxSize,
+        end.y - boxSize,
+        end.z - boxSize
+    };
+
+    DirectX::XMFLOAT3 boxMax =
+    {
+        end.x + boxSize,
+        end.y + boxSize,
+        end.z + boxSize
+    };
+
+    m_context->debugRenderer->AddOBB(
+        boxMin,
+        boxMax,
+        DirectX::XMMatrixIdentity(),
+        color
+    );
+}
+
+void DebugEditor::DrawRotateRing(const DirectX::XMFLOAT3& origin, const DirectX::XMFLOAT3& axis,float radius,const DirectX::XMFLOAT4& color)
+{
+    using namespace DirectX;
+
+    const int segmentCount = 64;
+
+    XMVECTOR axisVec =
+        XMVector3Normalize(
+            XMLoadFloat3(&axis)
+        );
+
+    XMVECTOR up =
+        XMVectorSet(
+            0.0f,
+            1.0f,
+            0.0f,
+            0.0f
+        );
+
+    if (fabsf(
+        XMVectorGetX(
+            XMVector3Dot(axisVec, up)
+        )) > 0.99f)
+    {
+        up =
+            XMVectorSet(
+                1.0f,
+                0.0f,
+                0.0f,
+                0.0f
+            );
+    }
+
+    XMVECTOR right =
+        XMVector3Normalize(
+            XMVector3Cross(up, axisVec)
+        );
+
+    XMVECTOR forward =
+        XMVector3Normalize(
+            XMVector3Cross(axisVec, right)
+        );
+
+    XMVECTOR center =
+        XMLoadFloat3(&origin);
+
+    XMFLOAT3 prevPoint;
+
+    for (int i = 0; i <= segmentCount; ++i)
+    {
+        float t =
+            static_cast<float>(i) /
+            static_cast<float>(segmentCount);
+
+        float angle =
+            t * DirectX::XM_2PI;
+
+        XMVECTOR point =
+            center +
+            right * cosf(angle) * radius +
+            forward * sinf(angle) * radius;
+
+        XMFLOAT3 currentPoint;
+
+        XMStoreFloat3(
+            &currentPoint,
+            point
+        );
+
+        if (i > 0)
+        {
+            m_context->debugRenderer->AddLine(
+                prevPoint,
+                currentPoint,
+                color
+            );
+        }
+
+        prevPoint =
+            currentPoint;
+    }
 }
 
 void DebugEditor::EndFrame()
@@ -2567,9 +3634,7 @@ Ray DebugEditor::CreateMouseRay()
     return ray;
 }
 
-bool DebugEditor::WorldToScreen(
-    const DirectX::XMFLOAT3& worldPos,
-    DirectX::XMFLOAT2& screenPos)
+bool DebugEditor::WorldToScreen(const DirectX::XMFLOAT3& worldPos,DirectX::XMFLOAT2& screenPos)
 {
     if (!m_context ||
         !m_context->camera ||
@@ -2622,11 +3687,7 @@ bool DebugEditor::WorldToScreen(
 }
 
 // Ray と平面の交点を求める
-bool DebugEditor::IntersectRayPlane(
-    const Ray& ray,
-    const DirectX::XMFLOAT3& planePoint,
-    const DirectX::XMFLOAT3& planeNormal,
-    DirectX::XMFLOAT3& hitPoint)
+bool DebugEditor::IntersectRayPlane(const Ray& ray,const DirectX::XMFLOAT3& planePoint,const DirectX::XMFLOAT3& planeNormal,DirectX::XMFLOAT3& hitPoint)
 {
     using namespace DirectX;
 
@@ -2706,10 +3767,7 @@ bool DebugEditor::IntersectRayPlane(
 }
 
 // Ray と 線分の最短距離を求める
-float DebugEditor::DistanceRayToSegment(
-    const Ray& ray,
-    const DirectX::XMFLOAT3& segStart,
-    const DirectX::XMFLOAT3& segEnd)
+float DebugEditor::DistanceRayToSegment(const Ray& ray,const DirectX::XMFLOAT3& segStart,const DirectX::XMFLOAT3& segEnd)
 {
     using namespace DirectX;
 
@@ -2854,10 +3912,7 @@ float DebugEditor::DistanceRayToSegment(
     return distance;
 }
 
-float DebugEditor::DistancePointToSegment2D(
-    const DirectX::XMFLOAT2& point,
-    const DirectX::XMFLOAT2& segStart,
-    const DirectX::XMFLOAT2& segEnd)
+float DebugEditor::DistancePointToSegment2D(const DirectX::XMFLOAT2& point,const DirectX::XMFLOAT2& segStart,const DirectX::XMFLOAT2& segEnd)
 {
     float vx = segEnd.x - segStart.x;
     float vy = segEnd.y - segStart.y;
@@ -2898,47 +3953,89 @@ float DebugEditor::DistancePointToSegment2D(
     return sqrtf(dx * dx + dy * dy);
 }
 
-DirectX::XMFLOAT3 DebugEditor::GetAxisDirection(
-    GizmoAxis axis,
-    const GameObject& obj)
+DirectX::XMFLOAT3 DebugEditor::GetAxisDirection( GizmoAxis axis,const GameObject& obj)
 {
     using namespace DirectX;
+
+    // Worldモード
+    if (m_gizmoSpace == GizmoSpace::World)
+    {
+        switch (axis)
+        {
+        case GizmoAxis::X:
+            return { 1.0f, 0.0f, 0.0f };
+
+        case GizmoAxis::Y:
+            return { 0.0f, 1.0f, 0.0f };
+
+        case GizmoAxis::Z:
+            return { 0.0f, 0.0f, 1.0f };
+
+        default:
+            return { 0.0f, 0.0f, 0.0f };
+        }
+    }
+
+    //========================================================
+    // Localモード
+    // Quaternionから回転行列作成
+    //========================================================
+    XMVECTOR q =
+        XMLoadFloat4(
+            &obj.transform.rotationQuat
+        );
+
+    q =
+        XMQuaternionNormalize(q);
+
+    XMMATRIX rotation =
+        XMMatrixRotationQuaternion(q);
 
     XMVECTOR dir;
 
     switch (axis)
     {
     case GizmoAxis::X:
-        dir = XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f);
+
+        dir =
+            XMVector3TransformNormal(
+                XMVectorSet(
+                    1.0f, 0.0f, 0.0f, 0.0f),
+                rotation
+            );
         break;
 
     case GizmoAxis::Y:
-        dir = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+
+        dir =
+            XMVector3TransformNormal(
+                XMVectorSet(
+                    0.0f, 1.0f, 0.0f, 0.0f),
+                rotation
+            );
         break;
 
     case GizmoAxis::Z:
-        dir = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+
+        dir =
+            XMVector3TransformNormal(
+                XMVectorSet(
+                    0.0f, 0.0f, 1.0f, 0.0f),
+                rotation
+            );
         break;
 
     default:
         return { 0.0f, 0.0f, 0.0f };
     }
 
-    if (m_gizmoSpace == GizmoSpace::Local)
-    {
-        XMMATRIX rotation =
-            XMMatrixRotationRollPitchYaw(
-                obj.transform.rotation.x,
-                obj.transform.rotation.y,
-                obj.transform.rotation.z
-            );
-
-        dir = XMVector3TransformNormal(dir, rotation);
-        dir = XMVector3Normalize(dir);
-    }
-
     XMFLOAT3 result;
-    XMStoreFloat3(&result, dir);
+
+    XMStoreFloat3(
+        &result,
+        XMVector3Normalize(dir)
+    );
+
     return result;
 }
 
@@ -3033,6 +4130,141 @@ void DebugEditor::UpdateFreeCamera()
         m_context->camera->MoveUp(-moveSpeed);
     }
 }
+
+bool DebugEditor::NearlyEqual(float a,float b,float epsilon)
+{
+    return fabsf(a - b) < epsilon;
+}
+
+bool DebugEditor::NearlyEqual(const DirectX::XMFLOAT3& a,const DirectX::XMFLOAT3& b,float epsilon)
+{
+    return
+        NearlyEqual(a.x, b.x, epsilon) &&
+        NearlyEqual(a.y, b.y, epsilon) &&
+        NearlyEqual(a.z, b.z, epsilon);
+}
+
+bool DebugEditor::NearlyEqual(const DirectX::XMFLOAT4& a,const DirectX::XMFLOAT4& b,float epsilon)
+{
+    return
+        NearlyEqual(a.x, b.x, epsilon) &&
+        NearlyEqual(a.y, b.y, epsilon) &&
+        NearlyEqual(a.z, b.z, epsilon) &&
+        NearlyEqual(a.w, b.w, epsilon);
+}
+
+bool DebugEditor::IsSameTransform( const Transform& a,const Transform& b)
+{
+    return
+        NearlyEqual(a.position, b.position) &&
+        NearlyEqual(a.scale, b.scale) &&
+        NearlyEqual(a.rotationQuat, b.rotationQuat);
+}
+
+void DebugEditor::PushTransformCommand(int objectIndex,const Transform& before,const Transform& after)
+{
+    //========================================================
+    // before と after が同じならUndo履歴に登録しない
+    //
+    // クリックしただけ、数値を触ったが変化していない、
+    // などの不要なUndoを防ぐ
+    //========================================================
+    if (IsSameTransform(before, after))
+    {
+        return;
+    }
+
+    TransformCommand command;
+    command.objectIndex = objectIndex;
+    command.before = before;
+    command.after = after;
+
+    m_undoStack.push_back(command);
+
+    //========================================================
+    // Undo履歴上限
+    //
+    // 古い履歴から削除して、
+    // 最大 MaxUndoCount 件までにする
+    //========================================================
+    if (m_undoStack.size() > MaxUndoCount)
+    {
+        m_undoStack.erase(
+            m_undoStack.begin()
+        );
+    }
+
+    //========================================================
+    // 新しい操作をしたらRedo履歴は消す
+    //========================================================
+    m_redoStack.clear();
+}
+void DebugEditor::Undo()
+{
+    if (m_undoStack.empty())
+    {
+        return;
+    }
+
+    TransformCommand command =
+        m_undoStack.back();
+
+    m_undoStack.pop_back();
+
+    if (!m_context ||
+        !m_context->objects ||
+        command.objectIndex < 0 ||
+        command.objectIndex >= static_cast<int>(m_context->objects->size()))
+    {
+        return;
+    }
+
+    GameObject& obj =
+        (*m_context->objects)[command.objectIndex];
+
+    obj.transform =
+        command.before;
+
+    m_selectedObjectIndex =
+        command.objectIndex;
+
+    m_redoStack.push_back(command);
+}
+
+void DebugEditor::Redo()
+{
+    if (m_redoStack.empty())
+    {
+        return;
+    }
+
+    TransformCommand command =
+        m_redoStack.back();
+
+    m_redoStack.pop_back();
+
+    if (!m_context ||
+        !m_context->objects ||
+        command.objectIndex < 0 ||
+        command.objectIndex >= static_cast<int>(m_context->objects->size()))
+    {
+        return;
+    }
+
+    GameObject& obj =
+        (*m_context->objects)[command.objectIndex];
+
+    obj.transform =
+        command.after;
+
+    m_selectedObjectIndex =
+        command.objectIndex;
+
+    m_undoStack.push_back(command);
+}
+
+
+
 void DebugEditor::Finalize()
 {
     ImGui_ImplDX11_Shutdown();

@@ -1,6 +1,7 @@
 #pragma once
 #include <windows.h>
 #include <d3d11.h>
+#include <vector>
 
 #include"GameContext.h"
 #include"Ray.h"
@@ -18,7 +19,8 @@ enum class GizmoAxis
     None,
     X,
     Y,
-    Z
+    Z,
+    Center
 };
 
 enum class GizmoSpace
@@ -34,6 +36,27 @@ enum class GizmoMode
     Scale
 };
 
+struct TransformCommand
+{
+    int objectIndex = -1;
+    Transform before;
+    Transform after;
+};
+
+enum class EditorViewMode
+{
+    SceneView,
+    GameView
+};
+
+struct EditorRect
+{
+    float x = 0.0f;
+    float y = 0.0f;
+    float width = 0.0f;
+    float height = 0.0f;
+};
+
 
 class DebugEditor
 {
@@ -45,10 +68,13 @@ public:
     void Update();
     void UpdatePicking();//オブジェクトを選択するための関数
     void UpdateDragging();//MoveModeでドラッグして動かせるようにする関数
+    void UpdateScaleGizmoDrag();//ScaleModeでドラッグしてスケールを変更する関数
     void UpdateRotateGizmoDrag();//RotateModeでドラッグして回転させる関数
     void UpdateGizmoHover();//どの軸を触っているかをかを判定する関数
     void UpdateMoveGizmoHover();//移動軸のどれを触っているか判定する関数
+    void UpdateScaleGizmoHover();//スケール軸のどれを触っているか判定する関数    
     void UpdateRotateGizmoHover();//回転軸のどれを触っているかを判定する関数
+    void EndGizmoDragIfNeeded();//共通の終了判定
     void UpdateFocusSelected();//選択しているオブジェクトにカメラを向ける関数
     void UpdateGizmoMode();//move,rotate,scaleの切り替え
 
@@ -59,8 +85,16 @@ public:
     void DrawObjects();//オブジェクト一覧
     void DrawInspector();//オブジェクトの座標やスケールの表示
     void DrawEditorSettings();//エディターに関する設定
-    void DrawMoveGizmo();//軸の表示
-    void DrawRotateGizmo();
+    void DrawHierarchyView();// Unity風のHierarchy表示
+    void DrawInspectorView();// Unity風のInspector表示
+    void DrawEditorSettingsView();// Editor設定表示
+    void DrawDebugView();// Debug / Performance表示
+    void DrawMoveGizmo();//移動軸の表示
+    void DrawScaleGizmo();//スケール軸の表示
+	void DrawRotateGizmo();//回転軸の表示
+    void DrawMoveAxisArrow(const DirectX::XMFLOAT3& end, const DirectX::XMFLOAT3& dir, const DirectX::XMFLOAT4& color, float gizmoLength );//移動軸に矢印描画
+    void DrawScaleAxisBox(const DirectX::XMFLOAT3& end,const DirectX::XMFLOAT4& color,float boxSize);
+    void DrawRotateRing( const DirectX::XMFLOAT3& origin, const DirectX::XMFLOAT3& axis, float radius, const DirectX::XMFLOAT4& color);
     void EndFrame();
 
     Ray CreateMouseRay();
@@ -94,11 +128,11 @@ private:
  
     POINT m_axisDragStartMousePos = { 0, 0 };//軸移動をマウスの動きにするため
     DirectX::XMFLOAT3 m_axisDragStartObjectPos = { 0, 0, 0 };
- 
-
+    // ScaleModeのドラッグ用
+    DirectX::XMFLOAT3 m_scaleDragStartScale = { 1.0f, 1.0f, 1.0f};
     //RotateModeのドラッグ用変数
     POINT m_rotateDragStartMousePos = { 0, 0 };
-    DirectX::XMFLOAT3 m_rotateDragStartRotation = { 0, 0, 0 };
+    DirectX::XMFLOAT4 m_rotateDragStartQuat = { 0.0f,0.0f, 0.0f,1.0f };
 
     // RotateGizmo ドラッグ用
     DirectX::XMFLOAT3 m_rotateDragStartVector = { 0.0f, 0.0f, 0.0f };
@@ -115,4 +149,25 @@ private:
     bool m_isFreeCameraActive = false;
     float m_freeCameraMoveSpeed = 0.2f;
     float m_freeCameraRotateSpeed = 0.005f;
+
+	// Undo/Redo用スタック
+    std::vector<TransformCommand> m_undoStack;
+    std::vector<TransformCommand> m_redoStack;
+
+    Transform m_dragStartTransform;
+
+    static constexpr size_t MaxUndoCount = 200;
+
+    void PushTransformCommand(int objectIndex,const Transform& before,const Transform& after);
+
+    void Undo();
+    void Redo();
+    
+    static bool NearlyEqual( float a,float b,float epsilon = 0.0001f);
+
+    static bool NearlyEqual(const DirectX::XMFLOAT3& a,const DirectX::XMFLOAT3& b,float epsilon = 0.0001f);
+
+    static bool NearlyEqual(const DirectX::XMFLOAT4& a,const DirectX::XMFLOAT4& b,float epsilon = 0.0001f);
+
+    static bool IsSameTransform(const Transform& a,const Transform& b);
 };
