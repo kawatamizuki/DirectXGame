@@ -71,6 +71,7 @@ public:
     bool IsEditorActionDown(EditorInputAction action) const;
     bool IsEditorActionPressed(EditorInputAction action) const;
     bool IsEditorActionReleased(EditorInputAction action) const;
+	bool IsEditorActionComboPressed(EditorInputAction action) const;//•¡”‚ÌƒL[‚Ì“¯‰Ÿ‚µ‚ğ”»’è‚·‚éŠÖ” 
 
 
 

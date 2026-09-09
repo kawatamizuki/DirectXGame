@@ -12,5 +12,7 @@ enum class EditorInputAction
     FocusSelected,
     GizmoMove,
     GizmoRotate,
-    GizmoScale
+    GizmoScale,
+    Undo,
+    Redo
 };

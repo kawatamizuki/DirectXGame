@@ -201,6 +201,47 @@ bool DebugRenderer::Initialize(
         Debug::Error("DebugRenderer::Initialize failed : CreateBuffer failed");
         return false;
     }
+    // =========================
+// DepthStencilState ì¬
+// =========================
+
+// Depth—LŒø
+    D3D11_DEPTH_STENCIL_DESC depthEnableDesc = {};
+    depthEnableDesc.DepthEnable = TRUE;
+    depthEnableDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+    depthEnableDesc.DepthFunc = D3D11_COMPARISON_LESS;
+    depthEnableDesc.StencilEnable = FALSE;
+
+    hr = m_device->CreateDepthStencilState(
+        &depthEnableDesc,
+        m_depthEnableState.GetAddressOf()
+    );
+
+    if (FAILED(hr))
+    {
+        Debug::Error("DebugRenderer::Initialize failed : CreateDepthStencilState depthEnable failed");
+        return false;
+    }
+
+    // Depth–³Œø
+    D3D11_DEPTH_STENCIL_DESC depthDisableDesc = {};
+    depthDisableDesc.DepthEnable = FALSE;
+    depthDisableDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+    depthDisableDesc.DepthFunc = D3D11_COMPARISON_ALWAYS;
+    depthDisableDesc.StencilEnable = FALSE;
+
+    hr = m_device->CreateDepthStencilState(
+        &depthDisableDesc,
+        m_depthDisableState.GetAddressOf()
+    );
+
+    if (FAILED(hr))
+    {
+        Debug::Error("DebugRenderer::Initialize failed : CreateDepthStencilState depthDisable failed");
+        return false;
+    }
+
+
 
     return true;
 }
@@ -363,8 +404,19 @@ void DebugRenderer::Flush(const Camera& camera)
     // =========================
     // ü•`‰æ
     // =========================
+    m_context->OMSetDepthStencilState(
+        m_depthDisableState.Get(),
+        0
+    );
+
+
     m_context->Draw(
         static_cast<UINT>(m_vertices.size()),
+        0
+    );
+
+    m_context->OMSetDepthStencilState(
+        m_depthEnableState.Get(),
         0
     );
 
@@ -382,6 +434,9 @@ void DebugRenderer::Finalize()
     m_vertexShader.Reset();
     m_pixelShader.Reset();
     m_inputLayout.Reset();
+
+    m_depthEnableState.Reset();
+    m_depthDisableState.Reset();
 
     m_device = nullptr;
     m_context = nullptr;

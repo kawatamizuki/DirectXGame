@@ -96,6 +96,18 @@ InputManager::InputManager()
     {
         KeyCode::E
     };
+
+    m_editorKeyboardMapping[EditorInputAction::Undo] =
+    {
+        KeyCode::LeftControl,
+        KeyCode::Z
+    };
+
+    m_editorKeyboardMapping[EditorInputAction::Redo] =
+    {
+        KeyCode::LeftControl,
+        KeyCode::Y
+    };
     //========================================
     // GamePad割り当て
     //========================================
@@ -285,68 +297,7 @@ bool InputManager::IsKeyReleased(KeyCode key) const
     return IsKeyReleased(static_cast<int>(key));
 }
 
-bool InputManager::IsEditorActionDown(EditorInputAction action) const
-{
-    auto it =
-        m_editorKeyboardMapping.find(action);
 
-    if (it == m_editorKeyboardMapping.end())
-    {
-        return false;
-    }
-
-    for (KeyCode key : it->second)
-    {
-        if (IsKeyDown(key))
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-bool InputManager::IsEditorActionPressed(EditorInputAction action) const
-{
-    auto it =
-        m_editorKeyboardMapping.find(action);
-
-    if (it == m_editorKeyboardMapping.end())
-    {
-        return false;
-    }
-
-    for (KeyCode key : it->second)
-    {
-        if (IsKeyPressed(key))
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-bool InputManager::IsEditorActionReleased(EditorInputAction action) const
-{
-    auto it =
-        m_editorKeyboardMapping.find(action);
-
-    if (it == m_editorKeyboardMapping.end())
-    {
-        return false;
-    }
-
-    for (KeyCode key : it->second)
-    {
-        if (IsKeyReleased(key))
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
 
 bool InputManager::IsActionDown(InputAction action) const
 {
@@ -455,4 +406,107 @@ bool InputManager::IsActionReleased(InputAction action) const
     return keyboard || gamePad;
 }
 
+bool InputManager::IsEditorActionDown(EditorInputAction action) const
+{
+    auto it =
+        m_editorKeyboardMapping.find(action);
+
+    if (it == m_editorKeyboardMapping.end())
+    {
+        return false;
+    }
+
+    for (KeyCode key : it->second)
+    {
+        if (IsKeyDown(key))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool InputManager::IsEditorActionPressed(EditorInputAction action) const
+{
+    auto it =
+        m_editorKeyboardMapping.find(action);
+
+    if (it == m_editorKeyboardMapping.end())
+    {
+        return false;
+    }
+
+    for (KeyCode key : it->second)
+    {
+        if (IsKeyPressed(key))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool InputManager::IsEditorActionReleased(EditorInputAction action) const
+{
+    auto it =
+        m_editorKeyboardMapping.find(action);
+
+    if (it == m_editorKeyboardMapping.end())
+    {
+        return false;
+    }
+
+    for (KeyCode key : it->second)
+    {
+        if (IsKeyReleased(key))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
+bool InputManager::IsEditorActionComboPressed(
+    EditorInputAction action) const
+{
+    auto it =
+        m_editorKeyboardMapping.find(action);
+
+    if (it == m_editorKeyboardMapping.end())
+    {
+        return false;
+    }
+
+    const std::vector<KeyCode>& keys =
+        it->second;
+
+    if (keys.empty())
+    {
+        return false;
+    }
+
+    // 最後のキーだけ「押された瞬間」
+    KeyCode triggerKey =
+        keys.back();
+
+    if (!IsKeyPressed(triggerKey))
+    {
+        return false;
+    }
+
+    // それ以外は「押されている間」
+    for (int i = 0; i < static_cast<int>(keys.size()) - 1; ++i)
+    {
+        if (!IsKeyDown(keys[i]))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
 
