@@ -74,9 +74,11 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <PreprocessorDefinitions>ENABLE_EDITOR;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -89,10 +91,12 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -103,9 +107,11 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <PreprocessorDefinitions>ENABLE_EDITOR;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -118,10 +124,12 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -132,6 +140,7 @@
     <ClCompile Include="Core\Game.cpp" />
     <ClCompile Include="Core\main.cpp" />
     <ClCompile Include="Core\TimeManager.cpp" />
+    <ClCompile Include="Core\GameClock.cpp" />
     <ClCompile Include="Core\Window.cpp" />
     <ClCompile Include="DebugTools\Debug.cpp" />
     <ClCompile Include="DebugTools\DebugEditor.cpp" />
@@ -142,6 +151,7 @@
     <ClCompile Include="Graphics\Model.cpp" />
     <ClCompile Include="Graphics\ObjLoader.cpp" />
     <ClCompile Include="Graphics\Renderer.cpp" />
+    <ClCompile Include="Graphics\DayNightCycle.cpp" />
     <ClCompile Include="imgui\backends\imgui_impl_dx11.cpp" />
     <ClCompile Include="imgui\backends\imgui_impl_win32.cpp" />
     <ClCompile Include="imgui\imgui.cpp" />
@@ -151,9 +161,31 @@
     <ClCompile Include="imgui\imgui_widgets.cpp" />
     <ClCompile Include="Input\InputManager.cpp" />
     <ClCompile Include="Math\Collision.cpp" />
+    <ClCompile Include="Math\GridCoord.cpp" />
     <ClCompile Include="Math\Ray.cpp" />
     <ClCompile Include="Object\GameObject.cpp" />
+    <ClCompile Include="Object\GameObjectFactory.cpp" />
+    <ClCompile Include="Object\BuildingType.cpp" />
+    <ClCompile Include="Simulation\RoadGraph.cpp" />
+    <ClCompile Include="Simulation\DijkstraPathfinder.cpp" />
+    <ClCompile Include="Simulation\DemandSystem.cpp" />
+    <ClCompile Include="DebugTools\Profiler.cpp" />
     <ClCompile Include="Object\Transform.cpp" />
+    <ClCompile Include="Field\Field.cpp" />
+    <ClCompile Include="Field\IOccupancyGrid.cpp" />
+    <ClCompile Include="Field\CellOccupancyGrid.cpp" />
+    <ClCompile Include="Field\GridOrientationRegistry.cpp" />
+    <ClCompile Include="Field\BuildController.cpp" />
+    <ClCompile Include="Field\RoadType.cpp" />
+    <ClCompile Include="Simulation\RoadProximity.cpp" />
+    <ClCompile Include="Field\StraightRoadPlacementStrategy.cpp" />
+    <ClCompile Include="Field\CurveRoadPlacementStrategy.cpp" />
+    <ClCompile Include="Field\QuadRoadMeshGenerator.cpp" />
+    <ClCompile Include="Field\RoadMeshBuilder.cpp" />
+    <ClCompile Include="Field\OrientedRectangleOverlap.cpp" />
+    <ClCompile Include="Field\RoadSystem.cpp" />
+    <ClCompile Include="Simulation\RoadNode.cpp" />
+    <ClCompile Include="Simulation\RoadNodeIndex.cpp" />
     <ClCompile Include="Scene\GameScene.cpp" />
     <ClCompile Include="Scene\SceneManager.cpp" />
     <ClCompile Include="Scene\TitleScene.cpp" />
@@ -161,7 +193,10 @@
   <ItemGroup>
     <ClInclude Include="Core\Game.h" />
     <ClInclude Include="Core\GameContext.h" />
+    <ClInclude Include="Core\GameMode.h" />
+    <ClInclude Include="Core\PlacementTool.h" />
     <ClInclude Include="Core\TimeManager.h" />
+    <ClInclude Include="Core\GameClock.h" />
     <ClInclude Include="Core\Window.h" />
     <ClInclude Include="DebugTools\Debug.h" />
     <ClInclude Include="DebugTools\DebugEditor.h" />
@@ -173,6 +208,8 @@
     <ClInclude Include="Graphics\Model.h" />
     <ClInclude Include="Graphics\ObjLoader.h" />
     <ClInclude Include="Graphics\Renderer.h" />
+    <ClInclude Include="Graphics\DayNightCycle.h" />
+    <ClInclude Include="Graphics\LightingState.h" />
     <ClInclude Include="Graphics\Vertex.h" />
     <ClInclude Include="imgui\backends\imgui_impl_dx11.h" />
     <ClInclude Include="imgui\backends\imgui_impl_win32.h" />
@@ -187,9 +224,38 @@
     <ClInclude Include="Input\InputManager.h" />
     <ClInclude Include="Input\KeyCode.h" />
     <ClInclude Include="Math\Collision.h" />
+    <ClInclude Include="Math\GridCoord.h" />
     <ClInclude Include="Math\Ray.h" />
     <ClInclude Include="Object\GameObject.h" />
+    <ClInclude Include="Object\GameObjectFactory.h" />
+    <ClInclude Include="Object\BuildingType.h" />
+    <ClInclude Include="Simulation\RoadGraph.h" />
+    <ClInclude Include="Simulation\IPathfinder.h" />
+    <ClInclude Include="Simulation\DijkstraPathfinder.h" />
+    <ClInclude Include="Simulation\ResidentAgent.h" />
+    <ClInclude Include="Simulation\ResidentSchedule.h" />
+    <ClInclude Include="Simulation\DemandSystem.h" />
+    <ClInclude Include="DebugTools\Profiler.h" />
     <ClInclude Include="Object\Transform.h" />
+    <ClInclude Include="Field\Field.h" />
+    <ClInclude Include="Field\IOccupancyGrid.h" />
+    <ClInclude Include="Field\CellOccupancyGrid.h" />
+    <ClInclude Include="Field\GridOrientationRegistry.h" />
+    <ClInclude Include="Field\BuildController.h" />
+    <ClInclude Include="Field\RoadType.h" />
+    <ClInclude Include="Simulation\RoadProximity.h" />
+    <ClInclude Include="Field\RoadSegment.h" />
+    <ClInclude Include="Field\IRoadPlacementStrategy.h" />
+    <ClInclude Include="Field\StraightRoadPlacementStrategy.h" />
+    <ClInclude Include="Field\CurveRoadPlacementStrategy.h" />
+    <ClInclude Include="Field\RoadDrawMode.h" />
+    <ClInclude Include="Field\IRoadMeshGenerator.h" />
+    <ClInclude Include="Field\QuadRoadMeshGenerator.h" />
+    <ClInclude Include="Field\RoadMeshBuilder.h" />
+    <ClInclude Include="Field\OrientedRectangleOverlap.h" />
+    <ClInclude Include="Field\RoadSystem.h" />
+    <ClInclude Include="Simulation\RoadNode.h" />
+    <ClInclude Include="Simulation\RoadNodeIndex.h" />
     <ClInclude Include="Scene\GameScene.h" />
     <ClInclude Include="Scene\Scene.h" />
     <ClInclude Include="Scene\SceneManager.h" />
@@ -204,6 +270,9 @@
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
       <FileType>Document</FileType>
     </None>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Lighting.hlsli" />
   </ItemGroup>
   <ItemGroup>
     <None Include="DebugLineShader.hlsl">

@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 #include <d3d11.h>
 #include <wrl/client.h>
 #include <string>
@@ -21,7 +21,7 @@ public:
 
 private:
     std::string m_texturePath;
-    // ComPtr‚ªRelease‚ğ©“®‚Ås‚Á‚Ä‚­‚ê‚é
-    // ‚»‚Ì‚½‚ßAƒfƒXƒgƒ‰ƒNƒ^‚Åè“®Release‚·‚é•K—v‚ª‚È‚­‚È‚é
+    // ComPtrãŒReleaseã‚’è‡ªå‹•ã§è¡Œã£ã¦ãã‚Œã‚‹
+    // ãã®ãŸã‚ã€ãƒ‡ã‚¹ãƒˆãƒ©ã‚¯ã‚¿ã§æ‰‹å‹•Releaseã™ã‚‹å¿…è¦ãŒãªããªã‚‹
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_textureView;
 };

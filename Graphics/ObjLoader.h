@@ -1,14 +1,15 @@
-#pragma once
+ï»¿#pragma once
 #include <vector>
 #include <string>
+#include <unordered_map>
 #include <DirectXMath.h>
 
 struct ObjVertex
 {
-    float x, y, z;        // ˆÊ’u
-    float nx, ny, nz;     // –@ü
+    float x, y, z;        // ä½ç½®
+    float nx, ny, nz;     // æ³•ç·š
     float u, v;           // UV
-    float r, g, b, a;     // FiŠm”F—p‚Éc‚µ‚Ä‚à‚æ‚¢j
+    float r, g, b, a;     // è‰²ï¼ˆç¢ºèªç”¨ã«æ®‹ã—ã¦ã‚‚ã‚ˆã„ï¼‰
 };
 
 struct ObjIndex
@@ -30,12 +31,13 @@ public:
     DirectX::XMFLOAT3& outBoundsMax
 );
 private:
-    //static int ParseVertexIndex(const std::string& token);//Å‰À•W‚¾‚¯‚ğ“Ç‚İ‚Ş‚½‚ß‚Éì‚Á‚½‰¼ŠÖ”i‚ ‚Æ‚Åíœj
+    //static int ParseVertexIndex(const std::string& token);//æœ€åˆåº§æ¨™ã ã‘ã‚’èª­ã¿è¾¼ã‚€ãŸã‚ã«ä½œã£ãŸä»®é–¢æ•°ï¼ˆã‚ã¨ã§å‰Šé™¤ï¼‰
     static ObjIndex ParseFaceToken(const std::string& token);
-    //mtl‚ğ“Ç‚İ‚Ş
+    //mtlã‚’èª­ã¿è¾¼ã‚€(map_Kdã®ãƒ†ã‚¯ã‚¹ãƒãƒ£ãƒ‘ã‚¹ã«åŠ ãˆã€newmtlã”ã¨ã®Kd(æ‹¡æ•£è‰²)ã‚‚é›†ã‚ã‚‹)
     static bool LoadMtl(
         const std::string& mtlPath,
         const std::string& directory,
-        std::string& outTexturePath
+        std::string& outTexturePath,
+        std::unordered_map<std::string, DirectX::XMFLOAT3>& outMaterialColors
     );
 };

@@ -1,4 +1,4 @@
-#include"DebugRenderer.h"
+ï»¿#include"DebugRenderer.h"
 #include "Camera.h"
 #include "Debug.h"
 
@@ -43,15 +43,15 @@ bool DebugRenderer::Initialize(
     Microsoft::WRL::ComPtr<ID3DBlob> psBlob;
     Microsoft::WRL::ComPtr<ID3DBlob> errorBlob;
     // =========================
-    // VertexShader ƒRƒ“ƒpƒCƒ‹
+    // VertexShader ã‚³ãƒ³ãƒ‘ã‚¤ãƒ«
     // =========================
-    // DebugLineShader.hlsl ‚Ì
-    // VSMain ŠÖ”‚ğ VertexShader ‚Æ‚µ‚ÄƒRƒ“ƒpƒCƒ‹
+    // DebugLineShader.hlsl ã®
+    // VSMain é–¢æ•°ã‚’ VertexShader ã¨ã—ã¦ã‚³ãƒ³ãƒ‘ã‚¤ãƒ«
     HRESULT hr = D3DCompileFromFile(
-        L"DebugLineShader.hlsl",          // HLSLƒtƒ@ƒCƒ‹
+        L"DebugLineShader.hlsl",          // HLSLãƒ•ã‚¡ã‚¤ãƒ«
         nullptr,
         D3D_COMPILE_STANDARD_FILE_INCLUDE,
-        "VSMain",                         // ƒGƒ“ƒgƒŠ[ƒ|ƒCƒ“ƒg
+        "VSMain",                         // ã‚¨ãƒ³ãƒˆãƒªãƒ¼ãƒã‚¤ãƒ³ãƒˆ
         "vs_5_0",                         // ShaderModel
         0,
         0,
@@ -59,10 +59,10 @@ bool DebugRenderer::Initialize(
         errorBlob.GetAddressOf()
     );
 
-    // ƒRƒ“ƒpƒCƒ‹¸”s
+    // ã‚³ãƒ³ãƒ‘ã‚¤ãƒ«å¤±æ•—
     if (FAILED(hr))
     {
-        // HLSLƒGƒ‰[“à—eo—Í
+        // HLSLã‚¨ãƒ©ãƒ¼å†…å®¹å‡ºåŠ›
         if (errorBlob)
         {
             Debug::Error(
@@ -74,10 +74,10 @@ bool DebugRenderer::Initialize(
     }
 
     // =========================
-    // PixelShader ƒRƒ“ƒpƒCƒ‹
+    // PixelShader ã‚³ãƒ³ãƒ‘ã‚¤ãƒ«
     // =========================
-    // DebugLineShader.hlsl ‚Ì
-    // PSMain ŠÖ”‚ğ PixelShader ‚Æ‚µ‚ÄƒRƒ“ƒpƒCƒ‹
+    // DebugLineShader.hlsl ã®
+    // PSMain é–¢æ•°ã‚’ PixelShader ã¨ã—ã¦ã‚³ãƒ³ãƒ‘ã‚¤ãƒ«
     hr = D3DCompileFromFile(
         L"DebugLineShader.hlsl",
         nullptr,
@@ -90,7 +90,7 @@ bool DebugRenderer::Initialize(
         errorBlob.GetAddressOf()
     );
 
-    // ƒRƒ“ƒpƒCƒ‹¸”s
+    // ã‚³ãƒ³ãƒ‘ã‚¤ãƒ«å¤±æ•—
     if (FAILED(hr))
     {
         if (errorBlob)
@@ -104,10 +104,10 @@ bool DebugRenderer::Initialize(
     }
 
     // =========================
-    // VertexShader ì¬
+    // VertexShader ä½œæˆ
     // =========================
-    // ƒRƒ“ƒpƒCƒ‹Ï‚İƒoƒCƒiƒŠ‚©‚ç
-    // GPU—p VertexShader ‚ğ¶¬
+    // ã‚³ãƒ³ãƒ‘ã‚¤ãƒ«æ¸ˆã¿ãƒã‚¤ãƒŠãƒªã‹ã‚‰
+    // GPUç”¨ VertexShader ã‚’ç”Ÿæˆ
     hr = m_device->CreateVertexShader(
         vsBlob->GetBufferPointer(),
         vsBlob->GetBufferSize(),
@@ -121,10 +121,10 @@ bool DebugRenderer::Initialize(
     }
 
     // =========================
-    // PixelShader ì¬
+    // PixelShader ä½œæˆ
     // =========================
-    // ƒRƒ“ƒpƒCƒ‹Ï‚İƒoƒCƒiƒŠ‚©‚ç
-    // GPU—p PixelShader ‚ğ¶¬
+    // ã‚³ãƒ³ãƒ‘ã‚¤ãƒ«æ¸ˆã¿ãƒã‚¤ãƒŠãƒªã‹ã‚‰
+    // GPUç”¨ PixelShader ã‚’ç”Ÿæˆ
     hr = m_device->CreatePixelShader(
         psBlob->GetBufferPointer(),
         psBlob->GetBufferSize(),
@@ -138,18 +138,18 @@ bool DebugRenderer::Initialize(
     }
 
     // =========================
-    // InputLayout ì¬
+    // InputLayout ä½œæˆ
     // =========================
-    // DebugLineVertex ‚Ì\‘¢‚Æ
-    // DebugLineShader.hlsl ‚Ì VSInput ‚ğ‘Î‰‚³‚¹‚é
+    // DebugLineVertex ã®æ§‹é€ ã¨
+    // DebugLineShader.hlsl ã® VSInput ã‚’å¯¾å¿œã•ã›ã‚‹
     D3D11_INPUT_ELEMENT_DESC layout[] =
     {
         {
-            "POSITION",                         // HLSL‘¤‚ÌƒZƒ}ƒ“ƒeƒBƒNƒX
+            "POSITION",                         // HLSLå´ã®ã‚»ãƒãƒ³ãƒ†ã‚£ã‚¯ã‚¹
             0,
             DXGI_FORMAT_R32G32B32_FLOAT,        // float3
             0,
-            0,                                  // DebugLineVertex::position ‚ÌˆÊ’u
+            0,                                  // DebugLineVertex::position ã®ä½ç½®
             D3D11_INPUT_PER_VERTEX_DATA,
             0
         },
@@ -158,7 +158,7 @@ bool DebugRenderer::Initialize(
             0,
             DXGI_FORMAT_R32G32B32A32_FLOAT,     // float4
             0,
-            sizeof(DirectX::XMFLOAT3),          // position ‚Ì’¼Œã
+            sizeof(DirectX::XMFLOAT3),          // position ã®ç›´å¾Œ
             D3D11_INPUT_PER_VERTEX_DATA,
             0
         }
@@ -179,9 +179,9 @@ bool DebugRenderer::Initialize(
     }
 
     // =========================
-    // ConstantBuffer ì¬
+    // ConstantBuffer ä½œæˆ
     // =========================
-    // ViewProjection s—ñ‚ğ VertexShader ‚É‘—‚é‚½‚ß‚Ìƒoƒbƒtƒ@
+    // ViewProjection è¡Œåˆ—ã‚’ VertexShader ã«é€ã‚‹ãŸã‚ã®ãƒãƒƒãƒ•ã‚¡
     D3D11_BUFFER_DESC cbDesc = {};
     cbDesc.Usage = D3D11_USAGE_DEFAULT;
     cbDesc.ByteWidth = sizeof(DebugConstantBuffer);
@@ -202,10 +202,10 @@ bool DebugRenderer::Initialize(
         return false;
     }
     // =========================
-// DepthStencilState ì¬
+// DepthStencilState ä½œæˆ
 // =========================
 
-// Depth—LŒø
+// Depthæœ‰åŠ¹
     D3D11_DEPTH_STENCIL_DESC depthEnableDesc = {};
     depthEnableDesc.DepthEnable = TRUE;
     depthEnableDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
@@ -223,7 +223,7 @@ bool DebugRenderer::Initialize(
         return false;
     }
 
-    // Depth–³Œø
+    // Depthç„¡åŠ¹
     D3D11_DEPTH_STENCIL_DESC depthDisableDesc = {};
     depthDisableDesc.DepthEnable = FALSE;
     depthDisableDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
@@ -263,7 +263,7 @@ void DebugRenderer::AddOBB(
 {
     using namespace DirectX;
 
-    // ƒ[ƒJƒ‹‹óŠÔ‚Ì8’¸“_
+    // ãƒ­ãƒ¼ã‚«ãƒ«ç©ºé–“ã®8é ‚ç‚¹
     XMFLOAT3 localCorners[8] =
     {
         { localMin.x, localMin.y, localMin.z },
@@ -279,7 +279,7 @@ void DebugRenderer::AddOBB(
 
     XMFLOAT3 worldCorners[8];
 
-    // ƒ[ƒJƒ‹ ¨ ƒ[ƒ‹ƒh•ÏŠ·
+    // ãƒ­ãƒ¼ã‚«ãƒ« â†’ ãƒ¯ãƒ¼ãƒ«ãƒ‰å¤‰æ›
     for (int i = 0; i < 8; ++i)
     {
         XMVECTOR p = XMLoadFloat3(&localCorners[i]);
@@ -287,7 +287,7 @@ void DebugRenderer::AddOBB(
         XMStoreFloat3(&worldCorners[i], p);
     }
 
-    // ” ‚Ì12•Ó
+    // ç®±ã®12è¾º
     int edges[12][2] =
     {
         {0,1}, {1,2}, {2,3}, {3,0},
@@ -295,7 +295,7 @@ void DebugRenderer::AddOBB(
         {0,4}, {1,5}, {2,6}, {3,7}
     };
 
-    // 12–{‚Ìü‚ğ’Ç‰Á
+    // 12æœ¬ã®ç·šã‚’è¿½åŠ 
     for (int i = 0; i < 12; ++i)
     {
         AddLine(
@@ -314,7 +314,7 @@ void DebugRenderer::Flush(const Camera& camera)
     }
 
     // =========================
-    // ’¸“_ƒoƒbƒtƒ@ì¬
+    // é ‚ç‚¹ãƒãƒƒãƒ•ã‚¡ä½œæˆ
     // =========================
     D3D11_BUFFER_DESC vbDesc = {};
     vbDesc.Usage = D3D11_USAGE_DEFAULT;
@@ -341,7 +341,7 @@ void DebugRenderer::Flush(const Camera& camera)
     }
 
     // =========================
-    // ViewProjectionXV
+    // ViewProjectionæ›´æ–°
     // =========================
     DebugConstantBuffer cb{};
     cb.viewProjection =
@@ -360,7 +360,7 @@ void DebugRenderer::Flush(const Camera& camera)
     );
 
     // =========================
-    // •`‰æİ’è
+    // æç”»è¨­å®š
     // =========================
     UINT stride = sizeof(DebugLineVertex);
     UINT offset = 0;
@@ -402,7 +402,7 @@ void DebugRenderer::Flush(const Camera& camera)
     );
 
     // =========================
-    // ü•`‰æ
+    // ç·šæç”»
     // =========================
     m_context->OMSetDepthStencilState(
         m_depthDisableState.Get(),

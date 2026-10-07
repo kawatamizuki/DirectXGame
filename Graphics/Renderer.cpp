@@ -17,12 +17,28 @@ using namespace DirectX;
 struct ConstantBuffer
 {
     XMMATRIX WVP;
+    XMMATRIX World; // 法線をワールド空間へ変換するために使う。HLSL側ConstantBufferと対応
+};
+
+// ピクセルシェーダー(Lighting.hlsliのLightBuffer、register b2)に渡す光の状態。
+// float3の後ろのfloatは16バイト境界に合わせる詰め物(HLSL側と同じ並び)。
+struct LightBuffer
+{
+    XMFLOAT3 directionToLight;
+    float pad0;
+    XMFLOAT3 lightColor;
+    float pad1;
+    XMFLOAT3 ambientSky;
+    float pad2;
+    XMFLOAT3 ambientGround;
+    float pad3;
 };
 
 struct MaterialBuffer
 {
     int hasTexture;
-    float padding[3];
+    float alpha;     // 半透明合成用の不透明度(1.0=不透明)。HLSL側MaterialBufferと対応
+    float padding[2];
 };
 
 
@@ -294,12 +310,13 @@ bool Renderer::Initialize(HWND hwnd)
             OutputDebugStringA(
                 static_cast<char*>(errorBlob->GetBufferPointer())
             );
+            Debug::Error(static_cast<char*>(errorBlob->GetBufferPointer()));
         }
 
         return false;
     }
 
-  
+
 
     // ピクセルシェーダーをコンパイル
     hr = D3DCompileFromFile(
@@ -324,6 +341,7 @@ bool Renderer::Initialize(HWND hwnd)
             OutputDebugStringA(
                 static_cast<const char*>(errorBlob->GetBufferPointer())
             );
+            Debug::Error(static_cast<const char*>(errorBlob->GetBufferPointer()));
         }
 
         return false;
@@ -369,6 +387,19 @@ bool Renderer::Initialize(HWND hwnd)
     if (FAILED(hr))
     {
         Debug::Error("CreateBuffer for MaterialBuffer failed");
+        return false;
+    }
+
+    // 光の状態用の定数バッファ(ピクセルシェーダーのregister b2)。毎フレームBeginFrameで更新する。
+    D3D11_BUFFER_DESC lightCbDesc = {};
+    lightCbDesc.Usage = D3D11_USAGE_DEFAULT;
+    lightCbDesc.ByteWidth = sizeof(LightBuffer);
+    lightCbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+
+    hr = m_device->CreateBuffer(&lightCbDesc, nullptr, m_lightBuffer.GetAddressOf());
+    if (FAILED(hr))
+    {
+        Debug::Error("CreateBuffer for LightBuffer failed");
         return false;
     }
 
@@ -444,8 +475,41 @@ bool Renderer::Initialize(HWND hwnd)
     //========================================
     // 10. OBJモデル用の頂点バッファを作る（移行済み）
     //========================================
-    
-   
+
+
+    //========================================
+    // 11. ブレンドステートを作成する(半透明合成用)
+    //========================================
+    // SrcAlpha/InvSrcAlphaの標準的なアルファブレンド。
+    // alpha=1.0の時は不透明描画と結果が一致するため、常時これ1つをバインドしておけば
+    // 不透明/半透明で切り替える必要が無い(配置プレビューのゴースト表示などで使う)。
+    D3D11_BLEND_DESC blendDesc = {};
+
+    D3D11_RENDER_TARGET_BLEND_DESC rtBlendDesc = {};
+    rtBlendDesc.BlendEnable = TRUE;
+    rtBlendDesc.SrcBlend = D3D11_BLEND_SRC_ALPHA;
+    rtBlendDesc.DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+    rtBlendDesc.BlendOp = D3D11_BLEND_OP_ADD;
+    rtBlendDesc.SrcBlendAlpha = D3D11_BLEND_ONE;
+    rtBlendDesc.DestBlendAlpha = D3D11_BLEND_ZERO;
+    rtBlendDesc.BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    rtBlendDesc.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+
+    // IndependentBlendEnable=FALSEなら実際に使われるのはRenderTarget[0]だけだが、
+    // デバッグレイヤーがRenderTarget[1]以降の未設定(ゼロ=不正な列挙値)を検証エラーにする
+    // ことがあるため、8スロット全てに同じ設定を入れておく。
+    for (UINT i = 0; i < D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT; ++i)
+    {
+        blendDesc.RenderTarget[i] = rtBlendDesc;
+    }
+
+    hr = m_device->CreateBlendState(&blendDesc, m_blendState.GetAddressOf());
+    if (FAILED(hr))
+    {
+        Debug::Error("CreateBlendState failed");
+        return false;
+    }
+
     Debug::Info("Renderer initialized successfully");
 
     return true;
@@ -453,11 +517,31 @@ bool Renderer::Initialize(HWND hwnd)
    
 }
 
+void Renderer::SetLighting(const LightingState& lighting)
+{
+    m_lighting = lighting;
+}
+
 void Renderer::BeginFrame()
 {
     // 画面を消すときの色を指定する
    // { 赤, 緑, 青, アルファ } の順
-    float clearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    // 空の色は光の状態(昼夜サイクルなど)から決まる。後で実背景(空のテクスチャなど)に
+    // 差し替える場合も、この画面クリアの部分だけを置き換えればよい。
+    float clearColor[4] = { m_lighting.skyColor.x, m_lighting.skyColor.y, m_lighting.skyColor.z, 1.0f };
+
+    // 光の状態をピクセルシェーダーへ送る(フレーム中は変わらないのでここで1回だけ更新する)。
+    {
+        LightBuffer lightBuffer{};
+        lightBuffer.directionToLight = m_lighting.directionToLight;
+        lightBuffer.lightColor = m_lighting.lightColor;
+        lightBuffer.ambientSky = m_lighting.ambientSky;
+        lightBuffer.ambientGround = m_lighting.ambientGround;
+        m_context->UpdateSubresource(m_lightBuffer.Get(), 0, nullptr, &lightBuffer, 0, 0);
+
+        ID3D11Buffer* lightConstantBuffer = m_lightBuffer.Get();
+        m_context->PSSetConstantBuffers(2, 1, &lightConstantBuffer);
+    }
 
     D3D11_VIEWPORT vp = {};
     vp.Width = static_cast<float>(m_windowWidth);
@@ -482,6 +566,9 @@ void Renderer::BeginFrame()
     // 深度テストのルールをGPUに設定する
     // 例: 手前のピクセルだけ描画する
     m_context->OMSetDepthStencilState(m_depthStencilState.Get(), 0);
+
+    // 半透明合成のルールをGPUに設定する(alpha=1.0なら不透明描画と同じ結果になる)
+    m_context->OMSetBlendState(m_blendState.Get(), nullptr, 0xFFFFFFFF);
 
     // 画面全体を clearColor で塗りつぶして初期化する
     // 前のフレームの絵が残らないようにする
@@ -736,6 +823,7 @@ void Renderer::DrawTriangle()
     //========================================
     ConstantBuffer cb{};
     cb.WVP = XMMatrixTranspose(wvp);// HLSL用に転置
+    cb.World = XMMatrixTranspose(world);
 
     // GPUにデータ送信
     m_context->UpdateSubresource(m_constantBuffer.Get(), 0, nullptr, &cb, 0, 0);
@@ -756,7 +844,7 @@ void Renderer::DrawTriangle()
 }
 
 
-void Renderer::DrawModel(const Model& model, const Transform& transform, const Camera& camera)
+void Renderer::DrawModel(const Model& model, const Transform& transform, const Camera& camera, float alpha)
 {
 
     //========================================
@@ -833,6 +921,7 @@ void Renderer::DrawModel(const Model& model, const Transform& transform, const C
 
     MaterialBuffer materialBuffer{};
     materialBuffer.hasTexture = material.HasTexture() ? 1 : 0;
+    materialBuffer.alpha = alpha;
 
 
     // hasTexture:
@@ -965,6 +1054,7 @@ void Renderer::DrawModel(const Model& model, const Transform& transform, const C
 
     ConstantBuffer cb{};
     cb.WVP = XMMatrixTranspose(wvp);
+    cb.World = XMMatrixTranspose(world);
 
     m_context->UpdateSubresource(m_constantBuffer.Get(), 0, nullptr, &cb, 0, 0);
     ID3D11Buffer* constantBuffer = m_constantBuffer.Get();
@@ -1002,6 +1092,7 @@ void Renderer::Finalize()
     }
 
     m_triangleVertexBuffer.Reset();
+    m_lightBuffer.Reset();
     m_materialBuffer.Reset();
     m_constantBuffer.Reset();
     m_samplerState.Reset();
@@ -1009,6 +1100,7 @@ void Renderer::Finalize()
     m_pixelShader.Reset();
     m_vertexShader.Reset();
     m_depthStencilState.Reset();
+    m_blendState.Reset();
     m_depthStencilView.Reset();
     m_depthStencilBuffer.Reset();
     m_renderTargetView.Reset();

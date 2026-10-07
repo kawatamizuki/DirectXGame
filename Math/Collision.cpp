@@ -1,4 +1,4 @@
-#include <cfloat>
+ï»¿#include <cfloat>
 #include <cmath>
 #include <algorithm>
 #include "Collision.h"
@@ -6,11 +6,11 @@
 
 using namespace DirectX;
 
-// Ray ‚Æ Sphere ‚Ì“–‚½‚è”»’è
-// ray        : ”»’è‚Ég‚¤Ray
-// center     : Sphere’†SÀ•W
-// radius     : Sphere”¼Œa
-// distance   : Rayn“_‚©‚çHitˆÊ’u‚Ü‚Å‚Ì‹——£
+// Ray ã¨ Sphere ã®å½“ãŸã‚Šåˆ¤å®š
+// ray        : åˆ¤å®šã«ä½¿ã†Ray
+// center     : Sphereä¸­å¿ƒåº§æ¨™
+// radius     : SphereåŠå¾„
+// distance   : Rayå§‹ç‚¹ã‹ã‚‰Hitä½ç½®ã¾ã§ã®è·é›¢
 bool IntersectRaySphere(
     const Ray& ray,
     const DirectX::XMFLOAT3& center,
@@ -18,54 +18,54 @@ bool IntersectRaySphere(
     float& distance
 )
 {
-    // Rayn“_
+    // Rayå§‹ç‚¹
     XMVECTOR rayOrigin =
         XMLoadFloat3(&ray.origin);
 
-    // Ray•ûŒüƒxƒNƒgƒ‹
+    // Rayæ–¹å‘ãƒ™ã‚¯ãƒˆãƒ«
     XMVECTOR rayDir =
         XMLoadFloat3(&ray.direction);
 
-    // Sphere’†S
+    // Sphereä¸­å¿ƒ
     XMVECTOR sphereCenter =
         XMLoadFloat3(&center);
 
-    // Rayn“_ ¨ Sphere’†S‚Ö‚ÌƒxƒNƒgƒ‹
+    // Rayå§‹ç‚¹ â†’ Sphereä¸­å¿ƒã¸ã®ãƒ™ã‚¯ãƒˆãƒ«
     XMVECTOR toSphere =
         sphereCenter - rayOrigin;
 
     float projection;
 
-    // Sphere•ûŒüƒxƒNƒgƒ‹‚ğRay•ûŒü‚ÖË‰e
-    // Rayã‚ÅÅ‚àSphere’†S‚Ö‹ß‚¢ˆÊ’u‚ğ‹‚ß‚é‚½‚ß‚Ég—p
+    // Sphereæ–¹å‘ãƒ™ã‚¯ãƒˆãƒ«ã‚’Rayæ–¹å‘ã¸å°„å½±
+    // Rayä¸Šã§æœ€ã‚‚Sphereä¸­å¿ƒã¸è¿‘ã„ä½ç½®ã‚’æ±‚ã‚ã‚‹ãŸã‚ã«ä½¿ç”¨
     XMStoreFloat(
         &projection,
         XMVector3Dot(toSphere, rayDir)
     );
 
-    // Sphere‚ªRay‚ÌŒã•û‚É‚ ‚éê‡
+    // SphereãŒRayã®å¾Œæ–¹ã«ã‚ã‚‹å ´åˆ
     if (projection < 0.0f)
     {
         return false;
     }
 
-    // Rayã‚ÌÅ‹ßÚ“_
+    // Rayä¸Šã®æœ€è¿‘æ¥ç‚¹
     XMVECTOR closestPoint =
         rayOrigin + rayDir * projection;
 
-    // Sphere’†S‚ÆÅ‹ßÚ“_‚Ì·•ª
+    // Sphereä¸­å¿ƒã¨æœ€è¿‘æ¥ç‚¹ã®å·®åˆ†
     XMVECTOR distanceVec =
         sphereCenter - closestPoint;
 
     float distanceSq;
 
-    // Å‹ßÚ“_‚ÆSphere’†S‚Ì‹——£?
+    // æœ€è¿‘æ¥ç‚¹ã¨Sphereä¸­å¿ƒã®è·é›¢?
     XMStoreFloat(
         &distanceSq,
         XMVector3LengthSq(distanceVec)
     );
 
-    // Sphere”¼ŒaˆÈ“à‚È‚çHit
+    // SphereåŠå¾„ä»¥å†…ãªã‚‰Hit
     if (distanceSq <= radius * radius)
     {
         distance = projection;
@@ -75,23 +75,23 @@ bool IntersectRaySphere(
     return false;
 }
 
-// Ray ‚Æ AABB(Axis Aligned Bounding Box) ‚Ì“–‚½‚è”»’è
-// min        : BoxÅ¬À•W
-// max        : BoxÅ‘åÀ•W
-// distance   : Rayn“_‚©‚çHitˆÊ’u‚Ü‚Å‚Ì‹——£
+// Ray ã¨ AABB(Axis Aligned Bounding Box) ã®å½“ãŸã‚Šåˆ¤å®š
+// min        : Boxæœ€å°åº§æ¨™
+// max        : Boxæœ€å¤§åº§æ¨™
+// distance   : Rayå§‹ç‚¹ã‹ã‚‰Hitä½ç½®ã¾ã§ã®è·é›¢
 bool IntersectRayAABB(
     const Ray& ray,
     const DirectX::XMFLOAT3& min,
     const DirectX::XMFLOAT3& max,
     float& distance)
 {
-    // Ray‚ªBox‚Ö“ü‚é‹——£
+    // RayãŒBoxã¸å…¥ã‚‹è·é›¢
     float tMin = 0.0f;
 
-    // Ray‚ªBox‚©‚ço‚é‹——£
+    // RayãŒBoxã‹ã‚‰å‡ºã‚‹è·é›¢
     float tMax = FLT_MAX;
 
-    // Rayn“_
+    // Rayå§‹ç‚¹
     const float origin[3] =
     {
         ray.origin.x,
@@ -99,7 +99,7 @@ bool IntersectRayAABB(
         ray.origin.z
     };
 
-    // Ray•ûŒü
+    // Rayæ–¹å‘
     const float dir[3] =
     {
         ray.direction.x,
@@ -107,7 +107,7 @@ bool IntersectRayAABB(
         ray.direction.z
     };
 
-    // BoxÅ¬À•W
+    // Boxæœ€å°åº§æ¨™
     const float boxMin[3] =
     {
         min.x,
@@ -115,7 +115,7 @@ bool IntersectRayAABB(
         min.z
     };
 
-    // BoxÅ‘åÀ•W
+    // Boxæœ€å¤§åº§æ¨™
     const float boxMax[3] =
     {
         max.x,
@@ -123,13 +123,13 @@ bool IntersectRayAABB(
         max.z
     };
 
-    // XYZ²‚²‚Æ‚É”»’è
+    // XYZè»¸ã”ã¨ã«åˆ¤å®š
     for (int i = 0; i < 3; ++i)
     {
-        // Ray‚ª²‚É‚Ù‚Ú•½s‚Èê‡
+        // RayãŒè»¸ã«ã»ã¼å¹³è¡Œãªå ´åˆ
         if (fabsf(dir[i]) < 0.0001f)
         {
-            // Box”ÍˆÍŠO‚È‚çHit‚µ‚È‚¢
+            // Boxç¯„å›²å¤–ãªã‚‰Hitã—ãªã„
             if (origin[i] < boxMin[i] ||
                 origin[i] > boxMax[i])
             {
@@ -138,26 +138,26 @@ bool IntersectRayAABB(
         }
         else
         {
-            // ‹t”‚ğg‚Á‚ÄœZ‰ñ”‚ğŒ¸‚ç‚·
+            // é€†æ•°ã‚’ä½¿ã£ã¦é™¤ç®—å›æ•°ã‚’æ¸›ã‚‰ã™
             float invDir = 1.0f / dir[i];
 
-            // Box–Ê‚Æ‚ÌŒğ·‹——£
+            // Boxé¢ã¨ã®äº¤å·®è·é›¢
             float t1 = (boxMin[i] - origin[i]) * invDir;
             float t2 = (boxMax[i] - origin[i]) * invDir;
 
-            // t1 ‚ª‹ß‚¢‘¤‚É‚È‚é‚æ‚¤“ü‚ê‘Ö‚¦
+            // t1 ãŒè¿‘ã„å´ã«ãªã‚‹ã‚ˆã†å…¥ã‚Œæ›¿ãˆ
             if (t1 > t2)
             {
                 std::swap(t1, t2);
             }
 
-            // Box‚Ö“ü‚é‹——£‚ğXV
+            // Boxã¸å…¥ã‚‹è·é›¢ã‚’æ›´æ–°
             tMin = std::max(tMin, t1);
 
-            // Box‚©‚ço‚é‹——£‚ğXV
+            // Boxã‹ã‚‰å‡ºã‚‹è·é›¢ã‚’æ›´æ–°
             tMax = std::min(tMax, t2);
 
-            // “ü‚é‘O‚Éo‚Ä‚µ‚Ü‚¤‚È‚çHit‚µ‚È‚¢
+            // å…¥ã‚‹å‰ã«å‡ºã¦ã—ã¾ã†ãªã‚‰Hitã—ãªã„
             if (tMin > tMax)
             {
                 return false;
@@ -165,18 +165,18 @@ bool IntersectRayAABB(
         }
     }
 
-    // Å‰‚ÉHit‚µ‚½‹——£
+    // æœ€åˆã«Hitã—ãŸè·é›¢
     distance = tMin;
 
     return true;
 }
 
-// Ray ‚Æ OBB(Oriented Bounding Box) ‚Ì“–‚½‚è”»’è
-// worldRay   : ƒ[ƒ‹ƒh‹óŠÔ‚ÌRay
-// transform  : Object‚ÌTransform
-// localMin   : ƒ[ƒJƒ‹‹óŠÔBoxÅ¬À•W
-// localMax   : ƒ[ƒJƒ‹‹óŠÔBoxÅ‘åÀ•W
-// distance   : Rayn“_‚©‚çHitˆÊ’u‚Ü‚Å‚Ì‹——£
+// Ray ã¨ OBB(Oriented Bounding Box) ã®å½“ãŸã‚Šåˆ¤å®š
+// worldRay   : ãƒ¯ãƒ¼ãƒ«ãƒ‰ç©ºé–“ã®Ray
+// transform  : Objectã®Transform
+// localMin   : ãƒ­ãƒ¼ã‚«ãƒ«ç©ºé–“Boxæœ€å°åº§æ¨™
+// localMax   : ãƒ­ãƒ¼ã‚«ãƒ«ç©ºé–“Boxæœ€å¤§åº§æ¨™
+// distance   : Rayå§‹ç‚¹ã‹ã‚‰Hitä½ç½®ã¾ã§ã®è·é›¢
 bool IntersectRayOBB(
     const Ray& worldRay,
     const Transform& transform,
@@ -186,43 +186,43 @@ bool IntersectRayOBB(
 {
     using namespace DirectX;
 
-    // Object‚ÌWorlds—ñ
+    // Objectã®Worldè¡Œåˆ—
     XMMATRIX world =
         transform.GetWorldMatrix();
 
-    // Worlds—ñ‚Ì‹ts—ñ
-    // ƒ[ƒ‹ƒh‹óŠÔ ¨ ƒ[ƒJƒ‹‹óŠÔ‚Ö•ÏŠ·‚·‚é‚½‚ß‚Ég—p
+    // Worldè¡Œåˆ—ã®é€†è¡Œåˆ—
+    // ãƒ¯ãƒ¼ãƒ«ãƒ‰ç©ºé–“ â†’ ãƒ­ãƒ¼ã‚«ãƒ«ç©ºé–“ã¸å¤‰æ›ã™ã‚‹ãŸã‚ã«ä½¿ç”¨
     XMMATRIX invWorld =
         XMMatrixInverse(nullptr, world);
 
-    // ƒ[ƒ‹ƒh‹óŠÔRayn“_
+    // ãƒ¯ãƒ¼ãƒ«ãƒ‰ç©ºé–“Rayå§‹ç‚¹
     XMVECTOR worldOrigin =
         XMLoadFloat3(&worldRay.origin);
 
-    // ƒ[ƒ‹ƒh‹óŠÔRay•ûŒü
+    // ãƒ¯ãƒ¼ãƒ«ãƒ‰ç©ºé–“Rayæ–¹å‘
     XMVECTOR worldDirection =
         XMLoadFloat3(&worldRay.direction);
 
-    // Rayn“_‚ğƒ[ƒJƒ‹‹óŠÔ‚Ö•ÏŠ·
+    // Rayå§‹ç‚¹ã‚’ãƒ­ãƒ¼ã‚«ãƒ«ç©ºé–“ã¸å¤‰æ›
     XMVECTOR localOrigin =
         XMVector3TransformCoord(
             worldOrigin,
             invWorld
         );
 
-    // Ray•ûŒü‚ğƒ[ƒJƒ‹‹óŠÔ‚Ö•ÏŠ·
-    // direction‚È‚Ì‚ÅTransformNormal‚ğg—p
+    // Rayæ–¹å‘ã‚’ãƒ­ãƒ¼ã‚«ãƒ«ç©ºé–“ã¸å¤‰æ›
+    // directionãªã®ã§TransformNormalã‚’ä½¿ç”¨
     XMVECTOR localDirection =
         XMVector3TransformNormal(
             worldDirection,
             invWorld
         );
 
-    // •ûŒüƒxƒNƒgƒ‹‚ğ³‹K‰»
+    // æ–¹å‘ãƒ™ã‚¯ãƒˆãƒ«ã‚’æ­£è¦åŒ–
     localDirection =
         XMVector3Normalize(localDirection);
 
-    // ƒ[ƒJƒ‹‹óŠÔRayì¬
+    // ãƒ­ãƒ¼ã‚«ãƒ«ç©ºé–“Rayä½œæˆ
     Ray localRay;
 
     XMStoreFloat3(
@@ -235,12 +235,84 @@ bool IntersectRayOBB(
         localDirection
     );
 
-    // ƒ[ƒJƒ‹‹óŠÔAABB”»’è
-    // OBB”»’è‚Ì–{‘Ì
+    // ãƒ­ãƒ¼ã‚«ãƒ«ç©ºé–“AABBåˆ¤å®š
+    // OBBåˆ¤å®šã®æœ¬ä½“
     return IntersectRayAABB(
         localRay,
         localMin,
         localMax,
         distance
     );
+}
+
+// Ray ã¨ å¹³é¢ã®å½“ãŸã‚Šåˆ¤å®š
+// planePoint  : å¹³é¢ä¸Šã®1ç‚¹
+// planeNormal : å¹³é¢æ³•ç·š
+// hitPoint    : Hitä½ç½®(ãƒ¯ãƒ¼ãƒ«ãƒ‰åº§æ¨™)
+bool IntersectRayPlane(
+    const Ray& ray,
+    const DirectX::XMFLOAT3& planePoint,
+    const DirectX::XMFLOAT3& planeNormal,
+    DirectX::XMFLOAT3& hitPoint)
+{
+    // Rayæƒ…å ±
+    XMVECTOR rayOrigin =
+        XMLoadFloat3(&ray.origin);
+
+    XMVECTOR rayDir =
+        XMLoadFloat3(&ray.direction);
+
+    // å¹³é¢ä¸Šã®1ç‚¹
+    XMVECTOR point =
+        XMLoadFloat3(&planePoint);
+
+    // å¹³é¢æ³•ç·š
+    XMVECTOR normal =
+        XMLoadFloat3(&planeNormal);
+
+    normal =
+        XMVector3Normalize(normal);
+
+    // Rayæ–¹å‘ã¨æ³•ç·šã®å†…ç©
+    // 0ã«è¿‘ã„ã¨å¹³è¡Œ
+    float denominator;
+
+    XMStoreFloat(
+        &denominator,
+        XMVector3Dot(rayDir, normal)
+    );
+
+    // å¹³è¡Œãªã‚‰åˆ¤å®šã—ãªã„
+    if (fabsf(denominator) < 0.0001f)
+    {
+        return false;
+    }
+
+    // Rayä¸Šã®äº¤ç‚¹ä½ç½®è¨ˆç®—
+    float t;
+
+    XMStoreFloat(
+        &t,
+        XMVector3Dot(
+            point - rayOrigin,
+            normal)
+    );
+
+    t /= denominator;
+
+    // Rayå¾Œæ–¹ãªã‚‰ç„¡åŠ¹
+    if (t < 0.0f)
+    {
+        return false;
+    }
+
+    // äº¤ç‚¹åº§æ¨™è¨ˆç®—
+    XMVECTOR hit =
+        rayOrigin + rayDir * t;
+
+    XMStoreFloat3(
+        &hitPoint,
+        hit);
+
+    return true;
 }

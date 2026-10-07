@@ -1,4 +1,4 @@
-#include "Material.h"
+ï»¿#include "Material.h"
 
 Material::Material()
     : m_texturePath("")
@@ -8,7 +8,7 @@ Material::Material()
 
 Material::~Material()
 {
-    // ComPtr‚ª©“®‚ÅRelease‚µ‚Ä‚­‚ê‚é‚Ì‚Å‰½‚à‚µ‚È‚¢
+    // ComPtrãŒè‡ªå‹•ã§Releaseã—ã¦ãã‚Œã‚‹ã®ã§ä½•ã‚‚ã—ãªã„
 }
 
 void Material::SetTexturePath(const std::string& path)
@@ -36,8 +36,8 @@ void Material::SetTextureView(ID3D11ShaderResourceView* textureView)
         m_textureView->AddRef();
     }*/
 
-    // ComPtr‚É‘ã“ü‚·‚é‚ÆAddRef‚³‚ê‚é
-  // ˆÈ‘O‚ÌƒeƒNƒXƒ`ƒƒ‚ª‚ ‚ê‚ÎAComPtr‚ª©“®‚ÅRelease‚µ‚Ä‚­‚ê‚é
+    // ComPtrã«ä»£å…¥ã™ã‚‹ã¨AddRefã•ã‚Œã‚‹
+  // ä»¥å‰ã®ãƒ†ã‚¯ã‚¹ãƒãƒ£ãŒã‚ã‚Œã°ã€ComPtrãŒè‡ªå‹•ã§Releaseã—ã¦ãã‚Œã‚‹
     m_textureView = textureView;
 }
 
@@ -55,6 +55,6 @@ void Material::Clear()
 {
     m_texturePath.clear();
 
-    // •Û‚µ‚Ä‚¢‚éDirectXƒŠƒ\[ƒX‚ğ‰ğ•ú‚·‚é
+    // ä¿æŒã—ã¦ã„ã‚‹DirectXãƒªã‚½ãƒ¼ã‚¹ã‚’è§£æ”¾ã™ã‚‹
     m_textureView.Reset();
 }

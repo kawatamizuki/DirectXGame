@@ -61,6 +61,18 @@
     <Filter Include="ソース ファイル\Object">
       <UniqueIdentifier>{80557e43-efb6-4340-96dc-ffc017bcfacc}</UniqueIdentifier>
     </Filter>
+    <Filter Include="ヘッダー ファイル\Field">
+      <UniqueIdentifier>{c1d9a2e4-6b3f-4a2d-9e7c-1a2b3c4d5e6f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ソース ファイル\Field">
+      <UniqueIdentifier>{d2eab3f5-7c4a-4b3e-8f6d-2b3c4d5e6f7a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ヘッダー ファイル\Simulation">
+      <UniqueIdentifier>{e3fbc406-8d5b-4c4f-a07d-3c4d5e6f7a8b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ソース ファイル\Simulation">
+      <UniqueIdentifier>{f40cd517-9e6c-4d5f-b18e-4d5e6f7a8b9c}</UniqueIdentifier>
+    </Filter>
     <Filter Include="ソース ファイル\Scene">
       <UniqueIdentifier>{1bebb76c-40e1-4dc1-afc5-e7d46fed95e6}</UniqueIdentifier>
     </Filter>
@@ -102,6 +114,9 @@
     <ClCompile Include="Core\TimeManager.cpp">
       <Filter>ソース ファイル\Core</Filter>
     </ClCompile>
+    <ClCompile Include="Core\GameClock.cpp">
+      <Filter>ソース ファイル\Core</Filter>
+    </ClCompile>
     <ClCompile Include="Core\Window.cpp">
       <Filter>ソース ファイル\Core</Filter>
     </ClCompile>
@@ -129,11 +144,77 @@
     <ClCompile Include="Graphics\Renderer.cpp">
       <Filter>ソース ファイル\Graphics</Filter>
     </ClCompile>
+    <ClCompile Include="Graphics\DayNightCycle.cpp">
+      <Filter>ソース ファイル\Graphics</Filter>
+    </ClCompile>
     <ClCompile Include="Object\GameObject.cpp">
       <Filter>ソース ファイル\Object</Filter>
     </ClCompile>
+    <ClCompile Include="Object\GameObjectFactory.cpp">
+      <Filter>ソース ファイル\Object</Filter>
+    </ClCompile>
+    <ClCompile Include="Object\BuildingType.cpp">
+      <Filter>ソース ファイル\Object</Filter>
+    </ClCompile>
+    <ClCompile Include="Simulation\RoadGraph.cpp">
+      <Filter>ソース ファイル\Simulation</Filter>
+    </ClCompile>
+    <ClCompile Include="Simulation\DijkstraPathfinder.cpp">
+      <Filter>ソース ファイル\Simulation</Filter>
+    </ClCompile>
+    <ClCompile Include="Simulation\DemandSystem.cpp">
+      <Filter>ソース ファイル\Simulation</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\Profiler.cpp">
+      <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
     <ClCompile Include="Object\Transform.cpp">
       <Filter>ソース ファイル\Object</Filter>
+    </ClCompile>
+    <ClCompile Include="Field\Field.cpp">
+      <Filter>ソース ファイル\Field</Filter>
+    </ClCompile>
+    <ClCompile Include="Field\IOccupancyGrid.cpp">
+      <Filter>ソース ファイル\Field</Filter>
+    </ClCompile>
+    <ClCompile Include="Field\CellOccupancyGrid.cpp">
+      <Filter>ソース ファイル\Field</Filter>
+    </ClCompile>
+    <ClCompile Include="Field\GridOrientationRegistry.cpp">
+      <Filter>ソース ファイル\Field</Filter>
+    </ClCompile>
+    <ClCompile Include="Field\BuildController.cpp">
+      <Filter>ソース ファイル\Field</Filter>
+    </ClCompile>
+    <ClCompile Include="Field\RoadType.cpp">
+      <Filter>ソース ファイル\Field</Filter>
+    </ClCompile>
+    <ClCompile Include="Simulation\RoadProximity.cpp">
+      <Filter>ソース ファイル\Simulation</Filter>
+    </ClCompile>
+    <ClCompile Include="Field\StraightRoadPlacementStrategy.cpp">
+      <Filter>ソース ファイル\Field</Filter>
+    </ClCompile>
+    <ClCompile Include="Field\CurveRoadPlacementStrategy.cpp">
+      <Filter>ソース ファイル\Field</Filter>
+    </ClCompile>
+    <ClCompile Include="Field\QuadRoadMeshGenerator.cpp">
+      <Filter>ソース ファイル\Field</Filter>
+    </ClCompile>
+    <ClCompile Include="Field\RoadMeshBuilder.cpp">
+      <Filter>ソース ファイル\Field</Filter>
+    </ClCompile>
+    <ClCompile Include="Field\OrientedRectangleOverlap.cpp">
+      <Filter>ソース ファイル\Field</Filter>
+    </ClCompile>
+    <ClCompile Include="Field\RoadSystem.cpp">
+      <Filter>ソース ファイル\Field</Filter>
+    </ClCompile>
+    <ClCompile Include="Simulation\RoadNode.cpp">
+      <Filter>ソース ファイル\Simulation</Filter>
+    </ClCompile>
+    <ClCompile Include="Simulation\RoadNodeIndex.cpp">
+      <Filter>ソース ファイル\Simulation</Filter>
     </ClCompile>
     <ClCompile Include="Scene\GameScene.cpp">
       <Filter>ソース ファイル\Scene</Filter>
@@ -145,6 +226,9 @@
       <Filter>ソース ファイル\Scene</Filter>
     </ClCompile>
     <ClCompile Include="Math\Collision.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="Math\GridCoord.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
     <ClCompile Include="Math\Ray.cpp">
@@ -188,7 +272,16 @@
     <ClInclude Include="Core\GameContext.h">
       <Filter>ヘッダー ファイル\Core</Filter>
     </ClInclude>
+    <ClInclude Include="Core\GameMode.h">
+      <Filter>ヘッダー ファイル\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\PlacementTool.h">
+      <Filter>ヘッダー ファイル\Core</Filter>
+    </ClInclude>
     <ClInclude Include="Core\TimeManager.h">
+      <Filter>ヘッダー ファイル\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\GameClock.h">
       <Filter>ヘッダー ファイル\Core</Filter>
     </ClInclude>
     <ClInclude Include="Core\Window.h">
@@ -227,14 +320,104 @@
     <ClInclude Include="Graphics\Renderer.h">
       <Filter>ヘッダー ファイル\Graphics</Filter>
     </ClInclude>
+    <ClInclude Include="Graphics\DayNightCycle.h">
+      <Filter>ヘッダー ファイル\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Graphics\LightingState.h">
+      <Filter>ヘッダー ファイル\Graphics</Filter>
+    </ClInclude>
     <ClInclude Include="Graphics\Vertex.h">
       <Filter>ヘッダー ファイル\Graphics</Filter>
     </ClInclude>
     <ClInclude Include="Object\GameObject.h">
       <Filter>ヘッダー ファイル\Object</Filter>
     </ClInclude>
+    <ClInclude Include="Object\GameObjectFactory.h">
+      <Filter>ヘッダー ファイル\Object</Filter>
+    </ClInclude>
+    <ClInclude Include="Object\BuildingType.h">
+      <Filter>ヘッダー ファイル\Object</Filter>
+    </ClInclude>
+    <ClInclude Include="Simulation\RoadGraph.h">
+      <Filter>ヘッダー ファイル\Simulation</Filter>
+    </ClInclude>
+    <ClInclude Include="Simulation\IPathfinder.h">
+      <Filter>ヘッダー ファイル\Simulation</Filter>
+    </ClInclude>
+    <ClInclude Include="Simulation\DijkstraPathfinder.h">
+      <Filter>ヘッダー ファイル\Simulation</Filter>
+    </ClInclude>
+    <ClInclude Include="Simulation\ResidentAgent.h">
+      <Filter>ヘッダー ファイル\Simulation</Filter>
+    </ClInclude>
+    <ClInclude Include="Simulation\ResidentSchedule.h">
+      <Filter>ヘッダー ファイル\Simulation</Filter>
+    </ClInclude>
+    <ClInclude Include="Simulation\DemandSystem.h">
+      <Filter>ヘッダー ファイル\Simulation</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\Profiler.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
     <ClInclude Include="Object\Transform.h">
       <Filter>ヘッダー ファイル\Object</Filter>
+    </ClInclude>
+    <ClInclude Include="Field\Field.h">
+      <Filter>ヘッダー ファイル\Field</Filter>
+    </ClInclude>
+    <ClInclude Include="Field\IOccupancyGrid.h">
+      <Filter>ヘッダー ファイル\Field</Filter>
+    </ClInclude>
+    <ClInclude Include="Field\CellOccupancyGrid.h">
+      <Filter>ヘッダー ファイル\Field</Filter>
+    </ClInclude>
+    <ClInclude Include="Field\GridOrientationRegistry.h">
+      <Filter>ヘッダー ファイル\Field</Filter>
+    </ClInclude>
+    <ClInclude Include="Field\BuildController.h">
+      <Filter>ヘッダー ファイル\Field</Filter>
+    </ClInclude>
+    <ClInclude Include="Field\RoadType.h">
+      <Filter>ヘッダー ファイル\Field</Filter>
+    </ClInclude>
+    <ClInclude Include="Simulation\RoadProximity.h">
+      <Filter>ヘッダー ファイル\Simulation</Filter>
+    </ClInclude>
+    <ClInclude Include="Field\RoadSegment.h">
+      <Filter>ヘッダー ファイル\Field</Filter>
+    </ClInclude>
+    <ClInclude Include="Field\IRoadPlacementStrategy.h">
+      <Filter>ヘッダー ファイル\Field</Filter>
+    </ClInclude>
+    <ClInclude Include="Field\StraightRoadPlacementStrategy.h">
+      <Filter>ヘッダー ファイル\Field</Filter>
+    </ClInclude>
+    <ClInclude Include="Field\CurveRoadPlacementStrategy.h">
+      <Filter>ヘッダー ファイル\Field</Filter>
+    </ClInclude>
+    <ClInclude Include="Field\RoadDrawMode.h">
+      <Filter>ヘッダー ファイル\Field</Filter>
+    </ClInclude>
+    <ClInclude Include="Field\IRoadMeshGenerator.h">
+      <Filter>ヘッダー ファイル\Field</Filter>
+    </ClInclude>
+    <ClInclude Include="Field\QuadRoadMeshGenerator.h">
+      <Filter>ヘッダー ファイル\Field</Filter>
+    </ClInclude>
+    <ClInclude Include="Field\RoadMeshBuilder.h">
+      <Filter>ヘッダー ファイル\Field</Filter>
+    </ClInclude>
+    <ClInclude Include="Field\OrientedRectangleOverlap.h">
+      <Filter>ヘッダー ファイル\Field</Filter>
+    </ClInclude>
+    <ClInclude Include="Field\RoadSystem.h">
+      <Filter>ヘッダー ファイル\Field</Filter>
+    </ClInclude>
+    <ClInclude Include="Simulation\RoadNode.h">
+      <Filter>ヘッダー ファイル\Simulation</Filter>
+    </ClInclude>
+    <ClInclude Include="Simulation\RoadNodeIndex.h">
+      <Filter>ヘッダー ファイル\Simulation</Filter>
     </ClInclude>
     <ClInclude Include="Scene\GameScene.h">
       <Filter>ヘッダー ファイル\Scene</Filter>
@@ -254,6 +437,9 @@
     <ClInclude Include="Math\Collision.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
+    <ClInclude Include="Math\GridCoord.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
     <ClInclude Include="Math\Ray.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
@@ -269,6 +455,9 @@
       <Filter>リソース ファイル</Filter>
     </None>
     <None Include="DebugLineShader.hlsl">
+      <Filter>リソース ファイル</Filter>
+    </None>
+    <None Include="Lighting.hlsli">
       <Filter>リソース ファイル</Filter>
     </None>
   </ItemGroup>
