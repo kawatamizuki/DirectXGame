@@ -31,6 +31,12 @@
     <Filter Include="ヘッダー ファイル\imgui\backends">
       <UniqueIdentifier>{593fb001-50ae-4a95-a674-708458721c26}</UniqueIdentifier>
     </Filter>
+    <Filter Include="ソース ファイル\UI">
+      <UniqueIdentifier>{5d2a7c10-3b44-4f1e-9a61-0c7e1d8b2a01}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ヘッダー ファイル\UI">
+      <UniqueIdentifier>{9e4b1f20-6c55-4a2d-8b72-1d8f2e9c3b02}</UniqueIdentifier>
+    </Filter>
     <Filter Include="ソース ファイル\Core">
       <UniqueIdentifier>{8ec0a153-6dac-4f7a-a342-f3f6c1796776}</UniqueIdentifier>
     </Filter>
@@ -146,6 +152,15 @@
     </ClCompile>
     <ClCompile Include="Graphics\DayNightCycle.cpp">
       <Filter>ソース ファイル\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="UI\FontAtlas.cpp">
+      <Filter>ソース ファイル\UI</Filter>
+    </ClCompile>
+    <ClCompile Include="UI\GameUI.cpp">
+      <Filter>ソース ファイル\UI</Filter>
+    </ClCompile>
+    <ClCompile Include="UI\UIRenderer.cpp">
+      <Filter>ソース ファイル\UI</Filter>
     </ClCompile>
     <ClCompile Include="Object\GameObject.cpp">
       <Filter>ソース ファイル\Object</Filter>
@@ -326,6 +341,18 @@
     <ClInclude Include="Graphics\LightingState.h">
       <Filter>ヘッダー ファイル\Graphics</Filter>
     </ClInclude>
+    <ClInclude Include="UI\FontAtlas.h">
+      <Filter>ヘッダー ファイル\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="UI\GameUI.h">
+      <Filter>ヘッダー ファイル\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="UI\UITheme.h">
+      <Filter>ヘッダー ファイル\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="UI\UIRenderer.h">
+      <Filter>ヘッダー ファイル\UI</Filter>
+    </ClInclude>
     <ClInclude Include="Graphics\Vertex.h">
       <Filter>ヘッダー ファイル\Graphics</Filter>
     </ClInclude>
@@ -458,6 +485,9 @@
       <Filter>リソース ファイル</Filter>
     </None>
     <None Include="Lighting.hlsli">
+      <Filter>リソース ファイル</Filter>
+    </None>
+    <None Include="UIShader.hlsl">
       <Filter>リソース ファイル</Filter>
     </None>
   </ItemGroup>

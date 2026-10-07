@@ -1,4 +1,4 @@
-#include "SceneManager.h"
+﻿#include "SceneManager.h"
 #include "Scene.h"
 #include "Renderer.h"
 #include "Debug.h"
@@ -61,6 +61,7 @@ void SceneManager::ChangeScene(SceneName nextScene)
     }
 
     m_currentScene = CreateScene(nextScene);
+    m_currentSceneName = nextScene;
 
     if (m_currentScene)
     {

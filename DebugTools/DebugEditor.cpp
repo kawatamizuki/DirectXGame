@@ -79,7 +79,8 @@ void DebugEditor::UpdatePicking()
         return;
     }
 
-    if (ImGui::GetIO().WantCaptureMouse)
+    // デバッグGUI(ImGui)の上、またはゲームプレイ用UI(上部HUDなど)の上のクリックでは選択しない。
+    if (ImGui::GetIO().WantCaptureMouse || m_context->mouseOverUI)
     {
         return;
     }
@@ -154,7 +155,7 @@ void DebugEditor::UpdateDragging()
         return;
     }
 
-    if (ImGui::GetIO().WantCaptureMouse &&
+    if ((ImGui::GetIO().WantCaptureMouse || m_context->mouseOverUI) &&
         !m_isDraggingObject &&
         !m_isDraggingGizmo)
     {
@@ -2370,7 +2371,7 @@ void DebugEditor::DrawHierarchyView()
     ImGui::SetNextWindowPos(
         ImVec2(
             margin,
-            margin + debugHeight
+            margin + m_context->hudTopInset + debugHeight
         ),
         ImGuiCond_Always
     );
@@ -2378,7 +2379,7 @@ void DebugEditor::DrawHierarchyView()
     ImGui::SetNextWindowSize(
         ImVec2(
             leftWidth,
-            windowHeight - debugHeight - bottomHeight - margin * 3.0f
+            windowHeight - debugHeight - bottomHeight - margin * 3.0f - m_context->hudTopInset
         ),
         ImGuiCond_Always
     );
@@ -2425,7 +2426,7 @@ void DebugEditor::DrawInspectorView()
     ImGui::SetNextWindowPos(
         ImVec2(
             windowWidth - rightWidth - margin,
-            margin
+            margin + m_context->hudTopInset
         ),
         ImGuiCond_Always
     );
@@ -2433,7 +2434,7 @@ void DebugEditor::DrawInspectorView()
     ImGui::SetNextWindowSize(
         ImVec2(
             rightWidth,
-            windowHeight - bottomHeight - margin * 2.0f
+            windowHeight - bottomHeight - margin * 2.0f - m_context->hudTopInset
         ),
         ImGuiCond_Always
     );
@@ -2516,7 +2517,7 @@ void DebugEditor::DrawDebugView()
     ImGui::SetNextWindowPos(
         ImVec2(
             margin,
-            margin
+            margin + m_context->hudTopInset
         ),
         ImGuiCond_Always
     );

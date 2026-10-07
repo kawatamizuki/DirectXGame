@@ -711,7 +711,8 @@ void RoadSystem::Update()
         return;
     }
 
-    if (ImGui::GetIO().WantCaptureMouse)
+    // デバッグGUI(ImGui)の上、またはゲームプレイ用UI(上部HUDなど)の上では道路を引かない。
+    if (ImGui::GetIO().WantCaptureMouse || m_context->mouseOverUI)
     {
         return;
     }
