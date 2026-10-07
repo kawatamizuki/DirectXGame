@@ -57,6 +57,10 @@ public:
 
     void DrawDebugUI() const;
 
+    // 直近のRunDemandTickで集計した街の指標(人口・職の埋まり具合など)のコピーを返す。
+    // ゲームプレイ用UI(上部HUD)の表示に使う。
+    DemandStats GetStats() const { return m_lastStats; }
+
     // 建物-道路の接続線(入口/私道)を毎フレーム描画する。RunDemandTickで計算した結果を使う。
     void Draw(DebugRenderer& debugRenderer) const;
 

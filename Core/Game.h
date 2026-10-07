@@ -10,6 +10,8 @@
 #include "TimeManager.h"
 #include "GameClock.h"
 #include "DayNightCycle.h"
+#include "UIRenderer.h"
+#include "GameUI.h"
 #include "GameObject.h"
 #include"Camera.h"
 #include "Field.h"
@@ -38,6 +40,15 @@ public:
     void Finalize();
 
 private:
+    // ゲームプレイ用UI(上部HUD)を出すか。UIの初期化に成功していて、ゲームシーンの間だけtrue。
+    bool IsGameUIVisible() const;
+
+    // 今フレームのHUD表示内容(時刻・日数・時間の倍率・街の指標)を集める。
+    HudState BuildHudState() const;
+
+    // HUDの入力処理(カーソルがHUD上か、速度ボタンが押されたか)。ワールドへの操作より先に呼ぶ。
+    void UpdateGameUI();
+
     HWND m_hwnd;
     DebugEditor m_debugEditor;//imgui用
     DebugRenderer m_debugRenderer;//ワイヤーフレームなどデバッグ用の描画
@@ -49,6 +60,11 @@ private:
     // ゲーム内時刻(実時間のTimeManagerとは別)と、時刻から光の状態を求める昼夜サイクル。
     GameClock m_gameClock;
     DayNightCycle m_dayNightCycle;
+
+    // ゲームプレイ用UI(独自の2D描画。ImGuiのデバッグパネルとは別物)。
+    UIRenderer m_uiRenderer;
+    GameUI m_gameUI;
+    bool m_uiAvailable = false; // UIRendererの初期化に成功したか
 
     Camera m_camera;
 

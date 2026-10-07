@@ -1,6 +1,10 @@
 ﻿#include "Game.h"
 #include "Debug.h"
 #include "Profiler.h"
+#include "InputAction.h"
+#ifdef ENABLE_EDITOR
+#include "imgui.h"
+#endif
 
 
 Game::Game()
@@ -43,6 +47,18 @@ bool Game::Initialize(HWND hwnd)
         return false;
     }
 
+    // ゲームプレイ用UI(独自の2D描画。ImGuiとは独立)。初期化に失敗してもゲーム自体は続けられるので、
+    // UIだけを無効にして続行する(原因はログに出る)。
+    if (m_uiRenderer.Initialize(m_renderer.GetDevice(), m_renderer.GetContext()))
+    {
+        m_gameUI.Initialize(&m_uiRenderer, &m_dayNightCycle);
+        m_uiAvailable = true;
+    }
+    else
+    {
+        Debug::Error("Game::Initialize : UIRenderer initialize failed (ゲームプレイ用UIは表示されません)");
+    }
+
 #ifdef ENABLE_EDITOR
 
     if (!m_debugEditor.Initialize(hwnd, &m_context))
@@ -56,8 +72,6 @@ bool Game::Initialize(HWND hwnd)
 
 
     m_sceneManager.Init(&m_context);
-
-
     //透視投影
     m_camera.SetPosition(0.0f, 0.0f, -10.0f);
     m_camera.SetTarget(0.0f, 0.0f, 0.0f);
@@ -207,6 +221,8 @@ void Game::Update()
     // 毎フレームのクリック消費状況をリセットしてから呼び出しを行う。
     // Editorのギズモ/選択と、プレイヤーの配置操作が同じクリックを二重処理するのを防ぐ
     m_context.inputConsumed = false;
+    m_context.mouseOverUI = false;
+    m_context.hudTopInset = 0.0f;
 
     m_inputManager.Update();
     m_sceneManager.Update();
@@ -221,6 +237,14 @@ void Game::Update()
     }
 #ifdef ENABLE_EDITOR
     m_debugEditor.BeginFrame();
+#endif
+
+    // ゲームプレイ用UI(上部HUD)の入力は、ワールドへの操作(オブジェクト選択・建物/道路の配置)より先に
+    // 処理する。HUDの上のクリックがワールドへ抜けないよう、mouseOverUI/inputConsumedを先に確定させる。
+    // (ImGuiのBeginFrameの後なのは、ImGuiのパネルの上にいるかを今フレームの状態で見るため)
+    UpdateGameUI();
+
+#ifdef ENABLE_EDITOR
     m_debugEditor.Update();
 #endif
 
@@ -240,6 +264,60 @@ void Game::Update()
 
         // 住民の移動・需要更新は、ゲーム内時間の倍率(停止/倍速)に従って進める。
         m_demandSystem.Update(m_gameClock.GetScaledDeltaSeconds(), m_context, m_roadSystem.GetSegments());
+    }
+}
+
+bool Game::IsGameUIVisible() const
+{
+    // ゲームプレイ用UIは、UIの初期化に成功していて、ゲームシーンの間だけ出す(タイトル画面には出さない)。
+    return m_uiAvailable && m_sceneManager.GetCurrentSceneName() == SceneName::Game;
+}
+
+HudState Game::BuildHudState() const
+{
+    HudState state;
+    state.dayCount = m_gameClock.GetDayCount();
+    state.timeOfDayHours = m_gameClock.GetTimeOfDayHours();
+    state.timeScale = m_gameClock.GetTimeScale();
+    state.stats = m_demandSystem.GetStats();
+    return state;
+}
+
+void Game::UpdateGameUI()
+{
+    if (!IsGameUIVisible())
+    {
+        return;
+    }
+
+    HudInput input;
+    input.screenW = static_cast<float>(m_renderer.GetWindowWidth());
+    input.screenH = static_cast<float>(m_renderer.GetWindowHeight());
+
+    POINT mouse = m_inputManager.GetMousePosition();
+    input.mouseX = static_cast<float>(mouse.x);
+    input.mouseY = static_cast<float>(mouse.y);
+
+    input.pressed = m_inputManager.IsActionPressed(InputAction::Decide);
+    input.down = m_inputManager.IsActionDown(InputAction::Decide);
+    input.released = m_inputManager.IsActionReleased(InputAction::Decide);
+
+#ifdef ENABLE_EDITOR
+    // デバッグGUI(ImGui)のパネルの上にカーソルがある時は、HUDは反応しない(ImGuiが手前に描かれるため)。
+    input.blockedByOtherUI = ImGui::GetIO().WantCaptureMouse;
+#endif
+
+    HudResult result = m_gameUI.Update(input, BuildHudState());
+
+    m_context.mouseOverUI = result.mouseOverUI;
+    m_context.hudTopInset = m_gameUI.GetLayout().bar.Bottom();
+    if (result.consumedClick)
+    {
+        m_context.inputConsumed = true;
+    }
+    if (result.requestedTimeScale.has_value())
+    {
+        m_gameClock.SetTimeScale(*result.requestedTimeScale);
     }
 }
 
@@ -286,9 +364,21 @@ void Game::Draw()
     // ENABLE_EDITORの外(Releaseビルドでも)でFlushする。
     m_debugRenderer.Flush(m_camera);
 
+    // ゲームプレイ用UIは、3Dとデバッグ線の手前、ImGuiのデバッグパネルの奥に描く
+    // (ImGuiはm_debugEditor.EndFrameで最前面に描かれる)。
+    if (IsGameUIVisible())
+    {
+        m_uiRenderer.BeginFrame(
+            static_cast<float>(m_renderer.GetWindowWidth()),
+            static_cast<float>(m_renderer.GetWindowHeight()));
+        m_gameUI.Draw(BuildHudState());
+        m_uiRenderer.EndFrame();
+    }
+
 #ifdef ENABLE_EDITOR
     m_debugEditor.EndFrame();
 #endif
+
     if (!m_renderer.IsVSyncEnabled())
     {
         m_timeManager.WaitForTargetFPS();

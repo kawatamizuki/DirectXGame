@@ -78,7 +78,7 @@
       <PreprocessorDefinitions>ENABLE_EDITOR;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -92,11 +92,11 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>ENABLE_EDITOR;WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -111,7 +111,7 @@
       <PreprocessorDefinitions>ENABLE_EDITOR;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -125,11 +125,11 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
-      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>ENABLE_EDITOR;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -152,6 +152,9 @@
     <ClCompile Include="Graphics\ObjLoader.cpp" />
     <ClCompile Include="Graphics\Renderer.cpp" />
     <ClCompile Include="Graphics\DayNightCycle.cpp" />
+    <ClCompile Include="UI\FontAtlas.cpp" />
+    <ClCompile Include="UI\GameUI.cpp" />
+    <ClCompile Include="UI\UIRenderer.cpp" />
     <ClCompile Include="imgui\backends\imgui_impl_dx11.cpp" />
     <ClCompile Include="imgui\backends\imgui_impl_win32.cpp" />
     <ClCompile Include="imgui\imgui.cpp" />
@@ -210,6 +213,10 @@
     <ClInclude Include="Graphics\Renderer.h" />
     <ClInclude Include="Graphics\DayNightCycle.h" />
     <ClInclude Include="Graphics\LightingState.h" />
+    <ClInclude Include="UI\FontAtlas.h" />
+    <ClInclude Include="UI\GameUI.h" />
+    <ClInclude Include="UI\UITheme.h" />
+    <ClInclude Include="UI\UIRenderer.h" />
     <ClInclude Include="Graphics\Vertex.h" />
     <ClInclude Include="imgui\backends\imgui_impl_dx11.h" />
     <ClInclude Include="imgui\backends\imgui_impl_win32.h" />
@@ -273,6 +280,9 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="Lighting.hlsli" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="UIShader.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <None Include="DebugLineShader.hlsl">

@@ -87,4 +87,13 @@ struct GameContext
     // UIやEditorが今フレームのクリックを処理したらtrueにすることで、
     // 同じフレームの同じクリックが別なシステムに二重処理されるのを防ぐ。
     bool inputConsumed = false;
+
+    // 毎フレーム先頭でリセットされる。ゲームプレイ用UI(上部HUDなど。ImGuiではない独自描画)の
+    // 上にカーソルがある時にtrue。ImGuiのWantCaptureMouseと同じ役割で、UIの上のクリックや
+    // ホバーが、建物・道路の配置やオブジェクト選択に抜けないようにするために各システムが見る。
+    bool mouseOverUI = false;
+
+    // ゲームプレイ用UIが画面の上端に占めている高さ(ピクセル。HUDが出ていない時は0)。
+    // デバッグ用GUI(ImGui)の固定配置のパネルが、HUDの下から始まるように避けるために使う。
+    float hudTopInset = 0.0f;
 };

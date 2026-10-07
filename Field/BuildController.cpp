@@ -277,7 +277,9 @@ void BuildController::Update()
         return;
     }
 
-    if (ImGui::GetIO().WantCaptureMouse)
+    // デバッグGUI(ImGui)の上、またはゲームプレイ用UI(上部HUDなど)の上では配置しない
+    // (ゴーストプレビューも出さない)。
+    if (ImGui::GetIO().WantCaptureMouse || m_context->mouseOverUI)
     {
         return;
     }

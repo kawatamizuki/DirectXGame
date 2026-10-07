@@ -55,5 +55,25 @@ Desktop.ini
 # Keep README
 !README.md
 
+# アセットパック(Kenney等)に同梱されている、ゲームが使わない形式のファイル。
+# ゲームが読み込むのはOBJ形式だけで、FBX/GLB/glTF/Unityパッケージは使わない。
+*.fbx
+*.glb
+*.gltf
+*.unitypackage
+
+# OBJの材質定義(MTL)。上の「*.obj」が無視されている(=モデル本体はリポジトリに入れない)ので、
+# MTLだけ入れても意味が無い。ローカルのファイルはそのまま残る(Gitが見なくなるだけ)。
+*.mtl
+
+# アセットパックの配布ページへのリンク、プレビュー/サンプル画像
+*.url
+Previews/
+Preview*.png
+Sample.png
+
+# デバッグログのエクスポート(Logパネルの「Export to file」で毎回上書きされる出力)
+debug_log_export.txt
+
 
 
