@@ -17,6 +17,14 @@ void CellOccupancyGrid::SetOccupied(const GridCoord& coord, bool occupied)
     }
 }
 
+void CellOccupancyGrid::Clear()
+{
+    m_occupiedCells.clear();
+    m_rects.clear();
+    m_rectKinds.clear();
+    m_rectIndex.clear();
+}
+
 bool CellOccupancyGrid::IsRectFree(const OrientedRect& rect, unsigned kindMask) const
 {
     // 辺が接するだけ(貫入量が許容値以下)は重なりとみなさず、ぴったり隣接できるようにする。

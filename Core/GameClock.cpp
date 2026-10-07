@@ -56,6 +56,26 @@ void GameClock::SetSecondsPerGameHour(float seconds)
     m_secondsPerGameHour = (seconds > 0.001f) ? seconds : 0.001f;
 }
 
+void GameClock::Save(Json& section, const SaveContext& /*context*/) const
+{
+    section.Set("timeOfDayHours", m_timeOfDayHours);
+    section.Set("dayCount", m_dayCount);
+}
+
+void GameClock::Load(const Json& section, int /*version*/, const LoadContext& /*context*/)
+{
+    // 足りない項目は既定値(朝8時・1日目)。
+    SetTimeOfDayHours(section.GetFloat("timeOfDayHours", kStartHour));
+    int day = section.GetInt("dayCount", 1);
+    m_dayCount = (day >= 1) ? day : 1;
+}
+
+void GameClock::ResetToDefault()
+{
+    m_timeOfDayHours = kStartHour;
+    m_dayCount = 1;
+}
+
 void GameClock::DrawDebugUI()
 {
     // 他の常設パネル(Debug/Build/City Stats/Profiler/Log)と重ならない上部中央に配置する

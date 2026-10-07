@@ -77,3 +77,6 @@ debug_log_export.txt
 
 
 
+
+# プレイヤーのセーブデータ(クイックセーブなど)。Git管理するチュートリアルマップは Scenarios/ に置く
+Saves/

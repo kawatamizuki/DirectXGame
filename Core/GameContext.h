@@ -53,6 +53,8 @@ class Camera;
 class DebugRenderer;
 class DemandSystem;
 class GameClock;
+class GameFlags;
+class ScenarioManager;
 
 struct GameContext
 {
@@ -64,6 +66,12 @@ struct GameContext
     // ゲーム内の時刻(昼夜・日数)。実時間のTimeManagerとは別。住民の1日の行動など、
     // 時刻に従って動くシステムが共有して参照する。
     GameClock* clock = nullptr;
+
+    // ゲームの進行を表す名前付きの値(フラグ・マイルストーン・解放状態など)。
+    GameFlags* flags = nullptr;
+
+    // セーブ/ロード。ゲームシーンの開始時に初期マップを読み込むために、シーンからも使う。
+    ScenarioManager* scenario = nullptr;
     Camera* camera = nullptr;
     std::vector<GameObject>* objects=nullptr;
 

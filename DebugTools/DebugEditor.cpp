@@ -1967,6 +1967,16 @@ void DebugEditor::UpdateGizmoMode()
     }
 }
 
+void DebugEditor::ClearSelection()
+{
+    m_selectedObjectIndex = -1;
+    m_dragObjectIndex = -1;
+    m_isDraggingObject = false;
+    m_isDraggingGizmo = false;
+    m_activeAxis = GizmoAxis::None;
+    m_hoveredAxis = GizmoAxis::None;
+}
+
 void DebugEditor::BeginFrame()
 {
     ImGui_ImplDX11_NewFrame();

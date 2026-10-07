@@ -11,6 +11,8 @@
 #include "GameClock.h"
 #include "DayNightCycle.h"
 #include "UIRenderer.h"
+#include "GameFlags.h"
+#include "ScenarioManager.h"
 #include "GameUI.h"
 #include "GameObject.h"
 #include"Camera.h"
@@ -49,6 +51,9 @@ private:
     // HUDの入力処理(カーソルがHUD上か、速度ボタンが押されたか)。ワールドへの操作より先に呼ぶ。
     void UpdateGameUI();
 
+    // F5=クイックセーブ、F9=クイックロード。
+    void HandleScenarioHotkeys();
+
     HWND m_hwnd;
     DebugEditor m_debugEditor;//imgui用
     DebugRenderer m_debugRenderer;//ワイヤーフレームなどデバッグ用の描画
@@ -60,6 +65,12 @@ private:
     // ゲーム内時刻(実時間のTimeManagerとは別)と、時刻から光の状態を求める昼夜サイクル。
     GameClock m_gameClock;
     DayNightCycle m_dayNightCycle;
+
+    // ゲームの進行を表すフラグ・マイルストーンの置き場(セーブ対象)。
+    GameFlags m_gameFlags;
+
+    // セーブ/ロード(今の街の状態のスナップショットをファイルに保存・復元する)。
+    ScenarioManager m_scenarioManager;
 
     // ゲームプレイ用UI(独自の2D描画。ImGuiのデバッグパネルとは別物)。
     UIRenderer m_uiRenderer;

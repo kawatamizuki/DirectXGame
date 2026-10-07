@@ -2,6 +2,7 @@
 #include "Model.h"
 #include "Transform.h"
 #include "BuildingType.h"
+#include "BuildingPlacement.h"
 
 // GameObjectの種類タグ。
 // コンポーネント化などの大掛かりな仕組みを導入する前段階として、
@@ -29,6 +30,11 @@ public:
 
     // kind==Buildingの時だけ意味を持つ、建物の種類。
     BuildingType buildingType = BuildingType::House;
+
+    // kind==Buildingの時だけ意味を持つ、配置の確定結果(占有範囲・基準座標系・ローカルマス)。
+    // 建物が自分の配置情報を持つので、セーブで建物ごとに保存でき、将来の削除・改築・
+    // レベルアップでも、そのオブジェクトの現在の値がそのまま保存される。
+    BuildingPlacement placement;
 
     // falseの間はRenderer::DrawModelを呼ばない(描画しない)。
     // 主にkind==Agentのオブジェクトが、House/Officeなど施設利用中(内部にいる間)は

@@ -109,6 +109,10 @@ public:
     void UpdateFreeCamera();
   
 
+    // 選択・ドラッグ操作を解除する(セーブデータの読み込みでオブジェクトが入れ替わる時に呼ぶ。
+    // 選択は配列の添字で持っているため、そのままだと別のオブジェクトを指してしまう)。
+    void ClearSelection();
+
     void Finalize();
 private:
     GameContext* m_context = nullptr;

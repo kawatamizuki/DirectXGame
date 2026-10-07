@@ -38,6 +38,8 @@ bool Game::Initialize(HWND hwnd)
     m_context.clock = &m_gameClock;
     m_context.objects = &m_objects;
     m_context.demandSystem = &m_demandSystem;
+    m_context.flags = &m_gameFlags;
+    m_context.scenario = &m_scenarioManager;
 
     // DebugRendererはフィールドの格子線・建物/道路のプレビュー描画にも使うため、
     // ENABLE_EDITORの外(Releaseビルドでも)で初期化する。
@@ -72,6 +74,7 @@ bool Game::Initialize(HWND hwnd)
 
 
     m_sceneManager.Init(&m_context);
+
     //透視投影
     m_camera.SetPosition(0.0f, 0.0f, -10.0f);
     m_camera.SetTarget(0.0f, 0.0f, 0.0f);
@@ -191,6 +194,18 @@ bool Game::Initialize(HWND hwnd)
 
     m_demandSystem.Initialize(&m_pathfinder, &m_agentModel);
 
+    // セーブ/ロード: 街を構成するシステムを渡し、状態を持つシステム(時計・フラグ・住民)を登録する。
+    // 新しい状態(お金・建物レベル・チュートリアルの進行など)を足す時は、その要素がISaveableを
+    // 実装して、ここにRegisterSaveableを1行足すだけでセーブ対象になる。
+    m_scenarioManager.Initialize(
+        &m_context, &m_field, &m_roadSystem, &m_buildController, &m_occupancyGrid, &m_orientationRegistry);
+    m_scenarioManager.RegisterSaveable(&m_gameClock);
+    m_scenarioManager.RegisterSaveable(&m_gameFlags);
+    m_scenarioManager.RegisterSaveable(&m_demandSystem);
+#ifdef ENABLE_EDITOR
+    // 読み込みで建物などのオブジェクトが入れ替わるので、エディタの選択(添字)を解除する。
+    m_scenarioManager.SetOnWorldReplaced([this]() { m_debugEditor.ClearSelection(); });
+#endif
     return true;
 }
 
@@ -244,6 +259,8 @@ void Game::Update()
     // (ImGuiのBeginFrameの後なのは、ImGuiのパネルの上にいるかを今フレームの状態で見るため)
     UpdateGameUI();
 
+    HandleScenarioHotkeys();
+
 #ifdef ENABLE_EDITOR
     m_debugEditor.Update();
 #endif
@@ -281,6 +298,33 @@ HudState Game::BuildHudState() const
     state.timeScale = m_gameClock.GetTimeScale();
     state.stats = m_demandSystem.GetStats();
     return state;
+}
+
+void Game::HandleScenarioHotkeys()
+{
+    // タイトル画面では街が無いので、ゲームシーンの間だけ有効にする。
+    if (m_sceneManager.GetCurrentSceneName() != SceneName::Game)
+    {
+        return;
+    }
+
+#ifdef ENABLE_EDITOR
+    // デバッグパネルの入力欄に文字を入力している間は、キーをショートカットとして扱わない。
+    if (ImGui::GetIO().WantTextInput)
+    {
+        return;
+    }
+#endif
+
+    std::string message;
+    if (m_inputManager.IsKeyPressed(VK_F5))
+    {
+        m_scenarioManager.Save(ScenarioManager::kQuickSavePath, message);
+    }
+    if (m_inputManager.IsKeyPressed(VK_F9))
+    {
+        m_scenarioManager.Load(ScenarioManager::kQuickSavePath, message);
+    }
 }
 
 void Game::UpdateGameUI()
@@ -357,6 +401,7 @@ void Game::Draw()
     // 人流・需要シミュレーションの統計・プロファイラ・ログはモードによらず常時表示する
     m_demandSystem.DrawDebugUI();
     m_gameClock.DrawDebugUI();
+    m_scenarioManager.DrawDebugUI();
     Profiler::DrawDebugUI(m_objects, m_roadSystem, m_occupancyGrid, m_demandSystem);
     Debug::DrawDebugUI();
 

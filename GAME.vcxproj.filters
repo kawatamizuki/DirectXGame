@@ -31,6 +31,12 @@
     <Filter Include="ヘッダー ファイル\imgui\backends">
       <UniqueIdentifier>{593fb001-50ae-4a95-a674-708458721c26}</UniqueIdentifier>
     </Filter>
+    <Filter Include="ソース ファイル\Scenario">
+      <UniqueIdentifier>{7c3d9a41-2e58-4b6f-a1d7-3f9e5c2b8d03}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ヘッダー ファイル\Scenario">
+      <UniqueIdentifier>{b1e6f2a8-4d79-4c3a-9e25-6a7c8d1f0e04}</UniqueIdentifier>
+    </Filter>
     <Filter Include="ソース ファイル\UI">
       <UniqueIdentifier>{5d2a7c10-3b44-4f1e-9a61-0c7e1d8b2a01}</UniqueIdentifier>
     </Filter>
@@ -122,6 +128,21 @@
     </ClCompile>
     <ClCompile Include="Core\GameClock.cpp">
       <Filter>ソース ファイル\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\GameFlags.cpp">
+      <Filter>ソース ファイル\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Scenario\Json.cpp">
+      <Filter>ソース ファイル\Scenario</Filter>
+    </ClCompile>
+    <ClCompile Include="Scenario\JsonFormat.cpp">
+      <Filter>ソース ファイル\Scenario</Filter>
+    </ClCompile>
+    <ClCompile Include="Scenario\ScenarioFile.cpp">
+      <Filter>ソース ファイル\Scenario</Filter>
+    </ClCompile>
+    <ClCompile Include="Scenario\ScenarioManager.cpp">
+      <Filter>ソース ファイル\Scenario</Filter>
     </ClCompile>
     <ClCompile Include="Core\Window.cpp">
       <Filter>ソース ファイル\Core</Filter>
@@ -298,6 +319,33 @@
     </ClInclude>
     <ClInclude Include="Core\GameClock.h">
       <Filter>ヘッダー ファイル\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\GameFlags.h">
+      <Filter>ヘッダー ファイル\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Object\BuildingPlacement.h">
+      <Filter>ヘッダー ファイル\Object</Filter>
+    </ClInclude>
+    <ClInclude Include="Scenario\ISaveable.h">
+      <Filter>ヘッダー ファイル\Scenario</Filter>
+    </ClInclude>
+    <ClInclude Include="Scenario\ISnapshotFormat.h">
+      <Filter>ヘッダー ファイル\Scenario</Filter>
+    </ClInclude>
+    <ClInclude Include="Scenario\Json.h">
+      <Filter>ヘッダー ファイル\Scenario</Filter>
+    </ClInclude>
+    <ClInclude Include="Scenario\JsonFormat.h">
+      <Filter>ヘッダー ファイル\Scenario</Filter>
+    </ClInclude>
+    <ClInclude Include="Scenario\ScenarioManager.h">
+      <Filter>ヘッダー ファイル\Scenario</Filter>
+    </ClInclude>
+    <ClInclude Include="Scenario\ScenarioFile.h">
+      <Filter>ヘッダー ファイル\Scenario</Filter>
+    </ClInclude>
+    <ClInclude Include="Scenario\WorldSnapshot.h">
+      <Filter>ヘッダー ファイル\Scenario</Filter>
     </ClInclude>
     <ClInclude Include="Core\Window.h">
       <Filter>ヘッダー ファイル\Core</Filter>

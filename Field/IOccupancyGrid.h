@@ -41,6 +41,9 @@ public:
     virtual bool IsRectFree(const OrientedRect& rect, unsigned kindMask = kOccupantAll) const = 0;
     virtual void OccupyRect(const OrientedRect& rect, OccupantKind kind) = 0;
 
+    // 占有を全て消して空の状態に戻す(セーブデータの読み込み前の全消去に使う)。
+    virtual void Clear() = 0;
+
     // 現在占有されているセルの数(Profilerのメモリ内訳表示に使う)。
     virtual size_t GetOccupiedCellCount() const = 0;
 };

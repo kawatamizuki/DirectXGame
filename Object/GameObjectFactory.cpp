@@ -1,4 +1,5 @@
 ﻿#include "GameObjectFactory.h"
+#include <algorithm>
 
 namespace GameObjectFactory
 {
@@ -33,6 +34,15 @@ namespace GameObjectFactory
 
         objects[index] = objects.back();
         objects.pop_back();
+    }
+
+    size_t DespawnAllOfKind(std::vector<GameObject>& objects, ObjectKind kind)
+    {
+        size_t before = objects.size();
+        objects.erase(
+            std::remove_if(objects.begin(), objects.end(), [kind](const GameObject& obj) { return obj.kind == kind; }),
+            objects.end());
+        return before - objects.size();
     }
 
     GameObject* FindById(std::vector<GameObject>& objects, uint32_t id)

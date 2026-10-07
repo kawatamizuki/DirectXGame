@@ -53,6 +53,16 @@ public:
     // (Field::DrawGridOverlayが灰色の線を消すのに使う)。
     bool IsWorldCellCovered(const GridCoord& worldCell, float cellSize) const;
 
+    // 登録済みのマスを全て消す(セーブデータの読み込み前の全消去に使う)。
+    void Clear();
+
+    // 登録済みのマスの一覧(登録順=優先順)。セーブに使う。
+    const std::vector<OrientedCell>& GetCells() const { return m_cells; }
+
+    // cellsを、渡された順(=優先順)のまま登録し直す(既存のマスは消える)。セーブデータからの復元に使う。
+    // 先着優先の重なり判定は行わない(保存した時点で既に重なりが除かれているため)。cellSizeは空間索引の作成に使う。
+    void ImportCells(const std::vector<OrientedCell>& cells, float cellSize);
+
     // anchorPoint(道路区間の始点など、ローカル座標系の基準にしたいワールド座標)とyawから、
     // ComputePlacementFrame/道路側の青マス生成で実際に使うべき原点を求める。
     // anchorPointはセルの中心であることが多いが、そのまま原点にすると生成される

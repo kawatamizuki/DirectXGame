@@ -76,6 +76,18 @@ std::optional<GridOrientationRegistry::OrientedCell> GridOrientationRegistry::Ge
     return std::nullopt;
 }
 
+void GridOrientationRegistry::Clear()
+{
+    m_cells.clear();
+    m_worldIndex.clear();
+}
+
+void GridOrientationRegistry::ImportCells(const std::vector<OrientedCell>& cells, float cellSize)
+{
+    m_cells = cells;
+    RebuildIndex(cellSize);
+}
+
 bool GridOrientationRegistry::TryClaimCell(float cellSize, float yaw, const XMFLOAT3& origin, int localCellX, int localCellZ)
 {
     OrientedCell candidate;

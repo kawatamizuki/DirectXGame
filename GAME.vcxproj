@@ -78,7 +78,7 @@
       <PreprocessorDefinitions>ENABLE_EDITOR;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI;$(ProjectDir)Scenario;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -96,7 +96,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI;$(ProjectDir)Scenario</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -111,7 +111,7 @@
       <PreprocessorDefinitions>ENABLE_EDITOR;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI;$(ProjectDir)Scenario;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -129,7 +129,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI;$(ProjectDir)Scenario</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -141,6 +141,11 @@
     <ClCompile Include="Core\main.cpp" />
     <ClCompile Include="Core\TimeManager.cpp" />
     <ClCompile Include="Core\GameClock.cpp" />
+    <ClCompile Include="Core\GameFlags.cpp" />
+    <ClCompile Include="Scenario\Json.cpp" />
+    <ClCompile Include="Scenario\JsonFormat.cpp" />
+    <ClCompile Include="Scenario\ScenarioFile.cpp" />
+    <ClCompile Include="Scenario\ScenarioManager.cpp" />
     <ClCompile Include="Core\Window.cpp" />
     <ClCompile Include="DebugTools\Debug.cpp" />
     <ClCompile Include="DebugTools\DebugEditor.cpp" />
@@ -200,6 +205,15 @@
     <ClInclude Include="Core\PlacementTool.h" />
     <ClInclude Include="Core\TimeManager.h" />
     <ClInclude Include="Core\GameClock.h" />
+    <ClInclude Include="Core\GameFlags.h" />
+    <ClInclude Include="Object\BuildingPlacement.h" />
+    <ClInclude Include="Scenario\ISaveable.h" />
+    <ClInclude Include="Scenario\ISnapshotFormat.h" />
+    <ClInclude Include="Scenario\Json.h" />
+    <ClInclude Include="Scenario\JsonFormat.h" />
+    <ClInclude Include="Scenario\ScenarioManager.h" />
+    <ClInclude Include="Scenario\ScenarioFile.h" />
+    <ClInclude Include="Scenario\WorldSnapshot.h" />
     <ClInclude Include="Core\Window.h" />
     <ClInclude Include="DebugTools\Debug.h" />
     <ClInclude Include="DebugTools\DebugEditor.h" />
