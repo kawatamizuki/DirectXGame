@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 #include <Windows.h>
 #include <Xinput.h>
 #pragma comment(lib, "xinput.lib")
@@ -10,29 +10,29 @@
 #include"KeyCode.h"
 
 //========================================
-// ƒL[ƒ{[ƒh“ü—Íó‘Ô
+// ã‚­ãƒ¼ãƒœãƒ¼ãƒ‰å…¥åŠ›çŠ¶æ…‹
 //========================================
 //
 // current:
-// Œ»İƒtƒŒ[ƒ€‚Ì“ü—Íó‘Ô
+// ç¾åœ¨ãƒ•ãƒ¬ãƒ¼ãƒ ã®å…¥åŠ›çŠ¶æ…‹
 //
 // previous:
-// ‘OƒtƒŒ[ƒ€‚Ì“ü—Íó‘Ô
+// å‰ãƒ•ãƒ¬ãƒ¼ãƒ ã®å…¥åŠ›çŠ¶æ…‹
 //
-// current ‚Æ previous ‚ğ”äŠr‚·‚é‚±‚Æ‚Å:
+// current ã¨ previous ã‚’æ¯”è¼ƒã™ã‚‹ã“ã¨ã§:
 //
-// - ‰Ÿ‚³‚ê‚Ä‚¢‚é
-// - ‰Ÿ‚³‚ê‚½uŠÔ
-// - —£‚³‚ê‚½uŠÔ
+// - æŠ¼ã•ã‚Œã¦ã„ã‚‹
+// - æŠ¼ã•ã‚ŒãŸç¬é–“
+// - é›¢ã•ã‚ŒãŸç¬é–“
 //
-// ‚ğ”»’è‚·‚éB
+// ã‚’åˆ¤å®šã™ã‚‹ã€‚
 //
-// —á:
+// ä¾‹:
 //
 // current = true
 // previous = false
-// «
-// ¡ƒtƒŒ[ƒ€‚Å‰Ÿ‚³‚ê‚½uŠÔ
+// â†“
+// ä»Šãƒ•ãƒ¬ãƒ¼ãƒ ã§æŠ¼ã•ã‚ŒãŸç¬é–“
 //
 //========================================
 
@@ -47,17 +47,17 @@ public:
     void SetWindowHandle(HWND hwnd);
     POINT GetMousePosition() const;
 
-    bool IsAnyKeyPressed() const;//ƒL[‚ğ–â‚í‚¸‰Ÿ‚³‚ê‚½‚Æ‚«‚¾‚¯
-    bool IsAnyGamePadButtonPressed() const;//ƒ{ƒ^ƒ“‚ğ–â‚í‚¸‰Ÿ‚³‚ê‚½‚Æ‚«‚¾‚¯
-    bool IsAnyInputPressed() const;//ƒL[ƒ{[ƒh or ƒRƒ“ƒgƒ[ƒ‰[‚Ì‰½‚©‚ª‰Ÿ‚³‚ê‚½‚Æ‚«‚¾‚¯
+    bool IsAnyKeyPressed() const;//ã‚­ãƒ¼ã‚’å•ã‚ãšæŠ¼ã•ã‚ŒãŸã¨ãã ã‘
+    bool IsAnyGamePadButtonPressed() const;//ãƒœã‚¿ãƒ³ã‚’å•ã‚ãšæŠ¼ã•ã‚ŒãŸã¨ãã ã‘
+    bool IsAnyInputPressed() const;//ã‚­ãƒ¼ãƒœãƒ¼ãƒ‰ or ã‚³ãƒ³ãƒˆãƒ­ãƒ¼ãƒ©ãƒ¼ã®ä½•ã‹ãŒæŠ¼ã•ã‚ŒãŸã¨ãã ã‘
 
-    bool IsGamePadButtonDown(WORD button) const;//ƒRƒ“ƒgƒ[ƒ‰[‚Ìƒ{ƒ^ƒ“‚ª‰Ÿ‚³‚ê‚Ä‚¢‚éŠÔ‚¸‚Á‚Æ
-    bool IsGamePadButtonPressed(WORD button) const;//ƒRƒ“ƒgƒ[ƒ‰[‚Ìƒ{ƒ^ƒ“‚ª‰Ÿ‚³‚ê‚½‚Æ‚«‚¾‚¯
-    bool IsGamePadButtonReleased(WORD button) const;//ƒRƒ“ƒgƒ[ƒ‰[‚Ìƒ{ƒ^ƒ“‚ª—£‚³‚ê‚½‚Æ‚«‚¾‚¯
+    bool IsGamePadButtonDown(WORD button) const;//ã‚³ãƒ³ãƒˆãƒ­ãƒ¼ãƒ©ãƒ¼ã®ãƒœã‚¿ãƒ³ãŒæŠ¼ã•ã‚Œã¦ã„ã‚‹é–“ãšã£ã¨
+    bool IsGamePadButtonPressed(WORD button) const;//ã‚³ãƒ³ãƒˆãƒ­ãƒ¼ãƒ©ãƒ¼ã®ãƒœã‚¿ãƒ³ãŒæŠ¼ã•ã‚ŒãŸã¨ãã ã‘
+    bool IsGamePadButtonReleased(WORD button) const;//ã‚³ãƒ³ãƒˆãƒ­ãƒ¼ãƒ©ãƒ¼ã®ãƒœã‚¿ãƒ³ãŒé›¢ã•ã‚ŒãŸã¨ãã ã‘
 
-    bool IsKeyDown(int key) const;//ƒL[ƒ{[ƒh‚ª‰Ÿ‚³‚ê‚Ä‚¢‚éŠÔ‚¸‚Á‚Æ
-    bool IsKeyPressed(int key) const;//ƒL[ƒ{[ƒh‚ª‰Ÿ‚³‚ê‚½‚Æ‚«‚¾‚¯
-    bool IsKeyReleased(int key) const;//ƒL[ƒ{[ƒh‚ª—£‚³‚ê‚½‚Æ‚«‚¾‚¯
+    bool IsKeyDown(int key) const;//ã‚­ãƒ¼ãƒœãƒ¼ãƒ‰ãŒæŠ¼ã•ã‚Œã¦ã„ã‚‹é–“ãšã£ã¨
+    bool IsKeyPressed(int key) const;//ã‚­ãƒ¼ãƒœãƒ¼ãƒ‰ãŒæŠ¼ã•ã‚ŒãŸã¨ãã ã‘
+    bool IsKeyReleased(int key) const;//ã‚­ãƒ¼ãƒœãƒ¼ãƒ‰ãŒé›¢ã•ã‚ŒãŸã¨ãã ã‘
 
     bool IsKeyDown(KeyCode key) const;
     bool IsKeyPressed(KeyCode key) const;
@@ -67,11 +67,11 @@ public:
     bool IsActionPressed(InputAction action) const;
     bool IsActionReleased(InputAction action) const;
 
-    //ƒfƒoƒbƒO—p
+    //ãƒ‡ãƒãƒƒã‚°ç”¨
     bool IsEditorActionDown(EditorInputAction action) const;
     bool IsEditorActionPressed(EditorInputAction action) const;
     bool IsEditorActionReleased(EditorInputAction action) const;
-	bool IsEditorActionComboPressed(EditorInputAction action) const;//•¡”‚ÌƒL[‚Ì“¯‰Ÿ‚µ‚ğ”»’è‚·‚éŠÖ” 
+	bool IsEditorActionComboPressed(EditorInputAction action) const;//è¤‡æ•°ã®ã‚­ãƒ¼ã®åŒæ™‚æŠ¼ã—ã‚’åˆ¤å®šã™ã‚‹é–¢æ•° 
 
 
 
@@ -87,7 +87,7 @@ private:
     int m_gamePadCheckFrame;
 
     std::unordered_map<InputAction, std::vector<KeyCode>> m_keyboardMapping;
-    std::unordered_map<EditorInputAction, std::vector<KeyCode>> m_editorKeyboardMapping;//ƒfƒoƒbƒO—p
+    std::unordered_map<EditorInputAction, std::vector<KeyCode>> m_editorKeyboardMapping;//ãƒ‡ãƒãƒƒã‚°ç”¨
     std::unordered_map<InputAction, std::vector<WORD>> m_gamePadMapping;
 
 

@@ -1,4 +1,4 @@
-#include <Windows.h>
+ï»¿#include <Windows.h>
 #include <vector>
 #include <cmath>
 #include "Model.h"
@@ -7,7 +7,7 @@
 #include "Debug.h"
 #include "WICTextureLoader11.h"
 
-//‚±‚Ì’†‚¾‚¯‚Åg‚¤BƒeƒNƒXƒ`ƒƒƒpƒX‚Ì•¶šƒR[ƒh‚ğ³Šm‚É•ÏŠ·‚·‚é‚½‚ß‚ÌŠÖ”
+//ã“ã®ä¸­ã ã‘ã§ä½¿ã†ã€‚ãƒ†ã‚¯ã‚¹ãƒãƒ£ãƒ‘ã‚¹ã®æ–‡å­—ã‚³ãƒ¼ãƒ‰ã‚’æ­£ç¢ºã«å¤‰æ›ã™ã‚‹ãŸã‚ã®é–¢æ•°
 namespace
 {
     std::wstring ToWideString(const std::string& str)
@@ -70,17 +70,17 @@ bool Model::LoadFromObj(ID3D11Device* device, const std::string& filePath)
         return false;
     }
 
-    // ‚·‚Å‚É“Ç‚İ‚İÏ‚İ‚È‚çˆê’U‰ğ•ú
+    // ã™ã§ã«èª­ã¿è¾¼ã¿æ¸ˆã¿ãªã‚‰ä¸€æ—¦è§£æ”¾
     m_vertexBuffer.Reset();
 
     m_vertexCount = 0;
 
 
     //==========================================================
-    //  OBJƒ‚ƒfƒ‹—p‚Ì’¸“_ƒoƒbƒtƒ@‚ğì‚é
+    //  OBJãƒ¢ãƒ‡ãƒ«ç”¨ã®é ‚ç‚¹ãƒãƒƒãƒ•ã‚¡ã‚’ä½œã‚‹
     //==========================================================
-    std::vector<ObjVertex> objVertices;//’¸“_ƒf[ƒ^
-    std::string texturePath;//ƒeƒNƒXƒ`ƒƒ‚ÌƒpƒX
+    std::vector<ObjVertex> objVertices;//é ‚ç‚¹ãƒ‡ãƒ¼ã‚¿
+    std::string texturePath;//ãƒ†ã‚¯ã‚¹ãƒãƒ£ã®ãƒ‘ã‚¹
     DirectX::XMFLOAT3 boundsMin;
     DirectX::XMFLOAT3 boundsMax;
 
@@ -90,11 +90,11 @@ bool Model::LoadFromObj(ID3D11Device* device, const std::string& filePath)
         return false;
     }
 
-    // OBJ’¸“_‚©‚çŒvZ‚µ‚½ƒ[ƒJƒ‹Bounds
+    // OBJé ‚ç‚¹ã‹ã‚‰è¨ˆç®—ã—ãŸãƒ­ãƒ¼ã‚«ãƒ«Bounds
     m_boundsMin = boundsMin;
     m_boundsMax = boundsMax;
 
-    // AABBƒTƒCƒY‚©‚çBoundingSphere”¼Œa‚ğŒvZ
+    // AABBã‚µã‚¤ã‚ºã‹ã‚‰BoundingSphereåŠå¾„ã‚’è¨ˆç®—
     DirectX::XMFLOAT3 half =
     {
         (m_boundsMax.x - m_boundsMin.x) * 0.5f,
@@ -146,7 +146,7 @@ bool Model::LoadFromObj(ID3D11Device* device, const std::string& filePath)
         Debug::Warning("No texture path found");
     }
 
-    // MTL‚©‚çƒeƒNƒXƒ`ƒƒƒpƒX‚ğæ“¾‚Å‚«‚½‚©Šm”F
+    // MTLã‹ã‚‰ãƒ†ã‚¯ã‚¹ãƒãƒ£ãƒ‘ã‚¹ã‚’å–å¾—ã§ããŸã‹ç¢ºèª
     if (!texturePath.empty())
     {
         Debug::Info("Model::LoadFromObj texturePath : " + texturePath);
@@ -163,7 +163,7 @@ bool Model::LoadFromObj(ID3D11Device* device, const std::string& filePath)
     }
 
   
-    // ObjVertex ¨ Renderer‚Åg‚Á‚Ä‚¢‚éVertexŒ`®‚Ö•ÏŠ·
+    // ObjVertex â†’ Rendererã§ä½¿ã£ã¦ã„ã‚‹Vertexå½¢å¼ã¸å¤‰æ›
     std::vector<Vertex> convertedVertices;
     convertedVertices.reserve(objVertices.size());
     Debug::Info("OBJ loaded. vertexCount = " + std::to_string(objVertices.size()));
@@ -178,7 +178,7 @@ bool Model::LoadFromObj(ID3D11Device* device, const std::string& filePath)
             });
     }
 
-    // OBJ—p’¸“_ƒoƒbƒtƒ@‚ğì¬
+    // OBJç”¨é ‚ç‚¹ãƒãƒƒãƒ•ã‚¡ã‚’ä½œæˆ
     D3D11_BUFFER_DESC bufferDesc = {};
     bufferDesc.Usage = D3D11_USAGE_DEFAULT;
     bufferDesc.ByteWidth = static_cast<UINT>(sizeof(Vertex) * convertedVertices.size());
@@ -199,7 +199,48 @@ bool Model::LoadFromObj(ID3D11Device* device, const std::string& filePath)
 
     m_vertexCount = static_cast<UINT>(convertedVertices.size());
 
-   
+
+
+    return true;
+}
+
+bool Model::CreateFromVertices(ID3D11Device* device, const std::vector<Vertex>& vertices)
+{
+    if (!device)
+    {
+        Debug::Error("Model::CreateFromVertices failed : device is null");
+        return false;
+    }
+
+    // ã™ã§ã«ä½œæˆæ¸ˆã¿ãªã‚‰ä¸€æ—¦è§£æ”¾(åŒºé–“ãŒå¤‰ã‚ã‚‹ãŸã³ã«ä½œã‚Šç›´ã•ã‚Œã‚‹æƒ³å®š)
+    m_vertexBuffer.Reset();
+    m_vertexCount = 0;
+
+    if (vertices.empty())
+    {
+        Debug::Warning("Model::CreateFromVertices : vertices is empty");
+        return true;
+    }
+
+    D3D11_BUFFER_DESC bufferDesc = {};
+    bufferDesc.Usage = D3D11_USAGE_DEFAULT;
+    bufferDesc.ByteWidth = static_cast<UINT>(sizeof(Vertex) * vertices.size());
+    bufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    bufferDesc.CPUAccessFlags = 0;
+    bufferDesc.MiscFlags = 0;
+    bufferDesc.StructureByteStride = 0;
+
+    D3D11_SUBRESOURCE_DATA initData = {};
+    initData.pSysMem = vertices.data();
+
+    HRESULT hr = device->CreateBuffer(&bufferDesc, &initData, m_vertexBuffer.GetAddressOf());
+    if (FAILED(hr))
+    {
+        Debug::Error("Model::CreateFromVertices failed : CreateBuffer failed");
+        return false;
+    }
+
+    m_vertexCount = static_cast<UINT>(vertices.size());
 
     return true;
 }

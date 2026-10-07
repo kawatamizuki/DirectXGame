@@ -1,0 +1,32 @@
+[LOG] Renderer::Initialize start
+[INFO] Triangle vertex buffer created. vertexCount = 6
+[INFO] Renderer initialized successfully
+[LOG] Create TitleScene
+[LOG] TitleScene::Init
+[INFO] ObjLoader::LoadMtl map_Kd : CityKitSuburban/Models/OBJ format/Textures/colormap.png
+[INFO] Loading texture : CityKitSuburban/Models/OBJ format/Textures/colormap.png
+[INFO] Texture load success : CityKitSuburban/Models/OBJ format/Textures/colormap.png
+[INFO] Model::LoadFromObj texturePath : CityKitSuburban/Models/OBJ format/Textures/colormap.png
+[INFO] OBJ loaded. vertexCount = 7044
+[INFO] ObjLoader::LoadMtl map_Kd : CityKitCommercial/Models/OBJ format/Textures/colormap.png
+[INFO] Loading texture : CityKitCommercial/Models/OBJ format/Textures/colormap.png
+[INFO] Texture load success : CityKitCommercial/Models/OBJ format/Textures/colormap.png
+[INFO] Model::LoadFromObj texturePath : CityKitCommercial/Models/OBJ format/Textures/colormap.png
+[INFO] OBJ loaded. vertexCount = 7512
+[WARN] No texture path found
+[WARN] Model::LoadFromObj texturePath is empty : Models/cube.obj
+[INFO] OBJ loaded. vertexCount = 36
+[WARN] No texture path found
+[WARN] Model::LoadFromObj texturePath is empty : RoadTiles/Models/roadTile_163.obj
+[INFO] OBJ loaded. vertexCount = 36
+[INFO] ObjLoader::LoadMtl map_Kd : Models/Textures/colormap.png
+[INFO] Loading texture : Models/Textures/colormap.png
+[INFO] Texture load success : Models/Textures/colormap.png
+[INFO] Model::LoadFromObj texturePath : Models/Textures/colormap.png
+[INFO] OBJ loaded. vertexCount = 2364
+[LOG] TitleScene::Finalize
+[LOG] Create GameScene
+[LOG] GameScene::Init
+[LOG] RoadSystem: 経路上に既存の建物/道路があるため道路の配置を拒否しました
+[LOG] RoadSystem: 経路上に既存の建物/道路があるため道路の配置を拒否しました
+[LOG] RoadSystem: 経路上に既存の建物/道路があるため道路の配置を拒否しました

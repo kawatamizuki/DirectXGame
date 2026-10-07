@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 #include <windows.h>
 #include <d3d11.h>
 #include <vector>
@@ -66,75 +66,75 @@ public:
     bool Initialize(HWND hwnd, GameContext* context);
     void BeginFrame();
     void Update();
-    void UpdatePicking();//ƒIƒuƒWƒFƒNƒg‚ğ‘I‘ğ‚·‚é‚½‚ß‚ÌŠÖ”
-    void UpdateDragging();//MoveMode‚Åƒhƒ‰ƒbƒO‚µ‚Ä“®‚©‚¹‚é‚æ‚¤‚É‚·‚éŠÖ”
-    void UpdateScaleGizmoDrag();//ScaleMode‚Åƒhƒ‰ƒbƒO‚µ‚ÄƒXƒP[ƒ‹‚ğ•ÏX‚·‚éŠÖ”
-    void UpdateRotateGizmoDrag();//RotateMode‚Åƒhƒ‰ƒbƒO‚µ‚Ä‰ñ“]‚³‚¹‚éŠÖ”
-    void UpdateGizmoHover();//‚Ç‚Ì²‚ğG‚Á‚Ä‚¢‚é‚©‚ğ‚©‚ğ”»’è‚·‚éŠÖ”
-    void UpdateMoveGizmoHover();//ˆÚ“®²‚Ì‚Ç‚ê‚ğG‚Á‚Ä‚¢‚é‚©”»’è‚·‚éŠÖ”
-    void UpdateScaleGizmoHover();//ƒXƒP[ƒ‹²‚Ì‚Ç‚ê‚ğG‚Á‚Ä‚¢‚é‚©”»’è‚·‚éŠÖ”    
-    void UpdateRotateGizmoHover();//‰ñ“]²‚Ì‚Ç‚ê‚ğG‚Á‚Ä‚¢‚é‚©‚ğ”»’è‚·‚éŠÖ”
-    void EndGizmoDragIfNeeded();//‹¤’Ê‚ÌI—¹”»’è
-    void UpdateFocusSelected();//‘I‘ğ‚µ‚Ä‚¢‚éƒIƒuƒWƒFƒNƒg‚ÉƒJƒƒ‰‚ğŒü‚¯‚éŠÖ”
-    void UpdateGizmoMode();//move,rotate,scale‚ÌØ‚è‘Ö‚¦
+    void UpdatePicking();//ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã‚’é¸æŠã™ã‚‹ãŸã‚ã®é–¢æ•°
+    void UpdateDragging();//MoveModeã§ãƒ‰ãƒ©ãƒƒã‚°ã—ã¦å‹•ã‹ã›ã‚‹ã‚ˆã†ã«ã™ã‚‹é–¢æ•°
+    void UpdateScaleGizmoDrag();//ScaleModeã§ãƒ‰ãƒ©ãƒƒã‚°ã—ã¦ã‚¹ã‚±ãƒ¼ãƒ«ã‚’å¤‰æ›´ã™ã‚‹é–¢æ•°
+    void UpdateRotateGizmoDrag();//RotateModeã§ãƒ‰ãƒ©ãƒƒã‚°ã—ã¦å›è»¢ã•ã›ã‚‹é–¢æ•°
+    void UpdateGizmoHover();//ã©ã®è»¸ã‚’è§¦ã£ã¦ã„ã‚‹ã‹ã‚’ã‹ã‚’åˆ¤å®šã™ã‚‹é–¢æ•°
+    void UpdateMoveGizmoHover();//ç§»å‹•è»¸ã®ã©ã‚Œã‚’è§¦ã£ã¦ã„ã‚‹ã‹åˆ¤å®šã™ã‚‹é–¢æ•°
+    void UpdateScaleGizmoHover();//ã‚¹ã‚±ãƒ¼ãƒ«è»¸ã®ã©ã‚Œã‚’è§¦ã£ã¦ã„ã‚‹ã‹åˆ¤å®šã™ã‚‹é–¢æ•°    
+    void UpdateRotateGizmoHover();//å›è»¢è»¸ã®ã©ã‚Œã‚’è§¦ã£ã¦ã„ã‚‹ã‹ã‚’åˆ¤å®šã™ã‚‹é–¢æ•°
+    void EndGizmoDragIfNeeded();//å…±é€šã®çµ‚äº†åˆ¤å®š
+    void UpdateFocusSelected();//é¸æŠã—ã¦ã„ã‚‹ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ã‚«ãƒ¡ãƒ©ã‚’å‘ã‘ã‚‹é–¢æ•°
+    void UpdateGizmoMode();//move,rotate,scaleã®åˆ‡ã‚Šæ›¿ãˆ
 
     void Draw();
-    void DrawAllObjectBounds();//‚·‚×‚Ä‚Ì“–‚½‚è”»’è‚ÌBOX•`‰æ
-    void DrawSelectedObjectBounds();//‘I‘ğ‚µ‚Ä‚¢‚éƒIƒuƒWƒFƒNƒg‚Ì“–‚½‚è”»’è‚ÌBOX‚Ì•`‰æ
-    void DrawPerformance();//ƒpƒtƒH[ƒ}ƒ“ƒXİ’è‚Ì•`‰æ
-    void DrawObjects();//ƒIƒuƒWƒFƒNƒgˆê——
-    void DrawInspector();//ƒIƒuƒWƒFƒNƒg‚ÌÀ•W‚âƒXƒP[ƒ‹‚Ì•\¦
-    void DrawEditorSettings();//ƒGƒfƒBƒ^[‚ÉŠÖ‚·‚éİ’è
-    void DrawHierarchyView();// Unity•—‚ÌHierarchy•\¦
-    void DrawInspectorView();// Unity•—‚ÌInspector•\¦
-    void DrawEditorSettingsView();// Editorİ’è•\¦
-    void DrawDebugView();// Debug / Performance•\¦
-    void DrawMoveGizmo();//ˆÚ“®²‚Ì•\¦
-    void DrawScaleGizmo();//ƒXƒP[ƒ‹²‚Ì•\¦
-	void DrawRotateGizmo();//‰ñ“]²‚Ì•\¦
-    void DrawMoveAxisArrow(const DirectX::XMFLOAT3& end, const DirectX::XMFLOAT3& dir, const DirectX::XMFLOAT4& color, float gizmoLength );//ˆÚ“®²‚É–îˆó•`‰æ
+    void DrawAllObjectBounds();//ã™ã¹ã¦ã®å½“ãŸã‚Šåˆ¤å®šã®BOXæç”»
+    void DrawSelectedObjectBounds();//é¸æŠã—ã¦ã„ã‚‹ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã®å½“ãŸã‚Šåˆ¤å®šã®BOXã®æç”»
+    void DrawPerformance();//ãƒ‘ãƒ•ã‚©ãƒ¼ãƒãƒ³ã‚¹è¨­å®šã®æç”»
+    void DrawObjects();//ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆä¸€è¦§
+    void DrawInspector();//ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã®åº§æ¨™ã‚„ã‚¹ã‚±ãƒ¼ãƒ«ã®è¡¨ç¤º
+    void DrawEditorSettings();//ã‚¨ãƒ‡ã‚£ã‚¿ãƒ¼ã«é–¢ã™ã‚‹è¨­å®š
+    void DrawHierarchyView();// Unityé¢¨ã®Hierarchyè¡¨ç¤º
+    void DrawInspectorView();// Unityé¢¨ã®Inspectorè¡¨ç¤º
+    void DrawEditorSettingsView();// Editorè¨­å®šè¡¨ç¤º
+    void DrawDebugView();// Debug / Performanceè¡¨ç¤º
+    void DrawMoveGizmo();//ç§»å‹•è»¸ã®è¡¨ç¤º
+    void DrawScaleGizmo();//ã‚¹ã‚±ãƒ¼ãƒ«è»¸ã®è¡¨ç¤º
+	void DrawRotateGizmo();//å›è»¢è»¸ã®è¡¨ç¤º
+    void DrawMoveAxisArrow(const DirectX::XMFLOAT3& end, const DirectX::XMFLOAT3& dir, const DirectX::XMFLOAT4& color, float gizmoLength );//ç§»å‹•è»¸ã«çŸ¢å°æç”»
     void DrawScaleAxisBox(const DirectX::XMFLOAT3& end,const DirectX::XMFLOAT4& color,float boxSize);
     void DrawRotateRing( const DirectX::XMFLOAT3& origin, const DirectX::XMFLOAT3& axis, float radius, const DirectX::XMFLOAT4& color);
     void EndFrame();
 
     Ray CreateMouseRay();
 
-    bool WorldToScreen(const DirectX::XMFLOAT3& worldPos,DirectX::XMFLOAT2& screenPos);//3DÀ•W‚ğ‰æ–Êã‚Ì2DÀ•W‚É•ÏŠ·‚·‚éŠÖ”
+    bool WorldToScreen(const DirectX::XMFLOAT3& worldPos,DirectX::XMFLOAT2& screenPos);//3Dåº§æ¨™ã‚’ç”»é¢ä¸Šã®2Dåº§æ¨™ã«å¤‰æ›ã™ã‚‹é–¢æ•°
     bool IntersectRayPlane( const Ray& ray,const DirectX::XMFLOAT3& planePoint,const DirectX::XMFLOAT3& planeNormal,DirectX::XMFLOAT3& hitPoint);
     float DistanceRayToSegment( const Ray& ray,const DirectX::XMFLOAT3& segStart,const DirectX::XMFLOAT3& segEnd);
-    float DistancePointToSegment2D(const DirectX::XMFLOAT2& point, const DirectX::XMFLOAT2& segStart, const DirectX::XMFLOAT2& segEnd);//2Dã‚ÌƒXƒNƒŠ[ƒ“‚ÆGizmo‚ğ”»’è
-    DirectX::XMFLOAT3 GetAxisDirection(GizmoAxis axis, const GameObject& obj);//²•ûŒü‚ÆƒIƒuƒWƒFƒNƒg‚ğ•Ô‚·ŠÖ”
+    float DistancePointToSegment2D(const DirectX::XMFLOAT2& point, const DirectX::XMFLOAT2& segStart, const DirectX::XMFLOAT2& segEnd);//2Dä¸Šã®ã‚¹ã‚¯ãƒªãƒ¼ãƒ³ã¨Gizmoã‚’åˆ¤å®š
+    DirectX::XMFLOAT3 GetAxisDirection(GizmoAxis axis, const GameObject& obj);//è»¸æ–¹å‘ã¨ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã‚’è¿”ã™é–¢æ•°
 
-    //ƒJƒƒ‰Œn‚ÌŠÖ”
+    //ã‚«ãƒ¡ãƒ©ç³»ã®é–¢æ•°
     void UpdateFreeCamera();
   
 
     void Finalize();
 private:
     GameContext* m_context = nullptr;
-    //BOX‚Ì•`‰æƒtƒ‰ƒO
+    //BOXã®æç”»ãƒ•ãƒ©ã‚°
     bool m_showSelectedBounds = false;
     bool m_showAllBounds = false;
 
-    bool m_isDraggingObject = false;//¡ƒhƒ‰ƒbƒO‚µ‚Ä‚¢‚é‚©
-    bool m_enableObjectDragging = true;//ƒhƒ‰ƒbƒO‘€ì‚ğ‹–‰Â‚·‚é‚©
-    DragMoveMode m_dragMoveMode = DragMoveMode::CameraPlane;//ƒhƒ‰ƒbƒOƒ‚[ƒh‚ÌØ‘Ö
-    GizmoAxis m_hoveredAxis = GizmoAxis::None;//ƒIƒuƒWƒFƒNƒg‚Ì‰¡‚É•\¦‚³‚ê‚Ä‚¢‚é²‚Ì”»’è
-    GizmoAxis m_activeAxis = GizmoAxis::None;//¡‘I‘ğ‚³‚ê‚Ä‚¢‚é²‚Ì”»’è
-    GizmoSpace m_gizmoSpace = GizmoSpace::World;//ƒ[ƒ‹ƒhÀ•W‚©ƒ[ƒJƒ‹À•W‚©
-    GizmoMode m_gizmoMode = GizmoMode::Move;//‰½‚ğ•ÏX‚·‚é‚©
-    bool m_isDraggingGizmo = false;//ƒhƒ‰ƒbƒO‚µ‚Ä‚¢‚é‚©
-    //MoveMode‚Ìƒhƒ‰ƒbƒO—p•Ï”
+    bool m_isDraggingObject = false;//ä»Šãƒ‰ãƒ©ãƒƒã‚°ã—ã¦ã„ã‚‹ã‹
+    bool m_enableObjectDragging = true;//ãƒ‰ãƒ©ãƒƒã‚°æ“ä½œã‚’è¨±å¯ã™ã‚‹ã‹
+    DragMoveMode m_dragMoveMode = DragMoveMode::CameraPlane;//ãƒ‰ãƒ©ãƒƒã‚°ãƒ¢ãƒ¼ãƒ‰ã®åˆ‡æ›¿
+    GizmoAxis m_hoveredAxis = GizmoAxis::None;//ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã®æ¨ªã«è¡¨ç¤ºã•ã‚Œã¦ã„ã‚‹è»¸ã®åˆ¤å®š
+    GizmoAxis m_activeAxis = GizmoAxis::None;//ä»Šé¸æŠã•ã‚Œã¦ã„ã‚‹è»¸ã®åˆ¤å®š
+    GizmoSpace m_gizmoSpace = GizmoSpace::World;//ãƒ¯ãƒ¼ãƒ«ãƒ‰åº§æ¨™ã‹ãƒ­ãƒ¼ã‚«ãƒ«åº§æ¨™ã‹
+    GizmoMode m_gizmoMode = GizmoMode::Move;//ä½•ã‚’å¤‰æ›´ã™ã‚‹ã‹
+    bool m_isDraggingGizmo = false;//ãƒ‰ãƒ©ãƒƒã‚°ã—ã¦ã„ã‚‹ã‹
+    //MoveModeã®ãƒ‰ãƒ©ãƒƒã‚°ç”¨å¤‰æ•°
  
-    POINT m_axisDragStartMousePos = { 0, 0 };//²ˆÚ“®‚ğƒ}ƒEƒX‚Ì“®‚«‚É‚·‚é‚½‚ß
+    POINT m_axisDragStartMousePos = { 0, 0 };//è»¸ç§»å‹•ã‚’ãƒã‚¦ã‚¹ã®å‹•ãã«ã™ã‚‹ãŸã‚
     DirectX::XMFLOAT3 m_axisDragStartObjectPos = { 0, 0, 0 };
-    // ScaleMode‚Ìƒhƒ‰ƒbƒO—p
+    // ScaleModeã®ãƒ‰ãƒ©ãƒƒã‚°ç”¨
     DirectX::XMFLOAT3 m_scaleDragStartScale = { 1.0f, 1.0f, 1.0f};
-    //RotateMode‚Ìƒhƒ‰ƒbƒO—p•Ï”
+    //RotateModeã®ãƒ‰ãƒ©ãƒƒã‚°ç”¨å¤‰æ•°
     POINT m_rotateDragStartMousePos = { 0, 0 };
     DirectX::XMFLOAT4 m_rotateDragStartQuat = { 0.0f,0.0f, 0.0f,1.0f };
 
-    // RotateGizmo ƒhƒ‰ƒbƒO—p
+    // RotateGizmo ãƒ‰ãƒ©ãƒƒã‚°ç”¨
     DirectX::XMFLOAT3 m_rotateDragStartVector = { 0.0f, 0.0f, 0.0f };
     DirectX::XMFLOAT3 m_rotateDragAxis = { 0.0f, 1.0f, 0.0f };
 
@@ -144,13 +144,13 @@ private:
     DirectX::XMFLOAT3 m_dragOffset = { 0, 0, 0 };
     int m_selectedObjectIndex;
 
-    //ƒJƒƒ‰—p•Ï”
+    //ã‚«ãƒ¡ãƒ©ç”¨å¤‰æ•°
     POINT m_prevMousePos = { 0, 0 };
     bool m_isFreeCameraActive = false;
     float m_freeCameraMoveSpeed = 0.2f;
     float m_freeCameraRotateSpeed = 0.005f;
 
-	// Undo/Redo—pƒXƒ^ƒbƒN
+	// Undo/Redoç”¨ã‚¹ã‚¿ãƒƒã‚¯
     std::vector<TransformCommand> m_undoStack;
     std::vector<TransformCommand> m_redoStack;
 

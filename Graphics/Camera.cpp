@@ -1,4 +1,4 @@
-#include "Camera.h"
+ï»¿#include "Camera.h"
 
 using namespace DirectX;
 
@@ -28,7 +28,7 @@ XMMATRIX Camera::GetViewMatrix() const
 
     float lengthSq = XMVectorGetX(XMVector3LengthSq(direction));
 
-    // position ‚Æ target ‚ª‹ß‚·‚¬‚é‚Æ‹ü•ûŒü‚ªì‚ê‚È‚¢‚½‚ß•â³‚·‚é
+    // position ã¨ target ãŒè¿‘ã™ãã‚‹ã¨è¦–ç·šæ–¹å‘ãŒä½œã‚Œãªã„ãŸã‚è£œæ­£ã™ã‚‹
     if (lengthSq < 0.0001f)
     {
         target = XMVectorAdd(
@@ -94,29 +94,29 @@ void Camera::SetProjection(float fovY, float aspect, float nearZ, float farZ)
 }
 
 // ========================================
-// yaw / pitch ‚©‚ç
-// target•ûŒü‚ğXV‚·‚éŠÖ”
+// yaw / pitch ã‹ã‚‰
+// targetæ–¹å‘ã‚’æ›´æ–°ã™ã‚‹é–¢æ•°
 // ========================================
-// FreeCamera—p
+// FreeCameraç”¨
 //
-// yaw   : ¶‰E‰ñ“]
-// pitch : ã‰º‰ñ“]
+// yaw   : å·¦å³å›è»¢
+// pitch : ä¸Šä¸‹å›è»¢
 //
-// position + forward ‚ğ target ‚É‚·‚é
+// position + forward ã‚’ target ã«ã™ã‚‹
 // ========================================
 void Camera::UpdateTargetFromYawPitch()
 {
     using namespace DirectX;
 
     // ========================================
-    // forwardƒxƒNƒgƒ‹ì¬
+    // forwardãƒ™ã‚¯ãƒˆãƒ«ä½œæˆ
     // ========================================
-    // yaw / pitch ‚©‚ç
-    // ‘O•ûŒüƒxƒNƒgƒ‹‚ğŒvZ
+    // yaw / pitch ã‹ã‚‰
+    // å‰æ–¹å‘ãƒ™ã‚¯ãƒˆãƒ«ã‚’è¨ˆç®—
     //
-    // X : ¶‰E
-    // Y : ã‰º
-    // Z : ‘OŒã
+    // X : å·¦å³
+    // Y : ä¸Šä¸‹
+    // Z : å‰å¾Œ
     // ========================================
     XMVECTOR forward =
         XMVectorSet(
@@ -126,12 +126,12 @@ void Camera::UpdateTargetFromYawPitch()
             0.0f
         );
 
-    // ³‹K‰»
+    // æ­£è¦åŒ–
     forward =
         XMVector3Normalize(forward);
 
     // ========================================
-    // Œ»İˆÊ’u
+    // ç¾åœ¨ä½ç½®
     // ========================================
     XMVECTOR pos =
         XMLoadFloat3(&m_position);
@@ -142,7 +142,7 @@ void Camera::UpdateTargetFromYawPitch()
     XMVECTOR target =
         pos + forward;
 
-    // XMFLOAT3‚Ö•Û‘¶
+    // XMFLOAT3ã¸ä¿å­˜
     XMStoreFloat3(
         &m_target,
         target
@@ -150,25 +150,25 @@ void Camera::UpdateTargetFromYawPitch()
 }
 
 // ========================================
-// yaw / pitch ‰ÁZ
+// yaw / pitch åŠ ç®—
 // ========================================
-// ƒ}ƒEƒXˆÚ“®—Ê‚ğ‰ÁZ‚·‚é—p
+// ãƒã‚¦ã‚¹ç§»å‹•é‡ã‚’åŠ ç®—ã™ã‚‹ç”¨
 // ========================================
 void Camera::AddYawPitch(
     float yawDelta,
     float pitchDelta)
 {
     // ========================================
-    // ‰ñ“]‰ÁZ
+    // å›è»¢åŠ ç®—
     // ========================================
     m_yaw += yawDelta;
     m_pitch += pitchDelta;
 
     // ========================================
-    // pitch§ŒÀ
+    // pitchåˆ¶é™
     // ========================================
-    // ^ã/^‰º‚ğŒü‚­‚Æ
-    // ƒJƒƒ‰‚ª‰ó‚ê‚é‚½‚ß§ŒÀ
+    // çœŸä¸Š/çœŸä¸‹ã‚’å‘ãã¨
+    // ã‚«ãƒ¡ãƒ©ãŒå£Šã‚Œã‚‹ãŸã‚åˆ¶é™
     // ========================================
     float limit =
         DirectX::XMConvertToRadians(89.0f);
@@ -184,22 +184,22 @@ void Camera::AddYawPitch(
     }
 
     // ========================================
-    // targetXV
+    // targetæ›´æ–°
     // ========================================
     UpdateTargetFromYawPitch();
 }
 
 // ========================================
-// ƒJƒƒ‰‰E•ûŒüæ“¾
+// ã‚«ãƒ¡ãƒ©å³æ–¹å‘å–å¾—
 // ========================================
-// A/DˆÚ“®—p
+// A/Dç§»å‹•ç”¨
 // ========================================
 DirectX::XMFLOAT3 Camera::GetRight() const
 {
     using namespace DirectX;
 
     // ========================================
-    // ‘O•ûŒü
+    // å‰æ–¹å‘
     // ========================================
     XMVECTOR forward =
         XMLoadFloat3(&m_target) -
@@ -209,13 +209,13 @@ DirectX::XMFLOAT3 Camera::GetRight() const
         XMVector3Normalize(forward);
 
     // ========================================
-    // ã•ûŒü
+    // ä¸Šæ–¹å‘
     // ========================================
     XMVECTOR up =
         XMLoadFloat3(&m_up);
 
     // ========================================
-    // right = up ~ forward
+    // right = up Ã— forward
     // ========================================
     XMVECTOR right =
         XMVector3Cross(up, forward);
@@ -234,27 +234,27 @@ DirectX::XMFLOAT3 Camera::GetRight() const
 }
 
 // ========================================
-// ‘OŒãˆÚ“®
+// å‰å¾Œç§»å‹•
 // ========================================
-// W / SˆÚ“®—p
+// W / Sç§»å‹•ç”¨
 // ========================================
 void Camera::MoveForward(float distance)
 {
-    // ‘O•ûŒüæ“¾
+    // å‰æ–¹å‘å–å¾—
     DirectX::XMFLOAT3 forward =
         GetForward();
 
     // ========================================
-    // positionˆÚ“®
+    // positionç§»å‹•
     // ========================================
     m_position.x += forward.x * distance;
     m_position.y += forward.y * distance;
     m_position.z += forward.z * distance;
 
     // ========================================
-    // target‚à“¯ˆÚ“®
+    // targetã‚‚åŒæ™‚ç§»å‹•
     // ========================================
-    // ‹ü•ûŒüˆÛ
+    // è¦–ç·šæ–¹å‘ç¶­æŒ
     // ========================================
     m_target.x += forward.x * distance;
     m_target.y += forward.y * distance;
@@ -262,25 +262,25 @@ void Camera::MoveForward(float distance)
 }
 
 // ========================================
-// ¶‰EˆÚ“®
+// å·¦å³ç§»å‹•
 // ========================================
-// A / DˆÚ“®—p
+// A / Dç§»å‹•ç”¨
 // ========================================
 void Camera::MoveRight(float distance)
 {
-    // ‰E•ûŒüæ“¾
+    // å³æ–¹å‘å–å¾—
     DirectX::XMFLOAT3 right =
         GetRight();
 
     // ========================================
-    // positionˆÚ“®
+    // positionç§»å‹•
     // ========================================
     m_position.x += right.x * distance;
     m_position.y += right.y * distance;
     m_position.z += right.z * distance;
 
     // ========================================
-    // target‚à“¯ˆÚ“®
+    // targetã‚‚åŒæ™‚ç§»å‹•
     // ========================================
     m_target.x += right.x * distance;
     m_target.y += right.y * distance;
@@ -288,19 +288,19 @@ void Camera::MoveRight(float distance)
 }
 
 // ========================================
-// ã‰ºˆÚ“®
+// ä¸Šä¸‹ç§»å‹•
 // ========================================
 void Camera::MoveUp(float distance)
 {
-    // positionˆÚ“®
+    // positionç§»å‹•
     m_position.y += distance;
 
-    // target‚àˆÚ“®
+    // targetã‚‚ç§»å‹•
     m_target.y += distance;
 }
 
 // ========================================
-// ‘I‘ğ’†‚ÌƒIƒuƒWƒFƒNƒg‚ÉƒJƒƒ‰‚ğŒü‚¯‚é
+// é¸æŠä¸­ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ã‚«ãƒ¡ãƒ©ã‚’å‘ã‘ã‚‹
 // ========================================
 void Camera::Focus(const DirectX::XMFLOAT3& target,float distance)
 {
@@ -317,4 +317,82 @@ void Camera::Focus(const DirectX::XMFLOAT3& target,float distance)
         target.y - forward.y * distance,
         target.z - forward.z * distance
     };
+}
+
+// ========================================
+// ã‚¹ã‚¯ãƒªãƒ¼ãƒ³åº§æ¨™(ã‚¯ãƒ©ã‚¤ã‚¢ãƒ³ãƒˆåº§æ¨™) â†’ ãƒ¯ãƒ¼ãƒ«ãƒ‰ç©ºé–“Ray
+// ========================================
+// DebugEditor::CreateMouseRay ã‹ã‚‰ç§»å‹•(Cameraã®æƒ…å ±ã ã‘ä½¿ã†ã®ã§ã“ã“ã«ä½ç½®)
+// ========================================
+Ray Camera::ScreenPointToRay(const POINT& mousePos, UINT windowWidth, UINT windowHeight) const
+{
+    Ray ray;
+
+    float mouseX = static_cast<float>(mousePos.x);
+    float mouseY = static_cast<float>(mousePos.y);
+
+    float width = static_cast<float>(windowWidth);
+    float height = static_cast<float>(windowHeight);
+
+    // NDCå¤‰æ›
+    float ndcX = (2.0f * mouseX / width) - 1.0f;
+    float ndcY = 1.0f - (2.0f * mouseY / height);
+
+    XMMATRIX projection = GetProjectionMatrix();
+    XMMATRIX view = GetViewMatrix();
+
+    XMMATRIX invView = XMMatrixInverse(nullptr, view);
+    XMMATRIX invProj = XMMatrixInverse(nullptr, projection);
+
+    // Nearåº§æ¨™
+    XMVECTOR nearPoint = XMVectorSet(ndcX, ndcY, 0.0f, 1.0f);
+    nearPoint = XMVector3TransformCoord(nearPoint, invProj);
+    nearPoint = XMVector3TransformCoord(nearPoint, invView);
+
+    // Faråº§æ¨™
+    XMVECTOR farPoint = XMVectorSet(ndcX, ndcY, 1.0f, 1.0f);
+    farPoint = XMVector3TransformCoord(farPoint, invProj);
+    farPoint = XMVector3TransformCoord(farPoint, invView);
+
+    // Rayæ–¹å‘
+    XMVECTOR direction = XMVector3Normalize(farPoint - nearPoint);
+
+    XMStoreFloat3(&ray.origin, nearPoint);
+    XMStoreFloat3(&ray.direction, direction);
+
+    return ray;
+}
+
+// ========================================
+// ãƒ¯ãƒ¼ãƒ«ãƒ‰åº§æ¨™ â†’ ã‚¹ã‚¯ãƒªãƒ¼ãƒ³åº§æ¨™(ã‚¯ãƒ©ã‚¤ã‚¢ãƒ³ãƒˆåº§æ¨™)
+// ========================================
+// ScreenPointToRayã®é€†æ–¹å‘ã€‚ImGuiã®ã‚ªãƒ¼ãƒãƒ¼ãƒ¬ã‚¤UIã‚’ãƒ¯ãƒ¼ãƒ«ãƒ‰ä¸Šã®ä½ç½®ã«
+// è¿½å¾“ã•ã›ã‚‹ãŸã‚ã«ä½¿ã†(é“è·¯é…ç½®ã®ç¢ºèªã‚¢ã‚¤ã‚³ãƒ³ãªã©)ã€‚
+// ========================================
+bool Camera::WorldToScreen(const XMFLOAT3& worldPos, UINT windowWidth, UINT windowHeight, POINT& outScreenPos) const
+{
+    XMMATRIX view = GetViewMatrix();
+    XMMATRIX projection = GetProjectionMatrix();
+
+    XMVECTOR worldVec = XMLoadFloat3(&worldPos);
+    XMVECTOR viewSpace = XMVector3TransformCoord(worldVec, view);
+
+    // ãƒ“ãƒ¥ãƒ¼ç©ºé–“Z(LHåº§æ¨™ç³»ã§ã¯å‰æ–¹ãŒ+Z)ãŒnearZã‚ˆã‚Šæ‰‹å‰(=ã‚«ãƒ¡ãƒ©ã®å¾Œã‚å´)ãªã‚‰æç”»ã•ã‚Œãªã„
+    if (XMVectorGetZ(viewSpace) < m_nearZ)
+    {
+        return false;
+    }
+
+    XMVECTOR clipSpace = XMVector3TransformCoord(viewSpace, projection);
+
+    float ndcX = XMVectorGetX(clipSpace);
+    float ndcY = XMVectorGetY(clipSpace);
+
+    float width = static_cast<float>(windowWidth);
+    float height = static_cast<float>(windowHeight);
+
+    outScreenPos.x = static_cast<LONG>((ndcX * 0.5f + 0.5f) * width);
+    outScreenPos.y = static_cast<LONG>((1.0f - (ndcY * 0.5f + 0.5f)) * height);
+
+    return true;
 }

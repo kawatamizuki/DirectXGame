@@ -1,5 +1,7 @@
-#pragma once
+﻿#pragma once
 #include <DirectXMath.h>
+#include <Windows.h>
+#include "Ray.h"
 
 class Camera
 {
@@ -25,6 +27,16 @@ public:
     void SetPosition(float x, float y, float z);
     void SetTarget(float x, float y, float z);
     void SetProjection(float fovY, float aspect, float nearZ, float farZ);
+
+    // スクリーン座標(クライアント座標)からワールド空間のRayを生成する
+    // mousePos    : InputManager::GetMousePosition() の値(クライアント座標)
+    // windowWidth / windowHeight : Renderer::GetWindowWidth/Height()
+    Ray ScreenPointToRay(const POINT& mousePos, UINT windowWidth, UINT windowHeight) const;
+
+    // ワールド座標 → スクリーン座標(クライアント座標、ピクセル)。ImGuiのオーバーレイを
+    // ワールド上の位置に追従させるために使う(ScreenPointToRayの逆方向)。
+    // カメラの後ろ側にある場合(描画されない位置)はfalseを返す。
+    bool WorldToScreen(const DirectX::XMFLOAT3& worldPos, UINT windowWidth, UINT windowHeight, POINT& outScreenPos) const;
 
 private:
     void UpdateTargetFromYawPitch();

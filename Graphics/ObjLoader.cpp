@@ -1,4 +1,4 @@
-#include <fstream>
+ï»¿#include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -28,7 +28,7 @@ namespace
 //    // "3"     -> 3
 //    std::stringstream ss(token);
 //    std::string indexStr;
-//    std::getline(ss, indexStr, '/');//‰¼‚È‚Ì‚Å’¸“_”Ô†‚¾‚¯“Ç‚İ‚Ş
+//    std::getline(ss, indexStr, '/');//ä»®ãªã®ã§é ‚ç‚¹ç•ªå·ã ã‘èª­ã¿è¾¼ã‚€
 //
 //    if (indexStr.empty())
 //    {
@@ -40,10 +40,10 @@ namespace
 
 ObjIndex ObjLoader::ParseFaceToken(const std::string& token)
 {
-    // "3/5/2" ¨ position=3, uv=5, normal=2
-    // "3//2"  ¨ position=3, uv‚È‚µ, normal=2
-    // "3/5"   ¨ position=3, uv=5, normal‚È‚µ
-    // "3"     ¨ position‚Ì‚İ
+    // "3/5/2" â†’ position=3, uv=5, normal=2
+    // "3//2"  â†’ position=3, uvãªã—, normal=2
+    // "3/5"   â†’ position=3, uv=5, normalãªã—
+    // "3"     â†’ positionã®ã¿
 
     ObjIndex index{};
     index.positionIndex = -1;
@@ -53,17 +53,17 @@ ObjIndex ObjLoader::ParseFaceToken(const std::string& token)
     std::stringstream ss(token);
     std::string part;
 
-    // 1‚Â–ÚF’¸“_ƒCƒ“ƒfƒbƒNƒX
+    // 1ã¤ç›®ï¼šé ‚ç‚¹ã‚¤ãƒ³ãƒ‡ãƒƒã‚¯ã‚¹
     if (std::getline(ss, part, '/'))
     {
         if (!part.empty())
         {
-            //•¶š—ñ‚ğint‚É•ÏŠ·‚·‚é
+            //æ–‡å­—åˆ—ã‚’intã«å¤‰æ›ã™ã‚‹
             index.positionIndex = std::stoi(part);
         }
     }
 
-    // 2‚Â–ÚFUVƒCƒ“ƒfƒbƒNƒX
+    // 2ã¤ç›®ï¼šUVã‚¤ãƒ³ãƒ‡ãƒƒã‚¯ã‚¹
     if (std::getline(ss, part, '/'))
     {
         if (!part.empty())
@@ -73,7 +73,7 @@ ObjIndex ObjLoader::ParseFaceToken(const std::string& token)
         }
     }
 
-    // 3‚Â–ÚF–@üƒCƒ“ƒfƒbƒNƒX
+    // 3ã¤ç›®ï¼šæ³•ç·šã‚¤ãƒ³ãƒ‡ãƒƒã‚¯ã‚¹
     if (std::getline(ss, part, '/'))
     {
         if (!part.empty())
@@ -92,10 +92,10 @@ bool ObjLoader::Load(
     DirectX::XMFLOAT3& outBoundsMin,
     DirectX::XMFLOAT3& outBoundsMax) 
 {
-    //ˆê’U‰Šú‰»
+    //ä¸€æ—¦åˆæœŸåŒ–
     outBoundsMin = { FLT_MAX, FLT_MAX, FLT_MAX };
     outBoundsMax = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
-    //ˆê’U’†g‚ğƒNƒŠƒA
+    //ä¸€æ—¦ä¸­èº«ã‚’ã‚¯ãƒªã‚¢
     outVertices.clear();
     outTexturePath.clear();
 
@@ -106,15 +106,20 @@ bool ObjLoader::Load(
         return false;
     }
 
-    // OBJ‚ÌŠeƒf[ƒ^‚ğ•Û
-    std::vector<Float3> positions;// ’¸“_À•W‚ğŠi”[
-    std::vector<Float2> texcoords;// UVÀ•W‚ğŠi”[
-    std::vector<Float3> normals;  // –@üî•ñ‚ğŠi”[
-    std::string line;             // 1s•ª‚Ì•¶š—ñ‚ğŠi”[
+    // OBJã®å„ãƒ‡ãƒ¼ã‚¿ã‚’ä¿æŒ
+    std::vector<Float3> positions;// é ‚ç‚¹åº§æ¨™ã‚’æ ¼ç´
+    std::vector<Float2> texcoords;// UVåº§æ¨™ã‚’æ ¼ç´
+    std::vector<Float3> normals;  // æ³•ç·šæƒ…å ±ã‚’æ ¼ç´
+    std::string line;             // 1è¡Œåˆ†ã®æ–‡å­—åˆ—ã‚’æ ¼ç´
+
+    // ãƒãƒ†ãƒªã‚¢ãƒ«å(newmtl) -> Kd(æ‹¡æ•£è‰²)ã€‚ãƒ†ã‚¯ã‚¹ãƒãƒ£ã‚’æŒãŸãªã„ãƒ¢ãƒ‡ãƒ«ã®é ‚ç‚¹è‰²ã¨ã—ã¦ä½¿ã†
+    std::unordered_map<std::string, DirectX::XMFLOAT3> materialColors;
+    // ç¾åœ¨æœ‰åŠ¹ãªãƒãƒ†ãƒªã‚¢ãƒ«å(usemtlè¡Œã§åˆ‡ã‚Šæ›¿ã‚ã‚‹)
+    std::string currentMaterialName;
 
 
     //========================================
-    // ƒtƒ@ƒCƒ‹‚ğ1s‚¸‚Â‰ğÍ
+    // ãƒ•ã‚¡ã‚¤ãƒ«ã‚’1è¡Œãšã¤è§£æ
     //========================================
     while (std::getline(file, line))
     {
@@ -123,13 +128,13 @@ bool ObjLoader::Load(
             continue;   
         }
 
-        std::istringstream iss(line);//•¶š—ñ‚ğ“ü—Í‚Æ‚µ‚Äˆµ‚¤
+        std::istringstream iss(line);//æ–‡å­—åˆ—ã‚’å…¥åŠ›ã¨ã—ã¦æ‰±ã†
         std::string type;
         iss >> type;
 
 
        //========================================
-       // ’¸“_À•Wivj
+       // é ‚ç‚¹åº§æ¨™ï¼ˆvï¼‰
        //========================================
         if (type == "v")
         {
@@ -146,20 +151,20 @@ bool ObjLoader::Load(
             outBoundsMax.z = std::max(outBoundsMax.z, pos.z);
         }
        //========================================
-       // UVÀ•Wivtj
+       // UVåº§æ¨™ï¼ˆvtï¼‰
        //========================================
         else if (type == "vt")
         {
             Float2 uv{};
             iss >> uv.u >> uv.v;
 
-            // OBJŒn‚ÌVÀ•W‚ğDirectX—p‚É•ÏŠ·
+            // OBJç³»ã®Våº§æ¨™ã‚’DirectXç”¨ã«å¤‰æ›
             uv.v = 1.0f - uv.v;
 
             texcoords.push_back(uv);
         }
        //========================================
-       // –@üivnj
+       // æ³•ç·šï¼ˆvnï¼‰
        //========================================
         else if (type == "vn")
         {
@@ -168,7 +173,7 @@ bool ObjLoader::Load(
             normals.push_back(normal);
         }
         //========================================
-        // ƒ}ƒeƒŠƒAƒ‹
+        // ãƒãƒ†ãƒªã‚¢ãƒ«
         //========================================
         else if (type == "mtllib")
         {
@@ -180,7 +185,7 @@ bool ObjLoader::Load(
 
             if (!mtlFileName.empty())
             {
-                // ‚¢‚Á‚½‚ñ“¯‚¶ƒtƒHƒ‹ƒ_‚É‚ ‚é‘O’ñ
+                // ã„ã£ãŸã‚“åŒã˜ãƒ•ã‚©ãƒ«ãƒ€ã«ã‚ã‚‹å‰æ
                 std::string directory;
 
                 size_t slashPos = filePath.find_last_of("/\\");
@@ -191,59 +196,74 @@ bool ObjLoader::Load(
 
                 std::string mtlPath = directory + mtlFileName;
 
-                //ƒ}ƒeƒŠƒAƒ‹‚È‚µ‚ÌOBJ‚Ì‰Â”\«‚à‚ ‚è
-                if (!LoadMtl(mtlPath, directory, outTexturePath))
+                //ãƒãƒ†ãƒªã‚¢ãƒ«ãªã—ã®OBJã®å¯èƒ½æ€§ã‚‚ã‚ã‚Š
+                if (!LoadMtl(mtlPath, directory, outTexturePath, materialColors))
                 {
                     Debug::Warning("ObjLoader::LoadMtl failed : " + mtlPath);
                 }
-
-
-                LoadMtl(mtlPath, directory, outTexturePath);
             }
 
 
         }
-       //========================================
-       // –Êî•ñifj
-       //========================================
-        else if (type == "f")//‘g‚İ‡‚í‚¹•û
+        //========================================
+        // ä½¿ç”¨ãƒãƒ†ãƒªã‚¢ãƒ«åˆ‡ã‚Šæ›¿ãˆï¼ˆusemtlï¼‰
+        //========================================
+        else if (type == "usemtl")
         {
-            std::vector<std::string> faceTokens;//ƒf[ƒ^•Û‘¶—p
+            iss >> currentMaterialName;
+        }
+       //========================================
+       // é¢æƒ…å ±ï¼ˆfï¼‰
+       //========================================
+        else if (type == "f")//çµ„ã¿åˆã‚ã›æ–¹
+        {
+            std::vector<std::string> faceTokens;//ãƒ‡ãƒ¼ã‚¿ä¿å­˜ç”¨
             std::string token;
 
-            // "f 1/1/1 2/2/2 3/3/3" ‚ğ•ª‰ğ
+            // "f 1/1/1 2/2/2 3/3/3" ã‚’åˆ†è§£
             while (iss >> token)
             {
                 faceTokens.push_back(token);
             }
 
-            // Å’á3’¸“_•K—vAOŠpŒ`–¢–‚Í–³‹
+            // æœ€ä½3é ‚ç‚¹å¿…è¦ã€ä¸‰è§’å½¢æœªæº€ã¯ç„¡è¦–
             if (faceTokens.size() < 3)
             {
                 continue;
             }
 
+            // ã“ã®é¢ãŒä½¿ã†è‰²ã€‚ãƒ†ã‚¯ã‚¹ãƒãƒ£ã‚’æŒãŸãªã„ãƒãƒ†ãƒªã‚¢ãƒ«(Kdã®ã¿)ã®å ´åˆã€
+            // ã“ã“ã§è§£æ±ºã—ãŸè‰²ãŒãã®ã¾ã¾é ‚ç‚¹è‰²ã¨ã—ã¦ä½¿ã‚ã‚Œã‚‹(è¦‹ã¤ã‹ã‚‰ãªã‘ã‚Œã°ç™½)ã€‚
+            Float3 faceColor{ 1.0f, 1.0f, 1.0f };
+            auto colorIt = materialColors.find(currentMaterialName);
+            if (colorIt != materialColors.end())
+            {
+                faceColor.x = colorIt->second.x;
+                faceColor.y = colorIt->second.y;
+                faceColor.z = colorIt->second.z;
+            }
+
             //========================================
-            // ƒ|ƒŠƒSƒ“‚ğOŠpŒ`‚É•ªŠ„iîŒ`•ªŠ„j
+            // ãƒãƒªã‚´ãƒ³ã‚’ä¸‰è§’å½¢ã«åˆ†å‰²ï¼ˆæ‰‡å½¢åˆ†å‰²ï¼‰
             //========================================
             
-            //OŠpŒ`‚Æ‚µ‚Ä•`‰æ‚µ‚½‚¢‚½‚ß“Ç‚İ‚ñ‚¾obj‚ğOŠpŒ`‚É•ªŠ„‚µ‚Ä“Ç‚İ‚Ş
-            // OŠpŒ`‚È‚ç‚»‚Ì‚Ü‚Ü
-            // lŠpŒ`ˆÈã‚È‚çîŒ`•ªŠ„
-            // —á: 0,1,2,3 -> (0,1,2), (0,2,3)
+            //ä¸‰è§’å½¢ã¨ã—ã¦æç”»ã—ãŸã„ãŸã‚èª­ã¿è¾¼ã‚“ã objã‚’ä¸‰è§’å½¢ã«åˆ†å‰²ã—ã¦èª­ã¿è¾¼ã‚€
+            // ä¸‰è§’å½¢ãªã‚‰ãã®ã¾ã¾
+            // å››è§’å½¢ä»¥ä¸Šãªã‚‰æ‰‡å½¢åˆ†å‰²
+            // ä¾‹: 0,1,2,3 -> (0,1,2), (0,2,3)
             for (size_t i = 1; i + 1 < faceTokens.size(); ++i)
             {
                 ObjIndex idx0 = ParseFaceToken(faceTokens[0]);
                 ObjIndex idx1 = ParseFaceToken(faceTokens[i]);
                 ObjIndex idx2 = ParseFaceToken(faceTokens[i + 1]);
 
-                // ’¸“_ƒCƒ“ƒfƒbƒNƒX‚ª•s³‚È‚çƒXƒLƒbƒv
+                // é ‚ç‚¹ã‚¤ãƒ³ãƒ‡ãƒƒã‚¯ã‚¹ãŒä¸æ­£ãªã‚‰ã‚¹ã‚­ãƒƒãƒ—
                 if (idx0.positionIndex <= 0 || idx1.positionIndex <= 0 || idx2.positionIndex <= 0)
                 {
                     continue;
                 }
 
-                // ”ÍˆÍŠOƒAƒNƒZƒX–h~
+                // ç¯„å›²å¤–ã‚¢ã‚¯ã‚»ã‚¹é˜²æ­¢
                 if (idx0.positionIndex > (int)positions.size() ||
                     idx1.positionIndex > (int)positions.size() ||
                     idx2.positionIndex > (int)positions.size())
@@ -251,12 +271,12 @@ bool ObjLoader::Load(
                     continue;
                 }
 
-                // OBJ‚Í1n‚Ü‚è ¨ C++‚Í0n‚Ü‚è
+                // OBJã¯1å§‹ã¾ã‚Š â†’ C++ã¯0å§‹ã¾ã‚Š
                 const Float3& p0 = positions[idx0.positionIndex - 1];
                 const Float3& p1 = positions[idx1.positionIndex - 1];
                 const Float3& p2 = positions[idx2.positionIndex - 1];
 
-                // ƒfƒtƒHƒ‹ƒg’li‘¶İ‚µ‚È‚¢ê‡j
+                // ãƒ‡ãƒ•ã‚©ãƒ«ãƒˆå€¤ï¼ˆå­˜åœ¨ã—ãªã„å ´åˆï¼‰
                 Float2 uv0{ 0.0f, 0.0f };
                 Float2 uv1{ 0.0f, 0.0f };
                 Float2 uv2{ 0.0f, 0.0f };
@@ -266,7 +286,7 @@ bool ObjLoader::Load(
                 Float3 n2{ 0.0f, 0.0f, 0.0f };
 
                 //========================================
-                // UVæ“¾
+                // UVå–å¾—
                 //========================================
 
                 if (idx0.texcoordIndex > 0 && idx0.texcoordIndex <= (int)texcoords.size())
@@ -283,7 +303,7 @@ bool ObjLoader::Load(
                 }
 
                 //========================================
-                // –@üæ“¾
+                // æ³•ç·šå–å¾—
                 //========================================
 
                 if (idx0.normalIndex > 0 && idx0.normalIndex <= (int)normals.size())
@@ -300,14 +320,14 @@ bool ObjLoader::Load(
                 }
 
                 //========================================
-                // ’¸“_‚Æ‚µ‚Ä“o˜^iGPU—pj
+                // é ‚ç‚¹ã¨ã—ã¦ç™»éŒ²ï¼ˆGPUç”¨ï¼‰
                 //========================================
 
-                outVertices.push_back({p0.x, p0.y, p0.z, n0.x, n0.y, n0.z,uv0.u, uv0.v,1.0f, 1.0f, 1.0f, 1.0f});
+                outVertices.push_back({p0.x, p0.y, p0.z, n0.x, n0.y, n0.z,uv0.u, uv0.v,faceColor.x, faceColor.y, faceColor.z, 1.0f});
 
-                outVertices.push_back({p1.x, p1.y, p1.z,n1.x, n1.y, n1.z,uv1.u, uv1.v,1.0f, 1.0f, 1.0f, 1.0f});
+                outVertices.push_back({p1.x, p1.y, p1.z,n1.x, n1.y, n1.z,uv1.u, uv1.v,faceColor.x, faceColor.y, faceColor.z, 1.0f});
 
-                outVertices.push_back({p2.x, p2.y, p2.z,n2.x, n2.y, n2.z,uv2.u, uv2.v,1.0f, 1.0f, 1.0f, 1.0f});
+                outVertices.push_back({p2.x, p2.y, p2.z,n2.x, n2.y, n2.z,uv2.u, uv2.v,faceColor.x, faceColor.y, faceColor.z, 1.0f});
 
 
             }
@@ -317,12 +337,14 @@ bool ObjLoader::Load(
     return !outVertices.empty();
 }
 
-// MTLƒtƒ@ƒCƒ‹‚ğ“Ç‚İ‚İAƒ}ƒeƒŠƒAƒ‹î•ñ‚ğæ“¾‚·‚é
-// ¡‚Í map_KdiƒeƒNƒXƒ`ƒƒƒpƒXj‚Ì‚İæ“¾‚·‚é
+// MTLãƒ•ã‚¡ã‚¤ãƒ«ã‚’èª­ã¿è¾¼ã¿ã€ãƒãƒ†ãƒªã‚¢ãƒ«æƒ…å ±ã‚’å–å¾—ã™ã‚‹
+// map_Kdï¼ˆãƒ†ã‚¯ã‚¹ãƒãƒ£ãƒ‘ã‚¹ã€ãƒ¢ãƒ‡ãƒ«å…¨ä½“ã§æœ€åˆã«è¦‹ã¤ã‹ã£ãŸã‚‚ã®1ã¤ï¼‰ã¨ã€
+// newmtlãƒ–ãƒ­ãƒƒã‚¯ã”ã¨ã®Kdï¼ˆæ‹¡æ•£è‰²ã€‚ãƒ†ã‚¯ã‚¹ãƒãƒ£ã‚’æŒãŸãªã„ãƒãƒ†ãƒªã‚¢ãƒ«ã®é ‚ç‚¹è‰²ã¨ã—ã¦ä½¿ã†ï¼‰ã‚’å–å¾—ã™ã‚‹
 bool ObjLoader::LoadMtl(
     const std::string& mtlPath,
     const std::string& directory,
-    std::string& outTexturePath
+    std::string& outTexturePath,
+    std::unordered_map<std::string, DirectX::XMFLOAT3>& outMaterialColors
 )
 {
     std::ifstream file(mtlPath);
@@ -333,6 +355,8 @@ bool ObjLoader::LoadMtl(
     }
 
     std::string line;
+    std::string currentMaterialName; // ç›´è¿‘ã®newmtlè¡Œã§åˆ‡ã‚Šæ›¿ã‚ã‚‹ã€è§£æä¸­ã®ãƒãƒ†ãƒªã‚¢ãƒ«å
+    bool hasTexture = false;
 
     while (std::getline(file, line))
     {
@@ -345,9 +369,20 @@ bool ObjLoader::LoadMtl(
         std::string type;
         iss >> type;
 
-
-        // ƒeƒNƒXƒ`ƒƒiŠgUƒ}ƒbƒvj‚ğæ“¾
-        if (type == "map_Kd")
+        // ãƒãƒ†ãƒªã‚¢ãƒ«åã®åˆ‡ã‚Šæ›¿ãˆ
+        if (type == "newmtl")
+        {
+            iss >> currentMaterialName;
+        }
+        // æ‹¡æ•£è‰²ï¼ˆKdï¼‰ã€‚ãƒ†ã‚¯ã‚¹ãƒãƒ£ã‚’æŒãŸãªã„ãƒãƒ†ãƒªã‚¢ãƒ«ã¯ã“ã®è‰²ã‚’é ‚ç‚¹è‰²ã¨ã—ã¦ä½¿ã†
+        else if (type == "Kd" && !currentMaterialName.empty())
+        {
+            DirectX::XMFLOAT3 color{};
+            iss >> color.x >> color.y >> color.z;
+            outMaterialColors[currentMaterialName] = color;
+        }
+        // ãƒ†ã‚¯ã‚¹ãƒãƒ£ï¼ˆæ‹¡æ•£ãƒãƒƒãƒ—ï¼‰ã€‚ç¾çŠ¶ãƒ¢ãƒ‡ãƒ«å…¨ä½“ã§1æšã®ã¿æ‰±ã†ä»•æ§˜ã®ãŸã‚æœ€åˆã®1ã¤ã‚’æ¡ç”¨ã™ã‚‹
+        else if (type == "map_Kd" && !hasTexture)
         {
             std::string textureFileName;
             iss >> textureFileName;
@@ -356,17 +391,10 @@ bool ObjLoader::LoadMtl(
             {
                 outTexturePath = directory + textureFileName;
                 Debug::Info("ObjLoader::LoadMtl map_Kd : " + outTexturePath);
-                return true;
-            }
-
-            if (!textureFileName.empty())
-            {
-                // OBJ‚Æ“¯‚¶ƒfƒBƒŒƒNƒgƒŠ‚ğ•t‚¯‚Äƒtƒ‹ƒpƒX‚É‚·‚é
-                outTexturePath = directory + textureFileName;
-                return true;
+                hasTexture = true;
             }
         }
     }
 
-    return false;
+    return true;
 }

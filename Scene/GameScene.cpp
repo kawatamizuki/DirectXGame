@@ -1,4 +1,4 @@
-#include "GameScene.h"
+﻿#include "GameScene.h"
 #include "SceneManager.h"
 #include"InputManager.h"
 #include"Renderer.h"
@@ -20,12 +20,12 @@ void GameScene::Init()
 
 void GameScene::Update()
 {
-    Debug::Log("GameScene::Update");
+    //Debug::Log("GameScene::Update"); // 毎フレーム出てログパネルが埋まってしまうためコメントアウト
 }
 
 void GameScene::Draw()
 {
-    Debug::Log("GameScene::Draw");
+    //Debug::Log("GameScene::Draw"); // 毎フレーム出てログパネルが埋まってしまうためコメントアウト
 }
 
 void GameScene::Finalize()

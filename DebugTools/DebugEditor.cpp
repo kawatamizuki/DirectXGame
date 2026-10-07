@@ -9,6 +9,8 @@
 #include"InputManager.h"
 #include"Collision.h"
 #include"Ray.h"
+#include"BuildingType.h"
+#include"DemandSystem.h"
 
 
 
@@ -36,6 +38,18 @@ bool DebugEditor::Initialize(HWND hwnd, GameContext* context)
     
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+
+    // 日本語のログ/UI文字列(Debug::LogやRoadSystemの確認ボタンなど)を正しく表示するため、
+    // Windows標準搭載のメイリオフォントを日本語グリフ範囲付きで読み込む
+    // (フォントファイルを同梱していないため実行環境のフォントを使う)。
+    // 読み込みに失敗した場合(フォントが無い環境など)はImGui標準フォント(ASCIIのみ)にフォールバックする。
+    ImGuiIO& io = ImGui::GetIO();
+    ImFont* japaneseFont = io.Fonts->AddFontFromFileTTF(
+        "C:\\Windows\\Fonts\\meiryo.ttc", 18.0f, nullptr, io.Fonts->GetGlyphRangesJapanese());
+    if (!japaneseFont)
+    {
+        io.Fonts->AddFontDefault();
+    }
 
     ImGui::StyleColorsDark();
 
@@ -1968,42 +1982,49 @@ void DebugEditor::Update()
     // =========================
     // 入力 / 操作系
     // =========================
+    // カメラ移動はEditing/Playing両方で使うため、モードに関係なく常時有効にする
     UpdateFreeCamera();
     UpdateFocusSelected();
-    if (m_context->input->IsEditorActionComboPressed(EditorInputAction::Undo))
+
+    // オブジェクト選択・ギズモ操作はEditingモードの時だけ
+    // (Playingモードでは同じ左クリックをBuildController/RoadSystemが使うため)
+    if (m_context->mode == GameMode::Editing)
     {
-        Undo();
+        if (m_context->input->IsEditorActionComboPressed(EditorInputAction::Undo))
+        {
+            Undo();
+        }
+
+        if (m_context->input->IsEditorActionComboPressed(EditorInputAction::Redo))
+        {
+            Redo();
+        }
+        UpdateGizmoMode();
+        UpdateGizmoHover();
+        UpdatePicking();
+
+        switch (m_gizmoMode)
+        {
+        case GizmoMode::Move:
+            UpdateDragging();
+            break;
+        case GizmoMode::Scale:
+            UpdateScaleGizmoDrag();
+            break;
+        case GizmoMode::Rotate:
+
+            UpdateRotateGizmoDrag();
+            break;
+
+
+        }
+        EndGizmoDragIfNeeded();
+
+        // =========================
+        // Gizmo Hover判定
+        // =========================
+        UpdateGizmoHover();
     }
-
-    if (m_context->input->IsEditorActionComboPressed(EditorInputAction::Redo))
-    {
-        Redo();
-    }
-    UpdateGizmoMode();
-    UpdateGizmoHover();
-    UpdatePicking();
-
-    switch (m_gizmoMode)
-    {
-    case GizmoMode::Move:
-        UpdateDragging();
-        break;
-    case GizmoMode::Scale:
-        UpdateScaleGizmoDrag();
-        break;
-    case GizmoMode::Rotate:
-
-        UpdateRotateGizmoDrag();
-        break;
-
-  
-    }
-    EndGizmoDragIfNeeded();
- 
-    // =========================
-    // Gizmo Hover判定
-    // =========================
-    UpdateGizmoHover();
 }
 
 void DebugEditor::Draw()
@@ -2013,30 +2034,34 @@ void DebugEditor::Draw()
         return;
     }
 
-    // BOXの当たり判定の表示
-    if (m_showAllBounds)
+    // BOX/ギズモの表示はEditingモードの時だけ(Playing中は建物/道路の見た目を邪魔しない)
+    if (m_context->mode == GameMode::Editing)
     {
-        DrawAllObjectBounds();
-    }
-    else if (m_showSelectedBounds)
-    {
-        DrawSelectedObjectBounds();
-    }
+        // BOXの当たり判定の表示
+        if (m_showAllBounds)
+        {
+            DrawAllObjectBounds();
+        }
+        else if (m_showSelectedBounds)
+        {
+            DrawSelectedObjectBounds();
+        }
 
-    // 軸表示
-    switch (m_gizmoMode)
-    {
-    case GizmoMode::Move:
-        DrawMoveGizmo();
-        break;
-    case GizmoMode::Scale:
-        DrawScaleGizmo();
-        break;
-    case GizmoMode::Rotate:
-        DrawRotateGizmo();
-        break;
+        // 軸表示
+        switch (m_gizmoMode)
+        {
+        case GizmoMode::Move:
+            DrawMoveGizmo();
+            break;
+        case GizmoMode::Scale:
+            DrawScaleGizmo();
+            break;
+        case GizmoMode::Rotate:
+            DrawRotateGizmo();
+            break;
 
-   
+
+        }
     }
 
     DrawHierarchyView();
@@ -2127,8 +2152,19 @@ void DebugEditor::DrawObjects()
 
         for (const auto& obj : *m_context->objects)
         {
+            // オブジェクトの種類を文字列にする(Building/Road/Agent/Environment)
+            const char* kindLabel = "Environment";
+            switch (obj.kind)
+            {
+            case ObjectKind::Building: kindLabel = "Building"; break;
+            case ObjectKind::Road:     kindLabel = "Road";     break;
+            case ObjectKind::Agent:    kindLabel = "Agent";    break;
+            default: break;
+            }
+
             std::string label =
-                "GameObject " + std::to_string(index);
+                "[" + std::string(kindLabel) + "] GameObject " + std::to_string(index) +
+                " (#" + std::to_string(obj.id) + ")";
 
             bool selected =
                 (m_selectedObjectIndex == index);
@@ -2156,6 +2192,24 @@ void DebugEditor::DrawInspector()
 
         GameObject& selectedObject =
             (*m_context->objects)[m_selectedObjectIndex];
+
+        //========================================================
+        // 種類ごとの詳細情報(Building/Agent)
+        //========================================================
+        if (selectedObject.kind == ObjectKind::Building)
+        {
+            ImGui::Text("Building Type: %s", GetBuildingDefinition(selectedObject.buildingType).name);
+            ImGui::Separator();
+        }
+        else if (selectedObject.kind == ObjectKind::Agent && m_context->demandSystem)
+        {
+            std::string summary = m_context->demandSystem->GetAgentDebugSummary(selectedObject.id);
+            if (!summary.empty())
+            {
+                ImGui::TextUnformatted(summary.c_str());
+            }
+            ImGui::Separator();
+        }
 
         //========================================================
         // Position
@@ -2483,6 +2537,30 @@ void DebugEditor::DrawDebugView()
     );
 
     DrawPerformance();
+
+    // =========================
+    // Play / Stop
+    // =========================
+    // Playing: BuildController/RoadSystemの入力が有効(オブジェクト選択・ギズモは無効)
+    // Editing: オブジェクト選択・ギズモが有効(建物/道路配置は無効)
+    if (m_context->mode == GameMode::Playing)
+    {
+        if (ImGui::Button("Stop", ImVec2(80, 0)))
+        {
+            m_context->mode = GameMode::Editing;
+        }
+        ImGui::SameLine();
+        ImGui::Text("Playing");
+    }
+    else
+    {
+        if (ImGui::Button("Play", ImVec2(80, 0)))
+        {
+            m_context->mode = GameMode::Playing;
+        }
+        ImGui::SameLine();
+        ImGui::Text("Editing");
+    }
 
     if (ImGui::CollapsingHeader("Debug Draw"))
     {
@@ -3553,85 +3631,16 @@ void DebugEditor::EndFrame()
 
 Ray DebugEditor::CreateMouseRay()
 {
-    Ray ray;
+    // Camera::ScreenPointToRay に委譲。
+    // 以前はここで GetCursorPos/ScreenToClient を直接呼んでいたが、
+    // InputManager::GetMousePosition() 経由に統一した
+    // (BuildController/RoadSystemも同じ経路でマウス位置を取得する)。
+    POINT mousePos = m_context->input->GetMousePosition();
 
-    // マウス座標取得
-    POINT mousePos;
-    GetCursorPos(&mousePos);
-    ScreenToClient(GetActiveWindow(), &mousePos);
-
-    float mouseX = static_cast<float>(mousePos.x);
-    float mouseY = static_cast<float>(mousePos.y);
-
-    // Windowサイズ
-    float width = static_cast<float>(
-        m_context->renderer->GetWindowWidth());
-
-    float height = static_cast<float>(
+    return m_context->camera->ScreenPointToRay(
+        mousePos,
+        m_context->renderer->GetWindowWidth(),
         m_context->renderer->GetWindowHeight());
-
-    // NDC変換
-    float ndcX = (2.0f * mouseX / width) - 1.0f;
-    float ndcY = 1.0f - (2.0f * mouseY / height);
-
-    using namespace DirectX;
-
-    XMMATRIX projection =
-        m_context->camera->GetProjectionMatrix();
-
-    XMMATRIX view =
-        m_context->camera->GetViewMatrix();
-
-    XMMATRIX invView =
-        XMMatrixInverse(nullptr, view);
-
-    XMMATRIX invProj =
-        XMMatrixInverse(nullptr, projection);
-
-    // Near座標
-    XMVECTOR nearPoint =
-        XMVectorSet(ndcX, ndcY, 0.0f, 1.0f);
-
-    // Projection逆変換
-    nearPoint =
-        XMVector3TransformCoord(
-            nearPoint,
-            invProj);
-
-    // View逆変換
-    nearPoint =
-        XMVector3TransformCoord(
-            nearPoint,
-            invView);
-
-    // Far座標
-    XMVECTOR farPoint =
-        XMVectorSet(ndcX, ndcY, 1.0f, 1.0f);
-
-    farPoint =
-        XMVector3TransformCoord(
-            farPoint,
-            invProj);
-
-    farPoint =
-        XMVector3TransformCoord(
-            farPoint,
-            invView);
-
-    // Ray方向
-    XMVECTOR direction =
-        XMVector3Normalize(
-            farPoint - nearPoint);
-
-    XMStoreFloat3(
-        &ray.origin,
-        nearPoint);
-
-    XMStoreFloat3(
-        &ray.direction,
-        direction);
-
-    return ray;
 }
 
 bool DebugEditor::WorldToScreen(const DirectX::XMFLOAT3& worldPos,DirectX::XMFLOAT2& screenPos)
@@ -3689,81 +3698,8 @@ bool DebugEditor::WorldToScreen(const DirectX::XMFLOAT3& worldPos,DirectX::XMFLO
 // Ray と平面の交点を求める
 bool DebugEditor::IntersectRayPlane(const Ray& ray,const DirectX::XMFLOAT3& planePoint,const DirectX::XMFLOAT3& planeNormal,DirectX::XMFLOAT3& hitPoint)
 {
-    using namespace DirectX;
-
-    // =========================
-    // Ray情報
-    // =========================
-    XMVECTOR rayOrigin =
-        XMLoadFloat3(&ray.origin);
-
-    XMVECTOR rayDir =
-        XMLoadFloat3(&ray.direction);
-
-    // =========================
-    // 平面情報
-    // =========================
-    // 平面上の1点
-    XMVECTOR point =
-        XMLoadFloat3(&planePoint);
-
-    // 平面法線
-    XMVECTOR normal =
-        XMLoadFloat3(&planeNormal);
-
-    // 法線を正規化
-    normal =
-        XMVector3Normalize(normal);
-
-    // =========================
-    // Rayと平面の向き確認
-    // =========================
-    // Ray方向と平面法線の内積
-    // 0に近いと平行
-    float denominator;
-
-    XMStoreFloat(
-        &denominator,
-        XMVector3Dot(rayDir, normal)
-    );
-
-    // 平行なら交差しない
-    if (fabsf(denominator) < 0.0001f)
-    {
-        return false;
-    }
-
-    // =========================
-    // Ray上の交点位置計算
-    // =========================
-    float t;
-
-    XMStoreFloat(
-        &t,
-        XMVector3Dot(
-            point - rayOrigin,
-            normal)
-    );
-
-    t /= denominator;
-
-    // Ray後方なら無効
-    if (t < 0.0f)
-    {
-        return false;
-    }
-
-    // =========================
-    // 交点座標計算
-    // =========================
-    XMVECTOR hit =
-        rayOrigin + rayDir * t;
-
-    XMStoreFloat3(
-        &hitPoint,
-        hit);
-
-    return true;
+    // Math/Collision.h の共有版に委譲(BuildController/RoadSystemからも同じ実装を使う)
+    return ::IntersectRayPlane(ray, planePoint, planeNormal, hitPoint);
 }
 
 // Ray と 線分の最短距離を求める

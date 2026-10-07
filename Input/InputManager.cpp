@@ -1,4 +1,4 @@
-#include "InputManager.h"
+ï»¿#include "InputManager.h"
 
 InputManager::InputManager()
     : m_hwnd(nullptr)
@@ -13,7 +13,7 @@ InputManager::InputManager()
     m_isGamePadConnected = false;
 
     //========================================
-    // ƒL[ƒ{[ƒhŠ„‚è“–‚Ä
+    // ã‚­ãƒ¼ãƒœãƒ¼ãƒ‰å‰²ã‚Šå½“ã¦
     //========================================
 
     m_keyboardMapping[InputAction::Decide] =
@@ -34,8 +34,13 @@ InputManager::InputManager()
         KeyCode::Escape
     };
 
+    m_keyboardMapping[InputAction::Rotate] =
+    {
+        KeyCode::R
+    };
+
     //========================================
-    // Editor—pƒL[ƒ{[ƒhŠ„‚è“–‚Ä
+    // Editorç”¨ã‚­ãƒ¼ãƒœãƒ¼ãƒ‰å‰²ã‚Šå½“ã¦
     //========================================
 
     m_editorKeyboardMapping[EditorInputAction::FreeCameraLook] =
@@ -109,7 +114,7 @@ InputManager::InputManager()
         KeyCode::Y
     };
     //========================================
-    // GamePadŠ„‚è“–‚Ä
+    // GamePadå‰²ã‚Šå½“ã¦
     //========================================
 
     m_gamePadMapping[InputAction::Decide] =
@@ -143,7 +148,7 @@ void InputManager::Update()
     m_previousGamePadState = m_currentGamePadState;
 
     //========================================
-    // –¢Ú‘±‚Í–ˆƒtƒŒ[ƒ€Šm”F‚µ‚È‚¢
+    // æœªæ¥ç¶šæ™‚ã¯æ¯ãƒ•ãƒ¬ãƒ¼ãƒ ç¢ºèªã—ãªã„
     //========================================
 
     if (!m_isGamePadConnected)
@@ -489,7 +494,7 @@ bool InputManager::IsEditorActionComboPressed(
         return false;
     }
 
-    // ÅŒã‚ÌƒL[‚¾‚¯u‰Ÿ‚³‚ê‚½uŠÔv
+    // æœ€å¾Œã®ã‚­ãƒ¼ã ã‘ã€ŒæŠ¼ã•ã‚ŒãŸç¬é–“ã€
     KeyCode triggerKey =
         keys.back();
 
@@ -498,7 +503,7 @@ bool InputManager::IsEditorActionComboPressed(
         return false;
     }
 
-    // ‚»‚êˆÈŠO‚Íu‰Ÿ‚³‚ê‚Ä‚¢‚éŠÔv
+    // ãã‚Œä»¥å¤–ã¯ã€ŒæŠ¼ã•ã‚Œã¦ã„ã‚‹é–“ã€
     for (int i = 0; i < static_cast<int>(keys.size()) - 1; ++i)
     {
         if (!IsKeyDown(keys[i]))

@@ -1,11 +1,11 @@
-#pragma once
+ï»¿#pragma once
 #include "Ray.h"
 #include <DirectXMath.h>
 
 class Transform;
 
-// Sphere ‚ğg‚Á‚½Ray”»’è
-// À‘•‚ªŠÈ’P‚¾‚ª”»’è‚Í­‚µ‘åG”c
+// Sphere ã‚’ä½¿ã£ãŸRayåˆ¤å®š
+// å®Ÿè£…ãŒç°¡å˜ã ãŒåˆ¤å®šã¯å°‘ã—å¤§é›‘æŠŠ
 bool IntersectRaySphere(
     const Ray& ray,
     const DirectX::XMFLOAT3& center,
@@ -13,9 +13,9 @@ bool IntersectRaySphere(
     float& distance
 );
 
-// AABB(Axis Aligned Bounding Box)”»’è
-// ƒ[ƒ‹ƒh²ŒÅ’è‚Ì” ”»’è
-// Sphere‚æ‚è³Šm‚¾‚ªObject‰ñ“]‚É‚Íã‚¢
+// AABB(Axis Aligned Bounding Box)åˆ¤å®š
+// ãƒ¯ãƒ¼ãƒ«ãƒ‰è»¸å›ºå®šã®ç®±åˆ¤å®š
+// Sphereã‚ˆã‚Šæ­£ç¢ºã ãŒObjectå›è»¢ã«ã¯å¼±ã„
 bool IntersectRayAABB(
     const Ray& ray,
     const DirectX::XMFLOAT3& min,
@@ -23,13 +23,24 @@ bool IntersectRayAABB(
     float& distance
 );
 
-// OBB(Oriented Bounding Box)”»’è
-// Object‰ñ“]EScale‚É‘Î‰
-// Ray‚ğƒ[ƒJƒ‹‹óŠÔ‚Ö•ÏŠ·‚µ‚ÄAABB”»’è‚ğs‚¤
+// OBB(Oriented Bounding Box)åˆ¤å®š
+// Objectå›è»¢ãƒ»Scaleã«å¯¾å¿œ
+// Rayã‚’ãƒ­ãƒ¼ã‚«ãƒ«ç©ºé–“ã¸å¤‰æ›ã—ã¦AABBåˆ¤å®šã‚’è¡Œã†
 bool IntersectRayOBB(
     const Ray& worldRay,
     const Transform& transform,
     const DirectX::XMFLOAT3& localMin,
     const DirectX::XMFLOAT3& localMax,
     float& distance
+);
+
+// Ray ã¨ å¹³é¢ã®å½“ãŸã‚Šåˆ¤å®š
+// planePoint  : å¹³é¢ä¸Šã®1ç‚¹
+// planeNormal : å¹³é¢æ³•ç·š
+// hitPoint    : Hitä½ç½®(ãƒ¯ãƒ¼ãƒ«ãƒ‰åº§æ¨™)
+bool IntersectRayPlane(
+    const Ray& ray,
+    const DirectX::XMFLOAT3& planePoint,
+    const DirectX::XMFLOAT3& planeNormal,
+    DirectX::XMFLOAT3& hitPoint
 );
