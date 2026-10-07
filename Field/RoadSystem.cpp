@@ -1240,6 +1240,61 @@ void RoadSystem::ConfirmPendingCurve()
     CancelPendingCurve();
 }
 
+void RoadSystem::Clear()
+{
+    // フリーハンドの置きかけ・ドラッグ中の状態も捨てる(読み込み中に古い操作が残らないように)。
+    CancelPendingCurve();
+    m_curveDragActive = false;
+    m_curveFirstSegmentPending = false;
+    m_hasLastHit = false;
+
+    m_segments.clear();
+    m_nodes.clear();
+    m_nodeIndex = RoadNodeIndex();
+
+    if (m_meshGenerator)
+    {
+        m_meshGenerator->Clear();
+    }
+}
+
+void RoadSystem::RestoreSegments(const std::vector<RoadSegment>& segments)
+{
+    Clear();
+
+    if (!m_field || !m_occupancy)
+    {
+        return;
+    }
+
+    float cellSize = m_field->GetCellSize();
+
+    m_segments = segments;
+    for (RoadSegment& segment : m_segments)
+    {
+        segment.debugLoad = 0.0f; // 混雑の表示用。次のティックで再計算される
+    }
+
+    for (size_t i = 0; i < m_segments.size(); ++i)
+    {
+        const RoadSegment& segment = m_segments[i];
+
+        // ノード: CommitSegmentと同じく、区間の始点・終点を登録する(分割済みの区間は、分割点で自然に次数が増える)。
+        RegisterSegmentEndpoint(segment.start, i);
+        RegisterSegmentEndpoint(segment.end, i);
+
+        // 占有: CommitSegmentと同じ、マス単位の印と、道路面そのものの矩形。
+        m_occupancy->SetOccupiedRange(SampleCellsForSegmentFootprint(segment, cellSize), true);
+        m_occupancy->OccupyRect(MakeRoadRect(segment, cellSize * 0.5f), IOccupancyGrid::kOccupantRoad);
+    }
+
+    // メッシュは区間の数に関わらず最後に1回だけ作る。
+    if (m_meshGenerator && m_context && m_context->renderer && !m_segments.empty())
+    {
+        m_meshGenerator->RebuildMesh(m_context->renderer->GetDevice(), m_segments, m_nodes, cellSize * 0.5f);
+    }
+}
+
 void RoadSystem::CancelPendingCurve()
 {
     m_curvePendingSegments.clear();

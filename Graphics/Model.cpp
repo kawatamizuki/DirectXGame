@@ -245,6 +245,12 @@ bool Model::CreateFromVertices(ID3D11Device* device, const std::vector<Vertex>& 
     return true;
 }
 
+void Model::ClearVertices()
+{
+    m_vertexBuffer.Reset();
+    m_vertexCount = 0;
+}
+
 ID3D11Buffer* Model::GetVertexBuffer() const
 {
     return m_vertexBuffer.Get();

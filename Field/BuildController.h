@@ -4,6 +4,7 @@
 #include "GridCoord.h"
 #include "OrientedRectangleOverlap.h"
 #include "BuildingType.h"
+#include "BuildingPlacement.h"
 #include "Transform.h"
 
 struct GameContext;
@@ -25,6 +26,13 @@ public:
     void Update();
     void Draw();
 
+    // 確定した建物を世界に反映する(オブジェクトの生成・占有への登録・必要なら青マスの登録)。
+    // プレイヤーが建物を置いた時と、セーブデータからの復元で、同じこの処理を使う
+    // (経路が違うと、保存した街が「普通に置いた街」と食い違うバグの元になるため)。
+    // claimOrientation: trueなら建物のマスを青マスとして登録する(通常の配置)。
+    // falseなら登録しない(セーブデータの復元。青マスは保存した一覧を別に戻す)。
+    // 戻り値は生成した建物のGameObject::id(失敗したら0)。
+    uint32_t SpawnBuilding(BuildingType type, const Transform& transform, const BuildingPlacement& placement, bool claimOrientation);
 private:
     // 建物配置の基準となるローカル座標系(原点・角度)。
     // 近くの道路/GridOrientationRegistryに角度が既に決まっていればそれに合わせ、

@@ -4,6 +4,7 @@
 #include <DirectXMath.h>
 #include "ResidentAgent.h"
 #include "ResidentSchedule.h"
+#include "ISaveable.h"
 
 struct GameContext;
 class GameObject;
@@ -42,7 +43,7 @@ struct DemandMemoryStats
 
 // 需要の発生(House)・割り当て(Office)・代表住民の生成/移動を管理するクラス。
 // Game::Update/Drawから毎フレーム呼ばれる(BuildController/RoadSystemと同じ所有のされ方)。
-class DemandSystem
+class DemandSystem : public ISaveable
 {
 public:
     // 使用する経路探索アルゴリズムと、代表住民の見た目に使うモデルを渡す
@@ -56,6 +57,19 @@ public:
     void Update(float deltaTime, GameContext& context, std::vector<RoadSegment>& segments);
 
     void DrawDebugUI() const;
+
+    // 住民・統計・接続線・更新タイマーを初期状態に戻す(セーブデータの読み込み前の全消去に使う)。
+    // 住民の見た目のGameObject(Agent)の削除は呼び出し側が行う。
+    void Reset();
+
+    // ---- セーブ/ロード(ISaveable) ----
+    // 住民ごとに、家・職場(建物のuid)、状態、移動経路、経路上の位置と向き、予定表のずれ、速度、
+    // 見た目のオブジェクトの位置を保存する。読み込みで通勤途中の住民もそのまま途中から歩き続ける。
+    // 統計と接続線は次の需要の更新で再計算されるので保存しない。
+    const char* SaveKey() const override { return "demand"; }
+    void Save(Json& section, const SaveContext& context) const override;
+    void Load(const Json& section, int version, const LoadContext& context) override;
+    void ResetToDefault() override { Reset(); }
 
     // 直近のRunDemandTickで集計した街の指標(人口・職の埋まり具合など)のコピーを返す。
     // ゲームプレイ用UI(上部HUD)の表示に使う。

@@ -24,6 +24,9 @@ public:
     // 同名引数と同じ。データには触れず見た目だけの調整)。
     virtual void RebuildMesh(ID3D11Device* device, const std::vector<RoadSegment>& segments, const std::vector<RoadNode>& nodes, float deadEndExtension) = 0;
 
+    // 生成済みのメッシュを捨てて、道路が1本も無い状態に戻す(セーブデータの読み込み前の全消去に使う)。
+    virtual void Clear() = 0;
+
     // 毎フレーム呼ばれる描画処理。
     virtual void Draw(Renderer& renderer, const Camera& camera) = 0;
 

@@ -16,6 +16,7 @@ public:
     void SetOccupied(const GridCoord& coord, bool occupied) override;
     bool IsRectFree(const OrientedRect& rect, unsigned kindMask = kOccupantAll) const override;
     void OccupyRect(const OrientedRect& rect, OccupantKind kind) override;
+    void Clear() override;
     size_t GetOccupiedCellCount() const override { return m_occupiedCells.size(); }
 
 private:

@@ -24,6 +24,9 @@ public:
     // GetMaterial()経由で別途設定する(未設定のままなら頂点カラーのみで描画される)。
     bool CreateFromVertices(ID3D11Device* device, const std::vector<Vertex>& vertices);
 
+    // 頂点バッファを解放して、頂点数0の状態に戻す(CreateFromVerticesに空の配列を渡した時の警告ログを出さずに空にする)。
+    void ClearVertices();
+
     ID3D11Buffer* GetVertexBuffer() const;
     UINT GetVertexCount() const;
     //const std::string& GetTexturePath() const;

@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include "ISaveable.h"
 
 // ゲーム内の時刻(1日の中の時間帯と日数)を管理する。
 // 実時間のdeltaTime/FPSを扱うTimeManagerとは別物で、こちらは「街の中の時間」。
@@ -6,7 +7,7 @@
 // 時刻の源泉として参照する(時計を用途ごとに複数持つと、停止・倍速・時刻ジャンプでズレるため)。
 // 「その時刻に何をするか」(出勤・帰宅の時刻など)は時計には埋め込まず、使う側のデータ
 // (ResidentScheduleなど)に持たせる。
-class GameClock
+class GameClock : public ISaveable
 {
 public:
     // ゲーム内の1時間が実時間で何秒か。20秒なので、1日(24時間)は実時間で480秒。
@@ -43,6 +44,13 @@ public:
     void SetTimeScale(float scale);
 
     void SetSecondsPerGameHour(float seconds);
+
+    // ---- セーブ/ロード(ISaveable) ----
+    // 保存するのは時刻と日数。時間の倍率(停止/倍速)はプレイヤーの操作設定なので保存しない。
+    const char* SaveKey() const override { return "clock"; }
+    void Save(Json& section, const SaveContext& context) const override;
+    void Load(const Json& section, int version, const LoadContext& context) override;
+    void ResetToDefault() override;
 
     // 時刻・倍率を操作するデバッグ用ImGuiパネル(「Time」ウィンドウ)。
     void DrawDebugUI();

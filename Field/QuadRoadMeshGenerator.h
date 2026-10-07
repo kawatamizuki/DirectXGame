@@ -16,6 +16,7 @@ class QuadRoadMeshGenerator : public IRoadMeshGenerator
 {
 public:
     void RebuildMesh(ID3D11Device* device, const std::vector<RoadSegment>& segments, const std::vector<RoadNode>& nodes, float deadEndExtension) override;
+    void Clear() override { m_model.ClearVertices(); }
     void Draw(Renderer& renderer, const Camera& camera) override;
     size_t GetVertexCount() const override { return m_model.GetVertexCount(); }
 

@@ -262,6 +262,45 @@ BuildController::PlacementPreview BuildController::ComputePlacement(const XMFLOA
     return result;
 }
 
+uint32_t BuildController::SpawnBuilding(
+    BuildingType type, const Transform& transform, const BuildingPlacement& placement, bool claimOrientation)
+{
+    if (!m_context || !m_context->objects || !m_field || !m_occupancy)
+    {
+        return 0;
+    }
+
+    float cellSize = m_field->GetCellSize();
+
+    GameObject& spawned = GameObjectFactory::Spawn(*m_context->objects, GetModelForType(type), transform, ObjectKind::Building);
+    spawned.buildingType = type;
+    spawned.placement = placement;
+    uint32_t objectId = spawned.id; // この後でobjectsが変化しうるので、参照ではなくidを返す
+
+    // 占有: 建物の実際の形(矩形)と、道路描画側の(保守的な)マス単位の印。
+    m_occupancy->OccupyRect(placement.footprintRect, IOccupancyGrid::kOccupantBuilding);
+    m_occupancy->SetOccupiedRange(SampleOrientedRectangleCells(placement.footprintRect, cellSize), true);
+
+    // 建物が実際に占有したローカルマスを、この向き・この原点の格子として登録する
+    // (既に別の道路/建物のマスと重なる分は登録されず、先に存在した方が優先される)。
+    // これにより、次にこの付近へ配置する建物が同じ向き・同じ格子で揃う。
+    // セーブデータからの復元では、青マスの一覧を保存した順のまま別に戻すので、ここでは登録しない。
+    if (claimOrientation && m_orientationRegistry)
+    {
+        for (int dz = 0; dz < placement.localDepthCells; ++dz)
+        {
+            for (int dx = 0; dx < placement.localWidthCells; ++dx)
+            {
+                m_orientationRegistry->TryClaimCell(
+                    cellSize, placement.frameYaw, placement.frameOrigin,
+                    placement.localCellX + dx, placement.localCellZ + dz);
+            }
+        }
+    }
+
+    return objectId;
+}
+
 void BuildController::Update()
 {
     m_hasHoverPoint = false;
@@ -312,29 +351,19 @@ void BuildController::Update()
             return;
         }
 
-        Model* model = GetModelForType(m_selectedType);
-        GameObject& spawned = GameObjectFactory::Spawn(*m_context->objects, model, placement.transform, ObjectKind::Building);
-        spawned.buildingType = m_selectedType;
-        m_occupancy->OccupyRect(placement.footprintRect, IOccupancyGrid::kOccupantBuilding);
-        m_occupancy->SetOccupiedRange(placement.footprintCells, true);
+        // 配置の確定結果(占有範囲・基準座標系・ローカルマス)。建物自身が持ち、セーブで保存される。
+        BuildingPlacement placementData;
+        placementData.footprintRect = placement.footprintRect;
+        placementData.frameOrigin = placement.frame.origin;
+        placementData.frameYaw = placement.frame.yaw;
+        placementData.localCellX = placement.localCell.x;
+        placementData.localCellZ = placement.localCell.z;
+        placementData.localWidthCells = placement.localWidthCells;
+        placementData.localDepthCells = placement.localDepthCells;
 
-        // 建物が実際に占有したローカルマスを、この向き・この原点の格子として登録する
-        // (既に別の道路/建物のマスと重なる分は登録されず、先に存在した方が優先される)。
-        // これにより、次にこの付近へ配置する建物が同じ向き・同じ格子で揃う。
         // originはComputePlacementFrameで実際に使ったものをそのまま渡す(ここで別途
         // 計算し直すと、プレビューと確定後でズレる可能性があるため)。
-        if (m_orientationRegistry && m_field)
-        {
-            for (int dz = 0; dz < placement.localDepthCells; ++dz)
-            {
-                for (int dx = 0; dx < placement.localWidthCells; ++dx)
-                {
-                    m_orientationRegistry->TryClaimCell(
-                        m_field->GetCellSize(), placement.frame.yaw, placement.frame.origin,
-                        placement.localCell.x + dx, placement.localCell.z + dz);
-                }
-            }
-        }
+        SpawnBuilding(m_selectedType, placement.transform, placementData, true);
 
         m_context->inputConsumed = true;
     }

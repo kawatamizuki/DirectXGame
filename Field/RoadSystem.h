@@ -41,6 +41,16 @@ public:
     // 交差点・端点の一覧を返す(将来の建物回転・パラメータ補正機能から使う想定)。
     const std::vector<RoadNode>& GetNodes() const { return m_nodes; }
 
+    // 道路を全て消して、道路が1本も無い状態に戻す(区間・ノード・置きかけのフリーハンド操作・メッシュ)。
+    // 占有(IOccupancyGrid)と青マス(GridOrientationRegistry)は呼び出し側が別に消す。
+    void Clear();
+
+    // 保存した区間の一覧をそのまま設定する(現在の道路は消える)。操作の再生ではなく**状態のコピー**なので、
+    // 配置ルールの検証は行わない(保存した街は、後でルールが変わってもそのまま読める)。
+    // 決まった手順で作り直せる派生データを作る: 道路ノード(区間の端点から)、占有(区間ごとの矩形とマス)、道路メッシュ(最後に1回だけ)。
+    // 青マスは順序に依存するため、ここでは作らない(GridOrientationRegistry::ImportCellsで保存した一覧を戻す)。
+    void RestoreSegments(const std::vector<RoadSegment>& segments);
+
     // 道路メッシュの頂点数(Profilerのメモリ内訳表示に使う)。
     // IRoadMeshGeneratorの完全な定義はRoadSystem.cpp側でしか見えていないため、実装は.cpp側に置く。
     size_t GetMeshVertexCount() const;

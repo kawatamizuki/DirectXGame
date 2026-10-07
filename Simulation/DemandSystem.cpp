@@ -71,6 +71,229 @@ void DemandSystem::Initialize(IPathfinder* pathfinder, Model* agentModel)
     m_agentModel = agentModel;
 }
 
+void DemandSystem::Reset()
+{
+    m_agents.clear();
+    m_tickTimer = 0.0f;
+    m_lastStats = DemandStats{};
+    m_connectionLines.clear();
+    m_lastRoadGraphNodeCount = 0;
+    m_lastRoadGraphEdgeCount = 0;
+}
+
+namespace
+{
+    Json Vec3ToJson(const XMFLOAT3& v)
+    {
+        Json array = Json::MakeArray();
+        array.Push(v.x);
+        array.Push(v.y);
+        array.Push(v.z);
+        return array;
+    }
+
+    // [x,y,z]を読む。要素数が足りない・数値でない場合はfalse。
+    bool JsonToVec3(const Json& json, XMFLOAT3& out)
+    {
+        if (!json.IsArray() || json.Size() != 3 || !json.At(0).IsNumber() || !json.At(1).IsNumber() || !json.At(2).IsNumber())
+        {
+            return false;
+        }
+        out = XMFLOAT3(json.At(0).AsFloat(), json.At(1).AsFloat(), json.At(2).AsFloat());
+        return true;
+    }
+
+    // 保存専用の安定した名前(列挙の並びを変えても古いセーブが読めるように、数値ではなく名前で保存する)。
+    const char* AgentStateKey(ResidentAgentState state)
+    {
+        switch (state)
+        {
+        case ResidentAgentState::AtHome:        return "AtHome";
+        case ResidentAgentState::Commuting:     return "Commuting";
+        case ResidentAgentState::AtWork:        return "AtWork";
+        case ResidentAgentState::CommutingHome: return "CommutingHome";
+        }
+        return "AtHome";
+    }
+
+    bool AgentStateFromKey(const std::string& key, ResidentAgentState& out)
+    {
+        if (key == "AtHome")        { out = ResidentAgentState::AtHome;        return true; }
+        if (key == "Commuting")     { out = ResidentAgentState::Commuting;     return true; }
+        if (key == "AtWork")        { out = ResidentAgentState::AtWork;        return true; }
+        if (key == "CommutingHome") { out = ResidentAgentState::CommutingHome; return true; }
+        return false;
+    }
+}
+
+void DemandSystem::Save(Json& section, const SaveContext& context) const
+{
+    section.Set("tickTimer", m_tickTimer);
+
+    Json agents = Json::MakeArray();
+    if (context.game && context.game->objects)
+    {
+        const std::vector<GameObject>& objects = *context.game->objects;
+
+        for (const ResidentAgent& agent : m_agents)
+        {
+            // 見た目のオブジェクトや家が見つからない住民は、保存しても復元できないので飛ばす。
+            const GameObject* marker = GameObjectFactory::FindById(objects, agent.objectId);
+            int homeUid = context.UidForBuildingObject(agent.homeObjectId);
+            if (!marker || homeUid < 0)
+            {
+                continue;
+            }
+
+            // 職場が見つからない(建物が無くなった等)場合は、職場なしの住民として保存する。
+            int officeUid = agent.hasOffice ? context.UidForBuildingObject(agent.officeObjectId) : -1;
+            bool hasOffice = (officeUid >= 0);
+
+            Json entry = Json::MakeObject();
+            entry.Set("home", homeUid);
+            entry.Set("office", hasOffice ? officeUid : -1);
+            entry.Set("state", AgentStateKey(hasOffice ? agent.state : ResidentAgentState::AtHome));
+            entry.Set("speed", agent.speed);
+            entry.Set("scheduleOffsetHours", agent.scheduleOffsetHours);
+            entry.Set("position", Vec3ToJson(marker->transform.position));
+            entry.Set("scale", Vec3ToJson(marker->transform.scale));
+
+            // 経路は職場がある時だけ意味を持つ。
+            if (hasOffice)
+            {
+                Json waypoints = Json::MakeArray();
+                for (const XMFLOAT3& waypoint : agent.waypoints)
+                {
+                    waypoints.Push(Vec3ToJson(waypoint));
+                }
+                Json segmentIndices = Json::MakeArray();
+                for (size_t index : agent.segmentIndices)
+                {
+                    segmentIndices.Push(static_cast<double>(index));
+                }
+                entry.Set("waypoints", std::move(waypoints));
+                entry.Set("segmentIndices", std::move(segmentIndices));
+                entry.Set("waypointIndex", static_cast<double>(agent.currentWaypointIndex));
+                entry.Set("waypointsHomeToOffice", agent.waypointsHomeToOffice);
+            }
+
+            agents.Push(std::move(entry));
+        }
+    }
+    section.Set("agents", std::move(agents));
+}
+
+void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext& context)
+{
+    Reset();
+
+    if (!context.game || !context.game->objects)
+    {
+        return;
+    }
+    std::vector<GameObject>& objects = *context.game->objects;
+
+    m_tickTimer = section.GetFloat("tickTimer", 0.0f);
+    if (m_tickTimer < 0.0f)
+    {
+        m_tickTimer = 0.0f;
+    }
+
+    const Json* agents = section.Find("agents");
+    if (!agents || !agents->IsArray())
+    {
+        return;
+    }
+
+    for (size_t i = 0; i < agents->Size(); ++i)
+    {
+        const Json& entry = agents->At(i);
+        if (!entry.IsObject())
+        {
+            continue;
+        }
+
+        // 建物のuidを、読み込みで新しく作った建物のidに結び直す。家が無い住民は復元できないので飛ばす。
+        uint32_t homeId = context.ObjectIdForBuildingUid(entry.GetInt("home", -1));
+        if (homeId == 0)
+        {
+            continue;
+        }
+        uint32_t officeId = context.ObjectIdForBuildingUid(entry.GetInt("office", -1));
+        bool hasOffice = (officeId != 0);
+
+        ResidentAgent agent;
+        agent.homeObjectId = homeId;
+        agent.hasOffice = hasOffice;
+        agent.officeObjectId = officeId;
+        agent.speed = entry.GetFloat("speed", agent.speed);
+        agent.scheduleOffsetHours = entry.GetFloat("scheduleOffsetHours", 0.0f);
+
+        // 状態の名前が未知なら、安全側の「家にいる」にする。職場が無い住民は常に家にいる。
+        ResidentAgentState state = ResidentAgentState::AtHome;
+        if (!AgentStateFromKey(entry.GetString("state", "AtHome"), state))
+        {
+            state = ResidentAgentState::AtHome;
+        }
+        agent.state = hasOffice ? state : ResidentAgentState::AtHome;
+
+        if (hasOffice)
+        {
+            const Json* waypoints = entry.Find("waypoints");
+            if (waypoints && waypoints->IsArray())
+            {
+                for (size_t w = 0; w < waypoints->Size(); ++w)
+                {
+                    XMFLOAT3 point;
+                    if (JsonToVec3(waypoints->At(w), point))
+                    {
+                        agent.waypoints.push_back(point);
+                    }
+                }
+            }
+            const Json* segmentIndices = entry.Find("segmentIndices");
+            if (segmentIndices && segmentIndices->IsArray())
+            {
+                for (size_t s = 0; s < segmentIndices->Size(); ++s)
+                {
+                    int index = segmentIndices->At(s).AsInt(-1);
+                    if (index >= 0)
+                    {
+                        agent.segmentIndices.push_back(static_cast<size_t>(index));
+                    }
+                }
+            }
+            agent.waypointsHomeToOffice = entry.GetBool("waypointsHomeToOffice", true);
+
+            int waypointIndex = entry.GetInt("waypointIndex", 0);
+            if (waypointIndex < 0) { waypointIndex = 0; }
+            agent.currentWaypointIndex = static_cast<size_t>(waypointIndex);
+
+            // 経路が壊れていて通勤できない場合は、家にいる状態に戻す(経路の無い住民が通勤状態にならないように)。
+            if (agent.waypoints.size() < 2)
+            {
+                agent.waypoints.clear();
+                agent.segmentIndices.clear();
+                agent.currentWaypointIndex = 0;
+                agent.state = ResidentAgentState::AtHome;
+            }
+            else if (agent.currentWaypointIndex >= agent.waypoints.size())
+            {
+                agent.currentWaypointIndex = agent.waypoints.size() - 1;
+            }
+        }
+
+        // 見た目のオブジェクト(代表住民のマーカー)を作り直す。位置と拡大は保存した値のまま。
+        Transform transform;
+        JsonToVec3(entry.Find("position") ? *entry.Find("position") : Json(), transform.position);
+        JsonToVec3(entry.Find("scale") ? *entry.Find("scale") : Json(), transform.scale);
+        GameObject& marker = GameObjectFactory::Spawn(objects, m_agentModel, transform, ObjectKind::Agent);
+        marker.visible = (agent.state == ResidentAgentState::Commuting || agent.state == ResidentAgentState::CommutingHome);
+        agent.objectId = marker.id;
+
+        m_agents.push_back(agent);
+    }
+}
 void DemandSystem::Update(float deltaTime, GameContext& context, std::vector<RoadSegment>& segments)
 {
     UpdateAgentMovement(deltaTime, context);
