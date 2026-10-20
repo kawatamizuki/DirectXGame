@@ -19,6 +19,9 @@
     <Filter Include="外部参照\DirectXTK">
       <UniqueIdentifier>{03c034fe-c811-4386-ba9a-a2e15d365183}</UniqueIdentifier>
     </Filter>
+    <Filter Include="外部参照\ufbx">
+      <UniqueIdentifier>{7d1c5e22-4b0a-4f0e-9a64-3e2b8f6c1a90}</UniqueIdentifier>
+    </Filter>
     <Filter Include="ソース ファイル\imgui">
       <UniqueIdentifier>{b068241a-30f0-428b-87b8-ac56bf0f66a9}</UniqueIdentifier>
     </Filter>
@@ -96,6 +99,9 @@
     <ClCompile Include="External\DirectXTK\WICTextureLoader11.cpp">
       <Filter>外部参照\DirectXTK</Filter>
     </ClCompile>
+    <ClCompile Include="External\ufbx\ufbx.c">
+      <Filter>外部参照\ufbx</Filter>
+    </ClCompile>
     <ClCompile Include="imgui\imgui.cpp">
       <Filter>ソース ファイル\imgui</Filter>
     </ClCompile>
@@ -165,6 +171,15 @@
     <ClCompile Include="Graphics\Model.cpp">
       <Filter>ソース ファイル\Graphics</Filter>
     </ClCompile>
+    <ClCompile Include="Graphics\ModelLoaderRegistry.cpp">
+      <Filter>ソース ファイル\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="Graphics\ObjModelLoader.cpp">
+      <Filter>ソース ファイル\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="Graphics\FbxModelLoader.cpp">
+      <Filter>ソース ファイル\Graphics</Filter>
+    </ClCompile>
     <ClCompile Include="Graphics\ObjLoader.cpp">
       <Filter>ソース ファイル\Graphics</Filter>
     </ClCompile>
@@ -199,6 +214,9 @@
       <Filter>ソース ファイル\Simulation</Filter>
     </ClCompile>
     <ClCompile Include="Simulation\DemandSystem.cpp">
+      <Filter>ソース ファイル\Simulation</Filter>
+    </ClCompile>
+    <ClCompile Include="Simulation\GameEconomy.cpp">
       <Filter>ソース ファイル\Simulation</Filter>
     </ClCompile>
     <ClCompile Include="DebugTools\Profiler.cpp">
@@ -278,6 +296,9 @@
     <ClInclude Include="External\DirectXTK\WICTextureLoader11.h">
       <Filter>外部参照\DirectXTK</Filter>
     </ClInclude>
+    <ClInclude Include="External\ufbx\ufbx.h">
+      <Filter>外部参照\ufbx</Filter>
+    </ClInclude>
     <ClInclude Include="imgui\imconfig.h">
       <Filter>ヘッダー ファイル\imgui</Filter>
     </ClInclude>
@@ -321,6 +342,9 @@
       <Filter>ヘッダー ファイル\Core</Filter>
     </ClInclude>
     <ClInclude Include="Core\GameFlags.h">
+      <Filter>ヘッダー ファイル\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\CostPreview.h">
       <Filter>ヘッダー ファイル\Core</Filter>
     </ClInclude>
     <ClInclude Include="Object\BuildingPlacement.h">
@@ -377,6 +401,21 @@
     <ClInclude Include="Graphics\Model.h">
       <Filter>ヘッダー ファイル\Graphics</Filter>
     </ClInclude>
+    <ClInclude Include="Graphics\ModelData.h">
+      <Filter>ヘッダー ファイル\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Graphics\IModelLoader.h">
+      <Filter>ヘッダー ファイル\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Graphics\ModelLoaderRegistry.h">
+      <Filter>ヘッダー ファイル\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Graphics\ObjModelLoader.h">
+      <Filter>ヘッダー ファイル\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Graphics\FbxModelLoader.h">
+      <Filter>ヘッダー ファイル\Graphics</Filter>
+    </ClInclude>
     <ClInclude Include="Graphics\ObjLoader.h">
       <Filter>ヘッダー ファイル\Graphics</Filter>
     </ClInclude>
@@ -429,6 +468,9 @@
       <Filter>ヘッダー ファイル\Simulation</Filter>
     </ClInclude>
     <ClInclude Include="Simulation\DemandSystem.h">
+      <Filter>ヘッダー ファイル\Simulation</Filter>
+    </ClInclude>
+    <ClInclude Include="Simulation\GameEconomy.h">
       <Filter>ヘッダー ファイル\Simulation</Filter>
     </ClInclude>
     <ClInclude Include="DebugTools\Profiler.h">

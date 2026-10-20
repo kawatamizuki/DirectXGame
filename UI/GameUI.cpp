@@ -13,16 +13,22 @@ namespace
     constexpr float kDayFontSize = 13.0f;
     constexpr float kTimelineWidth = 150.0f;
     constexpr float kTimelineHeight = 8.0f;
-    constexpr float kButtonWidth = 46.0f;
-    constexpr float kButtonHeight = 34.0f;
-    constexpr float kButtonGap = 6.0f;
+    constexpr float kCashBoxHeight = 40.0f;
+    constexpr float kCashFontSize = 24.0f;      // 他の指標(kChipFontSize)より大きい文字
+    constexpr float kCashPadding = 14.0f;
+    constexpr float kCoinRadius = 14.0f;
+    constexpr float kCashIconGap = 8.0f;
+    constexpr float kTagFontSize = 17.0f;       // カーソルの横の建設費タグ
+    constexpr float kTagPadding = 8.0f;
+    constexpr float kTagOffsetX = 20.0f;        // カーソルからのずらし(カーソルに隠れないように右下へ)
+    constexpr float kTagOffsetY = 24.0f;
     constexpr float kChipHeight = 34.0f;
     constexpr float kChipFontSize = 16.0f;
     constexpr float kChipPadding = 10.0f;
     constexpr float kChipIconSize = 18.0f;
     constexpr float kChipIconGap = 6.0f;
     constexpr float kChipGap = 8.0f;
-    constexpr float kBlockGap = 24.0f;   // 左のブロック・中央のボタン・右のチップの間に最低限空ける幅
+    constexpr float kBlockGap = 24.0f;   // 左のブロック・中央の所持金・右のチップの間に最低限空ける幅
 
     // 画面の高さに応じた倍率。1080を基準に、小さい画面でも読める0.75〜大きい画面での2.0に収める。
     float ScaleForHeight(float screenH)
@@ -73,19 +79,13 @@ void GameUI::Initialize(UIRenderer* uiRenderer, const DayNightCycle* dayNightCyc
     m_cycle = dayNightCycle;
 }
 
-int GameUI::SelectedSpeedIndex(float timeScale) const
-{
-    if (timeScale <= 0.0f) { return 0; }
-    if (timeScale <= 1.0f) { return 1; }
-    if (timeScale <= 2.0f) { return 2; }
-    return 3;
-}
-
 void GameUI::ComputeLayout(float screenW, float screenH, const HudState& state)
 {
     Layout layout;
     float s = ScaleForHeight(screenH);
     layout.scale = s;
+    layout.screenW = screenW;
+    layout.screenH = screenH;
 
     layout.bar = UIRect{ 0.0f, 0.0f, screenW, kBarHeight * s };
 
@@ -142,20 +142,31 @@ void GameUI::ComputeLayout(float screenW, float screenH, const HudState& state)
     float chipHeight = kChipHeight * s;
     float chipY = (layout.bar.h - chipHeight) * 0.5f;
 
-    float buttonsTotalWidth = (kButtonWidth * 4.0f + kButtonGap * 3.0f) * s;
+    // ---- 中央の所持金: コインのアイコン+「1,000円」。他の指標より大きな文字 ----
+    layout.cashText = FormatWithCommas(state.cash) + "円";
+    layout.cashTextSize = RoundSize(kCashFontSize * s);
+    float cashTextWidth = m_ui->MeasureString(layout.cashText, layout.cashTextSize);
+    layout.coinRadius = kCoinRadius * s;
+    float cashWidth = (kCashPadding * 2.0f + kCashIconGap) * s + layout.coinRadius * 2.0f + cashTextWidth;
+    float cashHeight = kCashBoxHeight * s;
 
-    // 中央のボタン群は画面の真ん中に置く。左のブロックと重なる場合だけ右へずらす。
-    float buttonsX = screenW * 0.5f - buttonsTotalWidth * 0.5f;
-    float minButtonsX = layout.leftBlockRight + kBlockGap * s;
-    if (buttonsX < minButtonsX)
+    // 画面の真ん中に置く。左のブロックと重なる場合だけ右へずらす。
+    float cashX = screenW * 0.5f - cashWidth * 0.5f;
+    float minCashX = layout.leftBlockRight + kBlockGap * s;
+    if (cashX < minCashX)
     {
-        buttonsX = minButtonsX;
+        cashX = minCashX;
     }
-    float buttonsRight = buttonsX + buttonsTotalWidth;
+    layout.cashBox = UIRect{ cashX, (layout.bar.h - cashHeight) * 0.5f, cashWidth, cashHeight };
+    layout.coinCenterX = cashX + kCashPadding * s + layout.coinRadius;
+    layout.coinCenterY = layout.cashBox.y + cashHeight * 0.5f;
+    layout.cashTextX = layout.coinCenterX + layout.coinRadius + kCashIconGap * s;
+    layout.cashTextY = layout.cashBox.y + (cashHeight - m_ui->GetLineHeight(layout.cashTextSize)) * 0.5f;
+    float cashRight = layout.cashBox.Right();
 
-    // チップは、ボタン群との間に最低限の隙間が空く範囲に収まる数だけ、右端から並べる。
+    // チップは、所持金との間に最低限の隙間が空く範囲に収まる数だけ、右端から並べる。
     float cursorRight = screenW - kMargin * s;
-    float limitLeft = buttonsRight + kBlockGap * s;
+    float limitLeft = cashRight + kBlockGap * s;
     layout.chipCount = 0;
     Chip placed[3];
     for (int i = 2; i >= 0; --i)
@@ -179,19 +190,6 @@ void GameUI::ComputeLayout(float screenW, float screenH, const HudState& state)
         layout.chips[i] = placed[layout.chipCount - 1 - i];
     }
 
-    // ---- 中央のボタン ----
-    const float scales[4] = { 0.0f, 1.0f, 2.0f, 4.0f };
-    float buttonY = (layout.bar.h - kButtonHeight * s) * 0.5f;
-    for (int i = 0; i < 4; ++i)
-    {
-        layout.buttons[i].rect = UIRect{
-            buttonsX + static_cast<float>(i) * (kButtonWidth + kButtonGap) * s,
-            buttonY,
-            kButtonWidth * s,
-            kButtonHeight * s };
-        layout.buttons[i].timeScale = scales[i];
-    }
-
     m_layout = layout;
 }
 
@@ -208,41 +206,11 @@ HudResult GameUI::Update(const HudInput& input, const HudState& state)
     bool over = !input.blockedByOtherUI && m_layout.bar.Contains(input.mouseX, input.mouseY);
     result.mouseOverUI = over;
 
-    m_hoveredButton = -1;
-    if (over)
-    {
-        for (int i = 0; i < 4; ++i)
-        {
-            if (m_layout.buttons[i].rect.Contains(input.mouseX, input.mouseY))
-            {
-                m_hoveredButton = i;
-                break;
-            }
-        }
-    }
-
-    m_mouseDown = input.down;
-
     // バーの上で押したクリックはHUDが受け取る(ワールドへ抜けない)。
+    // 今のバーにはボタンが無いので、押せるものは無い(将来メニューなどのボタンを足す時は、ここで当たり判定をする)。
     if (over && input.pressed)
     {
         result.consumedClick = true;
-        m_pressedButton = m_hoveredButton;
-    }
-
-    // 押した時と同じボタンの上で離したら「押された」とする(押している途中でカーソルを外せばキャンセルできる)。
-    if (input.released)
-    {
-        if (m_pressedButton >= 0 && m_pressedButton == m_hoveredButton)
-        {
-            result.requestedTimeScale = m_layout.buttons[m_pressedButton].timeScale;
-            result.consumedClick = true;
-        }
-        m_pressedButton = -1;
-    }
-    else if (!input.down && !input.pressed)
-    {
-        m_pressedButton = -1; // 離したフレームを取りこぼした場合の保険
     }
 
     return result;
@@ -277,34 +245,106 @@ void GameUI::DrawMoonIcon(float cx, float cy, float radius)
     m_ui->FillCircle(cx - radius * 0.05f, cy + radius * 0.34f, radius * 0.10f, crater);
 }
 
-void GameUI::DrawSpeedIcon(int index, const UIRect& rect, const UIColor& color)
+void GameUI::DrawCoinIcon(float cx, float cy, float radius)
 {
-    float cx = rect.x + rect.w * 0.5f;
-    float cy = rect.y + rect.h * 0.5f;
-    float s = m_layout.scale;
+    // 金貨: 濃い金色の縁、明るい金色の面、左上のハイライト、中央の「¥」。
+    m_ui->FillCircle(cx, cy, radius, Color(0.62f, 0.38f, 0.06f));
+    m_ui->FillCircle(cx, cy, radius * 0.88f, Color(0.98f, 0.76f, 0.16f));
+    m_ui->FillCircle(cx, cy, radius * 0.68f, Color(1.00f, 0.86f, 0.38f));
+    m_ui->FillCircle(cx - radius * 0.36f, cy - radius * 0.40f, radius * 0.16f, Color(1.00f, 0.97f, 0.80f));
 
-    if (index == 0)
+    float markSize = std::floor(radius * 1.25f + 0.5f);
+    if (markSize < 1.0f) { markSize = 1.0f; }
+    UITextStyle mark;
+    mark.color = Color(0.55f, 0.32f, 0.04f);
+    float markWidth = m_ui->MeasureString("\xC2\xA5", markSize); // 「¥」(U+00A5)
+    m_ui->DrawString(cx - markWidth * 0.5f, cy - m_ui->GetLineHeight(markSize) * 0.5f, "\xC2\xA5", markSize, mark);
+}
+
+GameUI::CostTagLayout GameUI::ComputeCostTagLayout(const HudState& state) const
+{
+    CostTagLayout tag;
+    if (!m_ui || !state.costTag.visible)
     {
-        // 停止: 2本の縦棒
-        float barW = 4.5f * s;
-        float barH = 15.0f * s;
-        float gap = 4.0f * s;
-        m_ui->FillRoundedRect(UIRect{ cx - gap * 0.5f - barW, cy - barH * 0.5f, barW, barH }, 1.5f * s, color, color);
-        m_ui->FillRoundedRect(UIRect{ cx + gap * 0.5f, cy - barH * 0.5f, barW, barH }, 1.5f * s, color, color);
+        return tag;
+    }
+
+    float s = m_layout.scale;
+    tag.visible = true;
+    tag.fontSize = RoundSize(kTagFontSize * s);
+
+    // 道路はマス数も一緒に出す(「6マス  -120円」)。建物は金額だけ(「-100円」)。0円は符号を付けない。
+    std::string amount = (state.costTag.cost > 0)
+        ? "-" + FormatWithCommas(state.costTag.cost) + "円"
+        : std::string("0円");
+    tag.costText = (state.costTag.cells > 0)
+        ? std::to_string(state.costTag.cells) + "マス  " + amount
+        : amount;
+    if (!state.costTag.affordable)
+    {
+        tag.warningText = "お金が足りません";
+    }
+
+    float pad = kTagPadding * s;
+    float lineHeight = m_ui->GetLineHeight(tag.fontSize);
+    float textWidth = m_ui->MeasureString(tag.costText, tag.fontSize);
+    float warningWidth = tag.warningText.empty() ? 0.0f : m_ui->MeasureString(tag.warningText, tag.fontSize);
+    float width = ((textWidth > warningWidth) ? textWidth : warningWidth) + pad * 2.0f;
+    float height = lineHeight * (tag.warningText.empty() ? 1.0f : 2.0f) + pad * 2.0f;
+
+    // 既定はカーソルの右下。画面の右端・下端にはみ出す時は、反対側(左・上)へ回す。
+    float x = state.cursorX + kTagOffsetX * s;
+    float y = state.cursorY + kTagOffsetY * s;
+    if (x + width > m_layout.screenW)
+    {
+        x = state.cursorX - kTagOffsetX * s - width;
+    }
+    if (y + height > m_layout.screenH)
+    {
+        y = state.cursorY - kTagOffsetY * s - height;
+    }
+    // それでも画面の外(極端に狭い画面)なら、画面の中に押し込む。
+    if (x + width > m_layout.screenW) { x = m_layout.screenW - width; }
+    if (y + height > m_layout.screenH) { y = m_layout.screenH - height; }
+    if (x < 0.0f) { x = 0.0f; }
+    if (y < 0.0f) { y = 0.0f; }
+
+    tag.rect = UIRect{ x, y, width, height };
+    tag.textX = x + pad;
+    tag.costTextY = y + pad;
+    tag.warningTextY = tag.costTextY + lineHeight;
+    return tag;
+}
+
+void GameUI::DrawCostTag(const HudState& state)
+{
+    CostTagLayout tag = ComputeCostTagLayout(state);
+    if (!tag.visible)
+    {
         return;
     }
 
-    // 1x/2x/4x: 右向きの三角形を1/2/3個並べる。
-    int count = index; // 1,2,3
-    float triH = (index == 1 ? 16.0f : (index == 2 ? 14.0f : 12.0f)) * s;
-    float triW = triH * 0.78f;
-    float spacing = triW * 0.92f;
-    float totalWidth = triW + spacing * static_cast<float>(count - 1);
-    float startX = cx - totalWidth * 0.5f;
-    for (int i = 0; i < count; ++i)
+    float s = m_layout.scale;
+    const UITheme& T = m_theme;
+    bool affordable = tag.warningText.empty();
+
+    // 払えない時は、箱の枠と文字を赤にして目立たせる。
+    UIColor warning = Color(0.82f, 0.12f, 0.10f);
+    UIColor border = affordable ? T.chipBorder : warning;
+
+    m_ui->FillRoundedRect(UIRect{ tag.rect.x + 1.5f * s, tag.rect.y + 2.5f * s, tag.rect.w, tag.rect.h }, T.chipRadius * s * 0.6f, T.panelShadow, T.panelShadow);
+    m_ui->FillRoundedRect(tag.rect, T.chipRadius * s * 0.6f, T.chipFill, T.chipFill);
+    m_ui->StrokeRoundedRect(tag.rect, T.chipRadius * s * 0.6f, T.chipBorderThickness * s, border);
+
+    UITextStyle costStyle;
+    costStyle.color = affordable ? T.textColor : warning;
+    m_ui->DrawString(tag.textX, tag.costTextY, tag.costText, tag.fontSize, costStyle);
+
+    if (!affordable)
     {
-        float x = startX + spacing * static_cast<float>(i);
-        m_ui->FillTriangle(x, cy - triH * 0.5f, x, cy + triH * 0.5f, x + triW, cy, color);
+        UITextStyle warningStyle;
+        warningStyle.color = warning;
+        m_ui->DrawString(tag.textX, tag.warningTextY, tag.warningText, tag.fontSize, warningStyle);
     }
 }
 
@@ -413,43 +453,16 @@ void GameUI::Draw(const HudState& state)
         m_ui->DrawLine(markerX, tl.y - 3.0f * s, markerX, tl.Bottom() + 3.0f * s, 2.0f * s, Color(1.0f, 1.0f, 1.0f));
     }
 
-    // ---- 中央: 速度ボタン ----
-    int selected = SelectedSpeedIndex(state.timeScale);
-    for (int i = 0; i < 4; ++i)
+    // ---- 中央: 所持金(コインのアイコン+金額。他の指標より大きな文字) ----
     {
-        const UIRect& rect = L.buttons[i].rect;
-        bool isSelected = (i == selected);
-        bool isHovered = (i == m_hoveredButton);
-        bool isPressed = (i == m_pressedButton && m_mouseDown && isHovered);
+        m_ui->FillRoundedRect(UIRect{ L.cashBox.x, L.cashBox.y + 2.0f * s, L.cashBox.w, L.cashBox.h }, T.chipRadius * s, T.panelShadow, T.panelShadow);
+        m_ui->FillRoundedRect(L.cashBox, T.chipRadius * s, T.chipFill, T.chipFill);
+        m_ui->StrokeRoundedRect(L.cashBox, T.chipRadius * s, T.chipBorderThickness * s, T.chipBorder);
+        DrawCoinIcon(L.coinCenterX, L.coinCenterY, L.coinRadius);
 
-        UIColor top = T.buttonNormalTop;
-        UIColor bottom = T.buttonNormalBottom;
-        if (isSelected)
-        {
-            top = T.buttonSelectedTop;
-            bottom = T.buttonSelectedBottom;
-        }
-        else if (isPressed)
-        {
-            top = T.buttonPressedTop;
-            bottom = T.buttonPressedBottom;
-        }
-        else if (isHovered)
-        {
-            top = T.buttonHoverTop;
-            bottom = T.buttonHoverBottom;
-        }
-
-        // 押している間は1pxだけ沈んで見えるようにする。
-        UIRect drawRect = rect;
-        if (isPressed)
-        {
-            drawRect.y += 1.0f * s;
-        }
-
-        m_ui->FillRoundedRect(drawRect, T.buttonRadius * s, top, bottom);
-        m_ui->StrokeRoundedRect(drawRect, T.buttonRadius * s, T.buttonBorderThickness * s, T.buttonBorder);
-        DrawSpeedIcon(i, drawRect, isSelected ? T.iconSelectedColor : T.iconColor);
+        UITextStyle cashStyle;
+        cashStyle.color = T.textColor;
+        m_ui->DrawString(L.cashTextX, L.cashTextY, L.cashText, L.cashTextSize, cashStyle);
     }
 
     // ---- 右: 指標のチップ ----
@@ -471,4 +484,7 @@ void GameUI::Draw(const HudState& state)
         float textY = chip.rect.y + (chip.rect.h - m_ui->GetLineHeight(chipFontSize)) * 0.5f;
         m_ui->DrawString(textX, textY, chip.text, chipFontSize, chipStyle);
     }
+
+    // カーソルの横の建設費タグは、HUDの上にも重なりうるので最後(最前面)に描く。
+    DrawCostTag(state);
 }

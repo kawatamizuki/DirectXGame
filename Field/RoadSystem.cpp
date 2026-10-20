@@ -20,12 +20,20 @@
 #include "GameObject.h"
 #include "GridOrientationRegistry.h"
 #include "OrientedRectangleOverlap.h"
+#include "GameEconomy.h"
 #include "imgui.h"
 
 using namespace DirectX;
 
 namespace
 {
+    // 区間の長さ(始点→終点)。建設費の計算に使う。
+    float SegmentLength(const RoadSegment& segment)
+    {
+        XMVECTOR dir = XMLoadFloat3(&segment.end) - XMLoadFloat3(&segment.start);
+        return XMVectorGetX(XMVector3Length(dir));
+    }
+
     // 道路⇔建物の向き合わせ(GridOrientationRegistryの主張、近くの建物角度の検索)で
     // 「近く」とみなす距離。セルサイズの2倍程度(調整可能)。
     constexpr float kOrientationAlignDistance = 2.0f;
@@ -708,6 +716,8 @@ void RoadSystem::Update()
     // (アイコンのImGuiボタンが通常WantCaptureMouseを占有するはずだが、念のため明示的にガードする)。
     if (m_curveAwaitingConfirm)
     {
+        // 確認待ちの間も、置きかけの道の費用をカーソルの横に出し続ける。
+        PublishPendingCurveCostPreview();
         return;
     }
 
@@ -764,6 +774,9 @@ void RoadSystem::UpdateStraightMode(const XMFLOAT3& /*hitPoint*/, const SnapResu
     // 無ければ今のカーソル位置の1マスだけで判定する。
     // CommitSegmentと同じ判定(IsSegmentPlaceable)を使うことで、
     // 「繋がる場所なのにマーカーが赤く見える」という表示と実際の判定のズレを防ぐ。
+    // 建設費: 始点が決まっていれば、「始点→今のカーソル位置」の長さでいくらかかるかを毎フレーム求め、
+    // 払えない時はホバー表示を赤にする。カーソルの横のHUDタグ(costPreview)にもマス数と金額を出す。
+    bool straightAffordable = true;
     {
         XMFLOAT3 pendingStartForHover;
         float cellSize = m_field->GetCellSize();
@@ -776,7 +789,17 @@ void RoadSystem::UpdateStraightMode(const XMFLOAT3& /*hitPoint*/, const SnapResu
 
             std::vector<XMFLOAT3> connectionPoints = CollectConnectionPoints(
                 pendingStartForHover, m_pendingStartRequiresSplit, effectivePoint, snap.snapped);
-            m_hoverValid = IsSegmentPlaceable(hoverSegment, connectionPoints);
+
+            float hoverLength = SegmentLength(hoverSegment);
+            int hoverCost = CalculateRoadCost(hoverLength, cellSize, m_context->roadType);
+            straightAffordable = CanAffordCost(hoverCost);
+
+            m_hoverValid = IsSegmentPlaceable(hoverSegment, connectionPoints) && straightAffordable;
+
+            m_context->costPreview.visible = true;
+            m_context->costPreview.cost = hoverCost;
+            m_context->costPreview.cells = CalculateRoadCells(hoverLength, cellSize);
+            m_context->costPreview.affordable = straightAffordable;
         }
         else
         {
@@ -797,6 +820,17 @@ void RoadSystem::UpdateStraightMode(const XMFLOAT3& /*hitPoint*/, const SnapResu
         return;
     }
 
+    // 2点目の確定の前に払えるか見る。足りない時は何もせず、始点を残したままクリックだけ消費する
+    // (終点を近くに動かして、払える長さで引き直せる)。
+    {
+        XMFLOAT3 pendingStartNow;
+        if (m_straightStrategy->HasPendingStart(pendingStartNow) && !straightAffordable)
+        {
+            m_context->inputConsumed = true;
+            return;
+        }
+    }
+
     std::optional<RoadSegment> result = m_straightStrategy->OnPlacementPoint(effectivePoint);
     if (!result.has_value())
     {
@@ -814,7 +848,7 @@ void RoadSystem::UpdateStraightMode(const XMFLOAT3& /*hitPoint*/, const SnapResu
     segment.width = GetRoadTypeDefinition(m_context->roadType).width;
     segment.drawMode = RoadDrawMode::Straight;
 
-    bool committed = CommitSegment(
+    bool committed = CommitStraightSegment(
         segment,
         m_pendingStartRequiresSplit, m_pendingStartSplitSegmentIndex,
         snap.snapped, snap.requiresSplit, snap.splitSegmentIndex);
@@ -824,12 +858,37 @@ void RoadSystem::UpdateStraightMode(const XMFLOAT3& /*hitPoint*/, const SnapResu
         // 拒否されたことが分かるようログに残す(見た目のフィードバックは今後の課題)。
         // ストラテジーもリセットしておかないと、次のクリックが「2点目」として
         // 扱われず新しい道路の1点目として扱われてしまい紛らわしいため明示的に揃える。
-        Debug::Log("RoadSystem: 経路上に既存の建物/道路があるため道路の配置を拒否しました");
+        Debug::Log("RoadSystem: 経路上に既存の建物/道路があるため(または建設費が足りないため)道路の配置を拒否しました");
         m_straightStrategy->Reset();
     }
 
     m_pendingStartRequiresSplit = false;
     m_context->inputConsumed = true;
+}
+
+bool RoadSystem::CommitStraightSegment(
+    const RoadSegment& segment,
+    bool startRequiresSplit, size_t startSplitIndex,
+    bool endConnects, bool endRequiresSplit, size_t endSplitIndex)
+{
+    // 払えない時は置かない(UpdateStraightModeは事前にも確認しているが、ここでも守る)。
+    int cost = CalculateRoadCost(SegmentLength(segment), m_field->GetCellSize(), segment.type);
+    if (!CanAffordCost(cost))
+    {
+        return false;
+    }
+
+    if (!CommitSegment(segment, startRequiresSplit, startSplitIndex, endConnects, endRequiresSplit, endSplitIndex))
+    {
+        return false; // 置けなかった場合は課金しない
+    }
+
+    // 置けた時だけ払う。上で払えることを確認済みなので、通常は成功する。
+    if (m_context && m_context->economy && !m_context->economy->Spend(cost))
+    {
+        Debug::Log("RoadSystem: 道路の建設費を払えませんでした(事前の確認と食い違い)");
+    }
+    return true;
 }
 
 void RoadSystem::UpdateCurveMode(const XMFLOAT3& hitPoint, const SnapResult& snap)
@@ -919,6 +978,7 @@ void RoadSystem::UpdateCurveMode(const XMFLOAT3& hitPoint, const SnapResult& sna
         }
 
         RebuildCurveGhostMesh();
+        PublishPendingCurveCostPreview();
 
         m_context->inputConsumed = true;
         return;
@@ -1029,6 +1089,53 @@ std::vector<RoadSegment> RoadSystem::GetEffectiveCurvePendingSegments() const
     return { straight };
 }
 
+float RoadSystem::GetPendingCurveLength() const
+{
+    // 表示・有効判定・確定と同じ「手ぶれ補正後」の区間列で測る(ほぼ直線なら1本の直線の長さになる)。
+    float length = 0.0f;
+    for (const RoadSegment& segment : GetEffectiveCurvePendingSegments())
+    {
+        length += SegmentLength(segment);
+    }
+    return length;
+}
+
+int RoadSystem::GetPendingCurveCost() const
+{
+    if (m_curvePendingSegments.empty() || !m_field)
+    {
+        return 0;
+    }
+    return CalculateRoadCost(GetPendingCurveLength(), m_field->GetCellSize(), m_curvePendingSegments.front().type);
+}
+
+bool RoadSystem::CanAffordCost(int amount) const
+{
+    return !m_context || !m_context->economy || m_context->economy->CanAfford(amount);
+}
+
+bool RoadSystem::IsPendingCurveAffordable() const
+{
+    return CanAffordCost(GetPendingCurveCost());
+}
+
+void RoadSystem::PublishPendingCurveCostPreview()
+{
+    if (!m_context || !m_field || m_curvePendingSegments.empty())
+    {
+        return;
+    }
+
+    float length = GetPendingCurveLength();
+    float cellSize = m_field->GetCellSize();
+
+    CostPreview& preview = m_context->costPreview;
+    preview.visible = true;
+    preview.cells = CalculateRoadCells(length, cellSize);
+    preview.cost = CalculateRoadCost(length, cellSize, m_curvePendingSegments.front().type);
+    preview.affordable = CanAffordCost(preview.cost);
+}
+
 bool RoadSystem::IsPendingCurvePathValid() const
 {
     if (m_curvePendingSegments.empty())
@@ -1088,7 +1195,8 @@ void RoadSystem::RebuildCurveGhostMesh()
         return;
     }
 
-    bool valid = IsPendingCurvePathValid();
+    // 置けない場所を通っている時と、払えない時は、どちらも赤で表示する。
+    bool valid = IsPendingCurvePathValid() && IsPendingCurveAffordable();
     XMFLOAT4 color = valid
         ? XMFLOAT4(0.3f, 0.9f, 0.4f, 1.0f)
         : XMFLOAT4(0.9f, 0.25f, 0.25f, 1.0f);
@@ -1157,7 +1265,8 @@ void RoadSystem::RebuildCurveGhostMesh()
 
 void RoadSystem::ConfirmPendingCurve()
 {
-    if (m_curvePendingSegments.empty() || !IsPendingCurvePathValid())
+    // 途中の一部が置けない場所を通っていれば、全部置かない(全か無か)。払えない時も同じく何もしない。
+    if (m_curvePendingSegments.empty() || !IsPendingCurvePathValid() || !IsPendingCurveAffordable())
     {
         return;
     }
@@ -1193,6 +1302,10 @@ void RoadSystem::ConfirmPendingCurve()
     std::vector<XMFLOAT3> chainConnectionPoints = CollectConnectionPoints(
         dragStartPoint, m_pendingStartRequiresSplit, dragEndPoint, m_curvePendingEndConnects);
 
+    // 実際に置けた区間の長さの合計。建設費は区間ごとではなく、道1本の全長からまとめて1回だけ払う。
+    float committedLength = 0.0f;
+    RoadType committedType = effectiveSegments.front().type;
+
     for (size_t i = 0; i < effectiveSegments.size(); ++i)
     {
         bool isFirst = (i == 0);
@@ -1217,6 +1330,19 @@ void RoadSystem::ConfirmPendingCurve()
             // 念のためログだけ残してこれ以上は確定しない。
             Debug::Log("RoadSystem: カーブの確定中に予期しない配置拒否が発生しました");
             break;
+        }
+
+        committedLength += SegmentLength(effectiveSegments[i]);
+    }
+
+    // 置けた分の全長に対して払う(通常は全区間。万一途中で止まった時は、置けた分だけ)。
+    // 事前に全長ぶんを払えることを確認済みなので、置けた分はそれ以下で必ず払える。
+    if (m_context && m_context->economy && m_field)
+    {
+        int cost = CalculateRoadCost(committedLength, m_field->GetCellSize(), committedType);
+        if (!m_context->economy->Spend(cost))
+        {
+            Debug::Log("RoadSystem: カーブの建設費を払えませんでした(事前の確認と食い違い)");
         }
     }
 
@@ -1422,8 +1548,9 @@ void RoadSystem::DrawConfirmIcon()
     ImGui::Begin("##RoadCurveConfirm", nullptr, flags);
 
     bool valid = IsPendingCurvePathValid();
+    bool affordable = IsPendingCurveAffordable();
 
-    ImGui::BeginDisabled(!valid);
+    ImGui::BeginDisabled(!valid || !affordable);
     if (ImGui::Button("確定"))
     {
         ConfirmPendingCurve();
@@ -1439,6 +1566,10 @@ void RoadSystem::DrawConfirmIcon()
     if (!valid)
     {
         ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "既存の道路/建物と重なっています");
+    }
+    else if (!affordable)
+    {
+        ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "お金が足りません");
     }
 
     ImGui::End();

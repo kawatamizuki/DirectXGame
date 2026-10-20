@@ -12,6 +12,7 @@
 #include "DayNightCycle.h"
 #include "UIRenderer.h"
 #include "GameFlags.h"
+#include "GameEconomy.h"
 #include "ScenarioManager.h"
 #include "GameUI.h"
 #include "GameObject.h"
@@ -45,10 +46,10 @@ private:
     // ゲームプレイ用UI(上部HUD)を出すか。UIの初期化に成功していて、ゲームシーンの間だけtrue。
     bool IsGameUIVisible() const;
 
-    // 今フレームのHUD表示内容(時刻・日数・時間の倍率・街の指標)を集める。
+    // 今フレームのHUD表示内容(時刻・日数・所持金・街の指標・カーソルの横の建設費)を集める。
     HudState BuildHudState() const;
 
-    // HUDの入力処理(カーソルがHUD上か、速度ボタンが押されたか)。ワールドへの操作より先に呼ぶ。
+    // HUDの入力処理(カーソルがHUD上か)。ワールドへの操作より先に呼ぶ。
     void UpdateGameUI();
 
     // F5=クイックセーブ、F9=クイックロード。
@@ -68,6 +69,9 @@ private:
 
     // ゲームの進行を表すフラグ・マイルストーンの置き場(セーブ対象)。
     GameFlags m_gameFlags;
+
+    // 所持金(建物・道路の建設費の支払い。セーブ対象)。
+    GameEconomy m_gameEconomy;
 
     // セーブ/ロード(今の街の状態のスナップショットをファイルに保存・復元する)。
     ScenarioManager m_scenarioManager;

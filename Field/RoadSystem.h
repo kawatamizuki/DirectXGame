@@ -118,6 +118,13 @@ private:
         bool endConnects, bool endRequiresSplit, size_t endSplitIndex,
         const std::vector<DirectX::XMFLOAT3>& chainConnectionPoints = {});
 
+    // 直線モードの2点目が決まった時の確定処理: 払えるかを確認 → CommitSegment → 置けた時だけ建設費を払う。
+    // 払えない・置けない時はfalse(何も変わらない)。
+    bool CommitStraightSegment(
+        const RoadSegment& segment,
+        bool startRequiresSplit, size_t startSplitIndex,
+        bool endConnects, bool endRequiresSplit, size_t endSplitIndex);
+
     // 既存道路の「途中」(分割が必要な接続)へ新しい区間approachSegmentを繋げる時、
     // 接続先の区間targetSegmentIndexとほぼ直角(±30度程度)で交わっているかを返す。
     // 浅い角度での分岐は、T字路の継ぎ目がミターされない(独立した縁のまま)こともあり
@@ -150,7 +157,20 @@ private:
     // (m_curvePendingEndConnects)を考慮する。1区間でも無効ならfalseを返す。
     bool IsPendingCurvePathValid() const;
 
-    // m_curvePendingSegmentsからゴーストメッシュを作り直す(有効なら緑寄り、無効なら赤寄りの色)。
+    // ---- 建設費 ----
+    // 置きかけのフリーハンドの道(手ぶれ補正後)の全長・マス数・金額。区間ごとではなく道1本の全長で決めるので、
+    // 細かい区間に分かれていても過剰に課金されず、直線に引けば直線モードと同額になる。
+    // 種類(道幅)は置きかけの区間が持つもの(確認待ちの間にツールの種類を切り替えても、引いた道の単価で計算する)。
+    float GetPendingCurveLength() const;
+    int GetPendingCurveCost() const;
+    // amount円を今の所持金で払えるか(経済システムが無い構成では常にtrue)。
+    bool CanAffordCost(int amount) const;
+    // 置きかけのフリーハンドの道を、今の所持金で払えるか。
+    bool IsPendingCurveAffordable() const;
+    // 置きかけのフリーハンドの道の費用を、カーソルの横のHUDタグ用(GameContext::costPreview)に書き込む。
+    void PublishPendingCurveCostPreview();
+
+    // m_curvePendingSegmentsからゴーストメッシュを作り直す(有効かつ払えるなら緑寄り、無効なら赤寄りの色)。
     void RebuildCurveGhostMesh();
 
     // 確認アイコンが押された時: m_curvePendingSegments全体を実際にCommitSegmentして確定する。

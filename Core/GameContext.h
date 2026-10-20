@@ -45,6 +45,7 @@
 #include"PlacementTool.h"
 #include"RoadType.h"
 #include"RoadDrawMode.h"
+#include"CostPreview.h"
 
 class Renderer;
 class InputManager;
@@ -54,6 +55,7 @@ class DebugRenderer;
 class DemandSystem;
 class GameClock;
 class GameFlags;
+class GameEconomy;
 class ScenarioManager;
 
 struct GameContext
@@ -69,6 +71,9 @@ struct GameContext
 
     // ゲームの進行を表す名前付きの値(フラグ・マイルストーン・解放状態など)。
     GameFlags* flags = nullptr;
+
+    // 所持金。建物・道路の建設費は、ここから払う(足りなければ置けない)。
+    GameEconomy* economy = nullptr;
 
     // セーブ/ロード。ゲームシーンの開始時に初期マップを読み込むために、シーンからも使う。
     ScenarioManager* scenario = nullptr;
@@ -104,4 +109,8 @@ struct GameContext
     // ゲームプレイ用UIが画面の上端に占めている高さ(ピクセル。HUDが出ていない時は0)。
     // デバッグ用GUI(ImGui)の固定配置のパネルが、HUDの下から始まるように避けるために使う。
     float hudTopInset = 0.0f;
+
+    // 毎フレーム先頭でリセットされる。建物・道路の配置が、今カーソルの位置で建設した場合の費用を書き込み、
+    // HUDがカーソルの横に表示する。
+    CostPreview costPreview;
 };

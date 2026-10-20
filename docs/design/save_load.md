@@ -11,7 +11,7 @@
 
 | 区分 | 内容 | 扱い |
 |---|---|---|
-| 本体 | 道路の区間(`RoadSystem::m_segments`)、建物(`GameObject`+`BuildingPlacement`)、時計、フラグ、住民 | **そのまま保存**する |
+| 本体 | 道路の区間(`RoadSystem::m_segments`)、建物(`GameObject`+`BuildingPlacement`)、時計、フラグ、所持金、住民 | **そのまま保存**する |
 | 順序に依存する派生 | 青い隣接マス(`GridOrientationRegistry`。先に作られた方が優先) | 再計算すると結果が変わりうるので、**一覧を優先順のまま保存**する |
 | 決まった手順で作り直せる派生 | 道路ノード、占有(`IOccupancyGrid`)、道路メッシュ、統計・接続線(`DemandSystem`) | **保存しない**。読み込み後に作り直す(`RoadSystem::RestoreSegments` など) |
 
@@ -27,6 +27,20 @@
 - `Scenario/ScenarioManager.{h,cpp}`: 保存(集めて書く)・読み込み(検証 → 全消去 → 復元)・登録・デバッグパネル。
 - 保存先: `Scenarios/`(Git管理するマップ。`Scenarios/tutorial.json` はゲームシーン開始時に読み込まれる)、`Saves/`(プレイヤーのセーブ。gitignore)。
   操作: `F5`=クイックセーブ(`Saves/quicksave.json`)、`F9`=クイックロード、デバッグパネル「Scenario」。
+
+## システムごとの区画(`ISaveable`)
+
+| キー | 持ち主 | 保存する項目 | 足りない/壊れた時 |
+|---|---|---|---|
+| `clock` | `GameClock` | `timeOfDayHours`, `dayCount` | 朝8時・1日目 |
+| `flags` | `GameFlags` | 名前付きの数値(フラグ・マイルストーン) | 空 |
+| `economy` | `GameEconomy` | `cash`(所持金・円) | 初期所持金(`EconomyConfig::startingCash`=1000)。負・巨大な値は0〜9億9999万に丸める。NaN/数値以外は初期所持金 |
+| `demand` | `DemandSystem` | 住民(家・職場・状態・経路・位置など) | 住民なし |
+
+- **初期所持金は「設定」**(`EconomyConfig`)で、保存しない。セーブデータの`economy`区画が無い時(古いセーブ・区画の無いマップ)と、全消去の時に、この額に戻る。
+  `Scenarios/tutorial.json` には、そのマップの開始時の所持金が入っている(変えたければこのファイルの`cash`を書き換える)。
+- **読み込み(復元)では課金しない**: 建物は`SpawnBuilding`、道路は`RestoreSegments`で作り直すだけで、建設費の支払い(`GameEconomy::Spend`)を通らない。
+  課金はプレイヤーが置く操作(`BuildController::PlaceBuilding`・`RoadSystem::CommitStraightSegment`・`ConfirmPendingCurve`)だけ。
 
 ## 読み込みの流れ
 

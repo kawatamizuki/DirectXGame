@@ -1,14 +1,17 @@
 ﻿#include "RoadType.h"
+#include <cmath>
 
 const RoadTypeDefinition& GetRoadTypeDefinition(RoadType type)
 {
+    // 1マスあたりの建設費は今は全種類20円(仮)。後半で道幅によって変える予定なので、種類ごとの表のままにしてある。
+
     // Narrow: 安価・省スペースだが交通容量が低い
     static const RoadTypeDefinition narrowDef
     {
         "Narrow",
         0.6f,  // width
         50.0f, // capacity
-        50.0f, // cost(未使用)
+        20,    // costPerCell(仮)
         1.0f   // pedestrianFriendliness(未使用)
     };
 
@@ -18,7 +21,7 @@ const RoadTypeDefinition& GetRoadTypeDefinition(RoadType type)
         "Normal",
         1.0f,   // width
         100.0f, // capacity
-        100.0f, // cost(未使用)
+        20,     // costPerCell(仮)
         0.7f    // pedestrianFriendliness(未使用)
     };
 
@@ -28,7 +31,7 @@ const RoadTypeDefinition& GetRoadTypeDefinition(RoadType type)
         "Large",
         1.6f,   // width
         200.0f, // capacity
-        220.0f, // cost(未使用)
+        20,     // costPerCell(仮。いずれ他の種類より高くする)
         0.4f    // pedestrianFriendliness(未使用)
     };
 
@@ -40,4 +43,21 @@ const RoadTypeDefinition& GetRoadTypeDefinition(RoadType type)
     }
 
     return normalDef;
+}
+
+int CalculateRoadCells(float length, float cellSize)
+{
+    if (!(length > 0.0f) || !(cellSize > 0.0f))
+    {
+        return 0;
+    }
+
+    // 1e-3は「1マスの千分の1」。浮動小数の誤差で、ちょうどnマスの道がn+1マスに数えられるのを防ぐ。
+    float cells = std::ceil(length / cellSize - 1e-3f);
+    return (cells < 1.0f) ? 1 : static_cast<int>(cells);
+}
+
+int CalculateRoadCost(float length, float cellSize, RoadType type)
+{
+    return CalculateRoadCells(length, cellSize) * GetRoadTypeDefinition(type).costPerCell;
 }

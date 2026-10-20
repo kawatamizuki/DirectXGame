@@ -24,6 +24,9 @@ struct BuildingDefinition
     int populationRepresented = 0;    // この建物が表す実際の人口(表示用。House用)
     int representativeAgentCount = 0; // 実際に個体シミュレートする代表住民の人数(House用)
     int capacity = 0;                 // 受け入れ可能な需要数(Office用)
+
+    // 建設費(円)。建物を置く時にGameEconomyから払う。ゲームバランスの調整は、この表の数字だけを変えればよい。
+    int cost = 0;
 };
 
 // typeに対応する定義を返す。
