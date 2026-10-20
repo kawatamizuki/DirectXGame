@@ -78,7 +78,7 @@
       <PreprocessorDefinitions>ENABLE_EDITOR;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI;$(ProjectDir)Scenario;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>External/DirectXTK;External/ufbx;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI;$(ProjectDir)Scenario;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -96,7 +96,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI;$(ProjectDir)Scenario</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>External/DirectXTK;External/ufbx;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI;$(ProjectDir)Scenario</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -111,7 +111,7 @@
       <PreprocessorDefinitions>ENABLE_EDITOR;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI;$(ProjectDir)Scenario;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>External/DirectXTK;External/ufbx;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI;$(ProjectDir)Scenario;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -129,7 +129,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <AdditionalIncludeDirectories>External/DirectXTK;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI;$(ProjectDir)Scenario</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>External/DirectXTK;External/ufbx;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI;$(ProjectDir)Scenario</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -151,9 +151,13 @@
     <ClCompile Include="DebugTools\DebugEditor.cpp" />
     <ClCompile Include="DebugTools\DebugRenderer.cpp" />
     <ClCompile Include="External\DirectXTK\WICTextureLoader11.cpp" />
+    <ClCompile Include="External\ufbx\ufbx.c" />
     <ClCompile Include="Graphics\Camera.cpp" />
     <ClCompile Include="Graphics\Material.cpp" />
     <ClCompile Include="Graphics\Model.cpp" />
+    <ClCompile Include="Graphics\ModelLoaderRegistry.cpp" />
+    <ClCompile Include="Graphics\ObjModelLoader.cpp" />
+    <ClCompile Include="Graphics\FbxModelLoader.cpp" />
     <ClCompile Include="Graphics\ObjLoader.cpp" />
     <ClCompile Include="Graphics\Renderer.cpp" />
     <ClCompile Include="Graphics\DayNightCycle.cpp" />
@@ -177,6 +181,7 @@
     <ClCompile Include="Simulation\RoadGraph.cpp" />
     <ClCompile Include="Simulation\DijkstraPathfinder.cpp" />
     <ClCompile Include="Simulation\DemandSystem.cpp" />
+    <ClCompile Include="Simulation\GameEconomy.cpp" />
     <ClCompile Include="DebugTools\Profiler.cpp" />
     <ClCompile Include="Object\Transform.cpp" />
     <ClCompile Include="Field\Field.cpp" />
@@ -206,6 +211,7 @@
     <ClInclude Include="Core\TimeManager.h" />
     <ClInclude Include="Core\GameClock.h" />
     <ClInclude Include="Core\GameFlags.h" />
+    <ClInclude Include="Core\CostPreview.h" />
     <ClInclude Include="Object\BuildingPlacement.h" />
     <ClInclude Include="Scenario\ISaveable.h" />
     <ClInclude Include="Scenario\ISnapshotFormat.h" />
@@ -220,9 +226,15 @@
     <ClInclude Include="DebugTools\DebugMemory.h" />
     <ClInclude Include="DebugTools\DebugRenderer.h" />
     <ClInclude Include="External\DirectXTK\WICTextureLoader11.h" />
+    <ClInclude Include="External\ufbx\ufbx.h" />
     <ClInclude Include="Graphics\Camera.h" />
     <ClInclude Include="Graphics\Material.h" />
     <ClInclude Include="Graphics\Model.h" />
+    <ClInclude Include="Graphics\ModelData.h" />
+    <ClInclude Include="Graphics\IModelLoader.h" />
+    <ClInclude Include="Graphics\ModelLoaderRegistry.h" />
+    <ClInclude Include="Graphics\ObjModelLoader.h" />
+    <ClInclude Include="Graphics\FbxModelLoader.h" />
     <ClInclude Include="Graphics\ObjLoader.h" />
     <ClInclude Include="Graphics\Renderer.h" />
     <ClInclude Include="Graphics\DayNightCycle.h" />
@@ -256,6 +268,7 @@
     <ClInclude Include="Simulation\ResidentAgent.h" />
     <ClInclude Include="Simulation\ResidentSchedule.h" />
     <ClInclude Include="Simulation\DemandSystem.h" />
+    <ClInclude Include="Simulation\GameEconomy.h" />
     <ClInclude Include="DebugTools\Profiler.h" />
     <ClInclude Include="Object\Transform.h" />
     <ClInclude Include="Field\Field.h" />

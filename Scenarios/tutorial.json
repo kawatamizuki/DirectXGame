@@ -9,6 +9,10 @@
     "flags": {
       "version": 1
     },
+    "economy": {
+      "version": 1,
+      "cash": 1000
+    },
     "demand": {
       "version": 1,
       "tickTimer": 0,

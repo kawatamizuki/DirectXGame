@@ -12,6 +12,7 @@
 #include "DebugRenderer.h"
 #include "RoadSystem.h"
 #include "RoadProximity.h"
+#include "GameEconomy.h"
 #include "GridOrientationRegistry.h"
 #include "OrientedRectangleOverlap.h"
 #include "imgui.h"
@@ -199,7 +200,13 @@ BuildController::PlacementPreview BuildController::ComputePlacement(const XMFLOA
     // 空いているかの判定は、ワールドのマス単位ではなく矩形どうしの厳密な重なりで行う。
     // 斜めの道路のすぐ隣に回転して置く建物は、ワールドのマス単位で見ると道路と同じマスに
     // 触れてしまうため(以前はこれが原因で斜め道路沿いに全く置けなかった)、実際の形で比較する。
-    result.isValid = allInBounds && m_occupancy->IsRectFree(result.footprintRect);
+    bool placeable = allInBounds && m_occupancy->IsRectFree(result.footprintRect);
+
+    // 建設費: 払えない間は置けない扱い(ゴーストが赤くなり、クリックしても置けない)。
+    // economyが無い構成(テストなど)では課金しない=常に払える。
+    result.cost = def.cost;
+    result.affordable = !m_context || !m_context->economy || m_context->economy->CanAfford(def.cost);
+    result.isValid = placeable && result.affordable;
 
     XMFLOAT3 localCorner = GridToWorldCorner(cell, cellSize);
     float worldFootprintWidth = static_cast<float>(effectiveWidthCells) * cellSize;
@@ -343,30 +350,56 @@ void BuildController::Update()
         RotateSelection();
     }
 
+    // 配置の計算は、確定(Decide)とカーソルの横の費用タグで共通。
+    PlacementPreview placement = ComputePlacement(hitPoint);
+
+    m_context->costPreview.visible = true;
+    m_context->costPreview.cost = placement.cost;
+    m_context->costPreview.cells = 0;
+    m_context->costPreview.affordable = placement.affordable;
+
     if (m_context->input->IsActionPressed(InputAction::Decide))
     {
-        PlacementPreview placement = ComputePlacement(hitPoint);
-        if (!placement.isValid)
+        if (PlaceBuilding(placement))
         {
-            return;
+            m_context->inputConsumed = true;
         }
-
-        // 配置の確定結果(占有範囲・基準座標系・ローカルマス)。建物自身が持ち、セーブで保存される。
-        BuildingPlacement placementData;
-        placementData.footprintRect = placement.footprintRect;
-        placementData.frameOrigin = placement.frame.origin;
-        placementData.frameYaw = placement.frame.yaw;
-        placementData.localCellX = placement.localCell.x;
-        placementData.localCellZ = placement.localCell.z;
-        placementData.localWidthCells = placement.localWidthCells;
-        placementData.localDepthCells = placement.localDepthCells;
-
-        // originはComputePlacementFrameで実際に使ったものをそのまま渡す(ここで別途
-        // 計算し直すと、プレビューと確定後でズレる可能性があるため)。
-        SpawnBuilding(m_selectedType, placement.transform, placementData, true);
-
-        m_context->inputConsumed = true;
     }
+}
+
+bool BuildController::PlaceBuilding(const PlacementPreview& placement)
+{
+    if (!placement.isValid)
+    {
+        return false;
+    }
+
+    // 先に払い、払えたら置く(isValidに払えるかが含まれているので、通常はここで止まらない)。
+    // 課金はプレイヤーが置くこの場所だけ。セーブデータの復元(SpawnBuilding)は課金しない。
+    if (m_context && m_context->economy && !m_context->economy->Spend(placement.cost))
+    {
+        return false;
+    }
+
+    // 配置の確定結果(占有範囲・基準座標系・ローカルマス)。建物自身が持ち、セーブで保存される。
+    BuildingPlacement placementData;
+    placementData.footprintRect = placement.footprintRect;
+    placementData.frameOrigin = placement.frame.origin;
+    placementData.frameYaw = placement.frame.yaw;
+    placementData.localCellX = placement.localCell.x;
+    placementData.localCellZ = placement.localCell.z;
+    placementData.localWidthCells = placement.localWidthCells;
+    placementData.localDepthCells = placement.localDepthCells;
+
+    // originはComputePlacementFrameで実際に使ったものをそのまま渡す(ここで別途
+    // 計算し直すと、プレビューと確定後でズレる可能性があるため)。
+    SpawnBuilding(m_selectedType, placement.transform, placementData, true);
+    return true;
+}
+
+bool BuildController::TryPlaceAt(const XMFLOAT3& hitPoint)
+{
+    return PlaceBuilding(ComputePlacement(hitPoint));
 }
 
 void BuildController::Draw()

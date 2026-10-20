@@ -117,3 +117,7 @@ DebugEditorはGameContext経由でRenderer、Camera、InputManager、TimeManager
 ## 制作意図
 DirectX を用いたゲーム開発の基礎理解と、設計・描画・管理の流れを段階的に学ぶために制作しています。  
 機能を一つずつ実装しながら、ゲームとして完成度を高めていく予定です。
+
+
+## 素材・ライブラリのライセンス
+使用している3Dモデル(Kenney など)とライブラリ(Dear ImGui など)の出所・ライセンス・クレジットは [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) にまとめています。

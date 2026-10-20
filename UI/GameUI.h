@@ -4,6 +4,7 @@
 #include "UIRenderer.h"
 #include "UITheme.h"
 #include "DemandSystem.h"
+#include "CostPreview.h"
 
 class DayNightCycle;
 
@@ -14,8 +15,14 @@ struct HudState
 {
     int dayCount = 1;               // 1から数える日数
     float timeOfDayHours = 8.0f;    // 0〜24の時刻
-    float timeScale = 1.0f;         // 時間の倍率(0=停止)
+    int cash = 0;                   // 所持金(円)
     DemandStats stats;              // 人口・雇用などの街の指標
+
+    // カーソルの横に出す建設費のタグ(建物・道路を置こうとしている間だけvisible)。
+    // 位置はcursorX/Y(描画先の左上からのピクセル座標)の近くに出す。
+    CostPreview costTag;
+    float cursorX = -1.0f;
+    float cursorY = -1.0f;
 };
 
 // マウスの状態と画面サイズ(毎フレーム、GameUIの外から渡す)。
@@ -26,8 +33,6 @@ struct HudInput
     float mouseX = -1.0f;           // 描画先(ウィンドウのクライアント領域)の左上からのピクセル座標
     float mouseY = -1.0f;
     bool pressed = false;           // 左ボタンを押したフレーム
-    bool down = false;              // 左ボタンを押している間
-    bool released = false;          // 左ボタンを離したフレーム
     bool blockedByOtherUI = false;  // デバッグGUI(ImGui)のパネルの上にカーソルがある時はtrue(HUDは反応しない)
 };
 
@@ -36,7 +41,6 @@ struct HudResult
 {
     bool mouseOverUI = false;                   // カーソルがHUDの上にあるか(ワールドへの操作を止めるのに使う)
     bool consumedClick = false;                 // このフレームのクリックをHUDが受け取ったか
-    std::optional<float> requestedTimeScale;    // 速度ボタンが押された時の、新しい時間の倍率
 };
 
 // ゲームプレイ用の上部HUDバー。配置・入力・描画をまとめて担当する(ImGuiは使わない)。
@@ -44,13 +48,6 @@ struct HudResult
 class GameUI
 {
 public:
-    // 速度ボタン1つぶん。
-    struct SpeedButton
-    {
-        UIRect rect;
-        float timeScale = 1.0f;
-    };
-
     // 指標のチップ(アイコン+文字の小さな角丸の箱)の種類。
     enum class ChipIcon
     {
@@ -70,6 +67,8 @@ public:
     struct Layout
     {
         float scale = 1.0f;
+        float screenW = 0.0f;
+        float screenH = 0.0f;
         UIRect bar;                 // 画面上端の全幅のバー
         float iconCenterX = 0.0f;   // 昼夜アイコンの中心
         float iconCenterY = 0.0f;
@@ -83,10 +82,30 @@ public:
         float dayTextY = 0.0f;
         float dayTextSize = 0.0f;
         UIRect timeline;            // 1日のタイムライン
-        SpeedButton buttons[4];     // 停止/1x/2x/4x
+        UIRect cashBox;             // 中央の所持金の箱(コインのアイコン+金額)
+        std::string cashText;       // "1,000円"
+        float cashTextX = 0.0f;
+        float cashTextY = 0.0f;
+        float cashTextSize = 0.0f;
+        float coinCenterX = 0.0f;   // コインのアイコンの中心と半径
+        float coinCenterY = 0.0f;
+        float coinRadius = 0.0f;
         Chip chips[3];
         int chipCount = 0;          // 画面が狭くて入りきらない時は、右から数えて収まる数だけ
         float leftBlockRight = 0.0f; // 左のブロック(アイコン〜タイムライン)の右端
+    };
+
+    // カーソルの横の建設費タグの配置結果(テストで画面からはみ出していないかを確かめられるよう公開している)。
+    struct CostTagLayout
+    {
+        bool visible = false;
+        UIRect rect;                // タグの箱
+        std::string costText;       // "6マス  -120円" / "-100円"
+        std::string warningText;    // 払えない時だけ「お金が足りません」(払える時は空)
+        float textX = 0.0f;
+        float costTextY = 0.0f;
+        float warningTextY = 0.0f;
+        float fontSize = 0.0f;
     };
 
     // uiRendererとdayNightCycleは呼び出し側が所有する(このクラスは借りるだけ)。
@@ -98,25 +117,25 @@ public:
     // Updateで計算した配置で描く。UIRendererのBeginFrame〜EndFrameの間に呼ぶ。
     void Draw(const HudState& state);
 
+    // stateのcostTagとカーソル位置から、費用タグの配置を求める(Drawの内部でも使う)。
+    // 画面の端に近い時は、はみ出さないようカーソルの反対側に出す。画面サイズはUpdateで計算した配置のものを使う。
+    CostTagLayout ComputeCostTagLayout(const HudState& state) const;
+
     const Layout& GetLayout() const { return m_layout; }
     UITheme& GetTheme() { return m_theme; }
 
 private:
     void ComputeLayout(float screenW, float screenH, const HudState& state);
-    int SelectedSpeedIndex(float timeScale) const;
 
     // アイコン(すべて図形で描く。素材は使わない)。
     void DrawSunIcon(float cx, float cy, float radius);
     void DrawMoonIcon(float cx, float cy, float radius);
-    void DrawSpeedIcon(int index, const UIRect& rect, const UIColor& color);
+    void DrawCoinIcon(float cx, float cy, float radius);
     void DrawChipIcon(ChipIcon icon, float cx, float cy, float size);
+    void DrawCostTag(const HudState& state);
 
     UIRenderer* m_ui = nullptr;
     const DayNightCycle* m_cycle = nullptr;
     UITheme m_theme;
     Layout m_layout;
-
-    int m_hoveredButton = -1;   // カーソルが乗っている速度ボタン(なければ-1)
-    int m_pressedButton = -1;   // 押し始めた速度ボタン(離した時に同じボタンの上なら「押された」)
-    bool m_mouseDown = false;
 };

@@ -33,6 +33,15 @@ public:
     // falseなら登録しない(セーブデータの復元。青マスは保存した一覧を別に戻す)。
     // 戻り値は生成した建物のGameObject::id(失敗したら0)。
     uint32_t SpawnBuilding(BuildingType type, const Transform& transform, const BuildingPlacement& placement, bool claimOrientation);
+
+    // 今選んでいる種類の建物を、hitPoint(ワールド座標のカーソル着地点)の位置に置く。
+    // クリックでの配置と同じ処理(置けるか・払えるかの確認 → 建設費を払う → 建てる)。置けたらtrue。
+    // 将来の建設メニュー(HUD)や、自動テストから、マウス入力なしで同じ配置を行うために公開している。
+    bool TryPlaceAt(const DirectX::XMFLOAT3& hitPoint);
+
+    // 配置する建物の種類の選択(将来の建設メニューから設定する)。
+    void SetSelectedType(BuildingType type) { m_selectedType = type; }
+    BuildingType GetSelectedType() const { return m_selectedType; }
 private:
     // 建物配置の基準となるローカル座標系(原点・角度)。
     // 近くの道路/GridOrientationRegistryに角度が既に決まっていればそれに合わせ、
@@ -54,7 +63,9 @@ private:
         GridCoord localCell;                     // frameのローカル座標系での、footprintの最小角のマス番号
         int localWidthCells = 1;                 // 回転(90度刻み)を反映した、ローカルマス数での幅
         int localDepthCells = 1;                 // 同じく奥行き
-        bool isValid = false;                    // 範囲内かつ空いているか(falseなら配置不可)
+        bool isValid = false;                    // 範囲内かつ空いていて、建設費を払えるか(falseなら配置不可)
+        int cost = 0;                            // 建設費(円)
+        bool affordable = true;                  // 今の所持金で払えるか(isValidに含まれる。「お金が足りません」の表示の判定用)
         PlacementFrame frame;                    // 実際に使った基準座標系(確定時にマスを登録するのに使う)
     };
 
@@ -83,6 +94,10 @@ private:
     // 占有セル・配置可否をまとめて計算する。Update()の確定配置とDraw()の
     // ゴーストプレビューの両方から呼ばれる、配置計算の唯一の情報源。
     PlacementPreview ComputePlacement(const DirectX::XMFLOAT3& hitPoint) const;
+
+    // placementを確定する: 置けない・払えない時は何もせずfalse。置ける時は建設費を払って建物を建てる。
+    // クリック(Update)とTryPlaceAtの共通の入口。
+    bool PlaceBuilding(const PlacementPreview& placement);
 
     // 選択中の建物を90度回転する(4ステップで1周)。
     // ImGuiボタン・InputAction::Rotateの両方から呼ばれる(将来ImGuiを置き換えてもロジックは無傷)。

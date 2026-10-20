@@ -39,6 +39,7 @@ bool Game::Initialize(HWND hwnd)
     m_context.objects = &m_objects;
     m_context.demandSystem = &m_demandSystem;
     m_context.flags = &m_gameFlags;
+    m_context.economy = &m_gameEconomy;
     m_context.scenario = &m_scenarioManager;
 
     // DebugRendererはフィールドの格子線・建物/道路のプレビュー描画にも使うため、
@@ -90,13 +91,13 @@ bool Game::Initialize(HWND hwnd)
 
     // 初期実装時の動作確認用に置いていた巨大モデル(character-female-f)とその下のキューブ。
     // 本来のゲーム内容には不要なので非表示にしておく(ロード処理ごとコメントアウト)。
-    //if (!m_cubeModel.LoadFromObj(m_renderer.GetDevice(), "Models/cube.obj"))
+    //if (!m_cubeModel.LoadFromFile(m_renderer.GetDevice(), "Models/cube.obj"))
     //{
     //    Debug::Error("Game::Initialize failed : Model load failed");
     //    return false;
     //}
 
-    //if (!m_kennyModel.LoadFromObj(m_renderer.GetDevice(), "Models/character-female-f.obj"))
+    //if (!m_kennyModel.LoadFromFile(m_renderer.GetDevice(), "Models/character-female-f.obj"))
     //{
     //    Debug::Error("Game::Initialize failed : KennyModel load failed");
     //    return false;
@@ -116,17 +117,17 @@ bool Game::Initialize(HWND hwnd)
 
     // 建物種別ごとのモデルをBuildingDefinition::modelPathから読み込む
     // (パスの二重管理を避けるため、パス文字列自体はBuildingType.cppの定義を唯一の情報源にする)。
-    if (!m_houseModel.LoadFromObj(m_renderer.GetDevice(), GetBuildingDefinition(BuildingType::House).modelPath))
+    if (!m_houseModel.LoadFromFile(m_renderer.GetDevice(), GetBuildingDefinition(BuildingType::House).modelPath))
     {
         Debug::Error("Game::Initialize failed : House model load failed");
         return false;
     }
-    if (!m_officeModel.LoadFromObj(m_renderer.GetDevice(), GetBuildingDefinition(BuildingType::Office).modelPath))
+    if (!m_officeModel.LoadFromFile(m_renderer.GetDevice(), GetBuildingDefinition(BuildingType::Office).modelPath))
     {
         Debug::Error("Game::Initialize failed : Office model load failed");
         return false;
     }
-    if (!m_shopModel.LoadFromObj(m_renderer.GetDevice(), GetBuildingDefinition(BuildingType::Shop).modelPath))
+    if (!m_shopModel.LoadFromFile(m_renderer.GetDevice(), GetBuildingDefinition(BuildingType::Shop).modelPath))
     {
         Debug::Error("Game::Initialize failed : Shop model load failed");
         return false;
@@ -141,7 +142,7 @@ bool Game::Initialize(HWND hwnd)
     // 天面(Y最大値)をField/建物/道路が前提とするy=0の地面基準に自動で揃える。
     // モデルがどんな単位・大きさ・原点位置で作られていてもグリッドとズレない。
     // 無ければ失敗として扱わずスキップする(パスを用意して再起動すれば自動的に反映される)。
-    if (m_groundModel.LoadFromObj(m_renderer.GetDevice(), "RoadTiles/Models/roadTile_163.obj"))
+    if (m_groundModel.LoadFromFile(m_renderer.GetDevice(), "RoadTiles/Models/roadTile_163.obj"))
     {
         GameObject groundObject;
         groundObject.model = &m_groundModel;
@@ -186,7 +187,7 @@ bool Game::Initialize(HWND hwnd)
         &m_orientationRegistry);
 
     // 代表住民の見た目は、既に読み込んでいるKennyキャラクターモデルを仮で流用する
-    if (!m_agentModel.LoadFromObj(m_renderer.GetDevice(), "Models/character-female-f.obj"))
+    if (!m_agentModel.LoadFromFile(m_renderer.GetDevice(), "Models/character-female-f.obj"))
     {
         Debug::Error("Game::Initialize failed : Agent model load failed");
         return false;
@@ -194,13 +195,14 @@ bool Game::Initialize(HWND hwnd)
 
     m_demandSystem.Initialize(&m_pathfinder, &m_agentModel);
 
-    // セーブ/ロード: 街を構成するシステムを渡し、状態を持つシステム(時計・フラグ・住民)を登録する。
+    // セーブ/ロード: 街を構成するシステムを渡し、状態を持つシステム(時計・フラグ・所持金・住民)を登録する。
     // 新しい状態(お金・建物レベル・チュートリアルの進行など)を足す時は、その要素がISaveableを
     // 実装して、ここにRegisterSaveableを1行足すだけでセーブ対象になる。
     m_scenarioManager.Initialize(
         &m_context, &m_field, &m_roadSystem, &m_buildController, &m_occupancyGrid, &m_orientationRegistry);
     m_scenarioManager.RegisterSaveable(&m_gameClock);
     m_scenarioManager.RegisterSaveable(&m_gameFlags);
+    m_scenarioManager.RegisterSaveable(&m_gameEconomy);
     m_scenarioManager.RegisterSaveable(&m_demandSystem);
 #ifdef ENABLE_EDITOR
     // 読み込みで建物などのオブジェクトが入れ替わるので、エディタの選択(添字)を解除する。
@@ -238,6 +240,7 @@ void Game::Update()
     m_context.inputConsumed = false;
     m_context.mouseOverUI = false;
     m_context.hudTopInset = 0.0f;
+    m_context.costPreview = CostPreview(); // 建設費のタグは、今フレームに建設ツールが書いた時だけ出す
 
     m_inputManager.Update();
     m_sceneManager.Update();
@@ -295,8 +298,14 @@ HudState Game::BuildHudState() const
     HudState state;
     state.dayCount = m_gameClock.GetDayCount();
     state.timeOfDayHours = m_gameClock.GetTimeOfDayHours();
-    state.timeScale = m_gameClock.GetTimeScale();
+    state.cash = m_gameEconomy.GetCash();
     state.stats = m_demandSystem.GetStats();
+
+    // カーソルの横の建設費タグ。建物・道路の配置が今フレームにGameContext::costPreviewへ書いたものを渡す。
+    state.costTag = m_context.costPreview;
+    POINT mouse = m_inputManager.GetMousePosition();
+    state.cursorX = static_cast<float>(mouse.x);
+    state.cursorY = static_cast<float>(mouse.y);
     return state;
 }
 
@@ -343,8 +352,6 @@ void Game::UpdateGameUI()
     input.mouseY = static_cast<float>(mouse.y);
 
     input.pressed = m_inputManager.IsActionPressed(InputAction::Decide);
-    input.down = m_inputManager.IsActionDown(InputAction::Decide);
-    input.released = m_inputManager.IsActionReleased(InputAction::Decide);
 
 #ifdef ENABLE_EDITOR
     // デバッグGUI(ImGui)のパネルの上にカーソルがある時は、HUDは反応しない(ImGuiが手前に描かれるため)。
@@ -358,10 +365,6 @@ void Game::UpdateGameUI()
     if (result.consumedClick)
     {
         m_context.inputConsumed = true;
-    }
-    if (result.requestedTimeScale.has_value())
-    {
-        m_gameClock.SetTimeScale(*result.requestedTimeScale);
     }
 }
 
@@ -401,6 +404,7 @@ void Game::Draw()
     // 人流・需要シミュレーションの統計・プロファイラ・ログはモードによらず常時表示する
     m_demandSystem.DrawDebugUI();
     m_gameClock.DrawDebugUI();
+    m_gameEconomy.DrawDebugUI();
     m_scenarioManager.DrawDebugUI();
     Profiler::DrawDebugUI(m_objects, m_roadSystem, m_occupancyGrid, m_demandSystem);
     Debug::DrawDebugUI();

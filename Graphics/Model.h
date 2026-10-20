@@ -5,6 +5,7 @@
 #include <vector>
 #include"Material.h"
 #include"Vertex.h"
+#include "ModelData.h"
 #include <DirectXMath.h>
 
 
@@ -15,7 +16,13 @@ public:
     Model();
     ~Model();
 
-    bool LoadFromObj(ID3D11Device* device, const std::string& filePath);
+    // モデルファイルを読んで頂点バッファ・テクスチャを作る。拡張子(.obj/.fbx)で読み方が決まる
+    // (ModelLoaderRegistryが形式ごとのローダーを選ぶ)。呼ぶたびに作り直す。
+    bool LoadFromFile(ID3D11Device* device, const std::string& filePath);
+
+    // 読み込み済みのCPU側データ(ModelData)から、頂点バッファ・テクスチャを作る。
+    // ファイルを介さずにモデルを作りたい時(メモリからの読み込みなど)に使う。debugNameはログ用の名前。
+    bool CreateFromModelData(ID3D11Device* device, const ModelData& data, const std::string& debugName);
 
     // OBJファイルを介さず、生成済みの頂点データから直接モデルを作る
     // (プロシージャルメッシュ用。道路メッシュなど、実行中に内容が変わるジオメトリに使う)。

@@ -3,7 +3,7 @@
 #include <cmath>
 #include "Model.h"
 #include"Vertex.h"
-#include "ObjLoader.h"
+#include "ModelLoaderRegistry.h"
 #include "Debug.h"
 #include "WICTextureLoader11.h"
 
@@ -59,14 +59,30 @@ Model::~Model()
     m_vertexCount = 0;
 }
 
-bool Model::LoadFromObj(ID3D11Device* device, const std::string& filePath)
+bool Model::LoadFromFile(ID3D11Device* device, const std::string& filePath)
 {
-
-    
-   
     if (!device)
     {
-        Debug::Error("Model::LoadFromObj failed : device is null");
+        Debug::Error("Model::LoadFromFile failed : device is null");
+        return false;
+    }
+
+    // 拡張子に合うローダー(OBJ/FBX)でCPU側のデータに読み、そこから頂点バッファ・テクスチャを作る。
+    ModelData data;
+    if (!ModelLoaderRegistry::Default().LoadFromFile(filePath, data))
+    {
+        Debug::Error("Model::LoadFromFile failed : " + filePath);
+        return false;
+    }
+
+    return CreateFromModelData(device, data, filePath);
+}
+
+bool Model::CreateFromModelData(ID3D11Device* device, const ModelData& data, const std::string& debugName)
+{
+    if (!device)
+    {
+        Debug::Error("Model::CreateFromModelData failed : device is null");
         return false;
     }
 
@@ -75,24 +91,17 @@ bool Model::LoadFromObj(ID3D11Device* device, const std::string& filePath)
 
     m_vertexCount = 0;
 
-
-    //==========================================================
-    //  OBJモデル用の頂点バッファを作る
-    //==========================================================
-    std::vector<ObjVertex> objVertices;//頂点データ
-    std::string texturePath;//テクスチャのパス
-    DirectX::XMFLOAT3 boundsMin;
-    DirectX::XMFLOAT3 boundsMax;
-
-    if (!ObjLoader::Load(filePath, objVertices, texturePath,boundsMin, boundsMax))
+    if (data.vertices.empty())
     {
-        Debug::Error("Model::LoadFromObj failed : ObjLoader::Load failed : " + filePath);
+        Debug::Warning("Model::CreateFromModelData failed : vertex data is empty : " + debugName);
         return false;
     }
 
-    // OBJ頂点から計算したローカルBounds
-    m_boundsMin = boundsMin;
-    m_boundsMax = boundsMax;
+    const std::string& texturePath = data.texturePath;
+
+    // 頂点から計算したローカルBounds
+    m_boundsMin = data.boundsMin;
+    m_boundsMax = data.boundsMax;
 
     // AABBサイズからBoundingSphere半径を計算
     DirectX::XMFLOAT3 half =
@@ -146,60 +155,38 @@ bool Model::LoadFromObj(ID3D11Device* device, const std::string& filePath)
         Debug::Warning("No texture path found");
     }
 
-    // MTLからテクスチャパスを取得できたか確認
+    // テクスチャパスを取得できたか確認
     if (!texturePath.empty())
     {
-        Debug::Info("Model::LoadFromObj texturePath : " + texturePath);
+        Debug::Info("Model::CreateFromModelData texturePath : " + texturePath);
     }
     else
     {
-        Debug::Warning("Model::LoadFromObj texturePath is empty : " + filePath);
+        Debug::Warning("Model::CreateFromModelData texturePath is empty : " + debugName);
     }
 
-    if (objVertices.empty())
-    {
-        Debug::Warning("Model::LoadFromObj failed : vertex data is empty : " + filePath);
-        return false;
-    }
+    Debug::Info("Model loaded. vertexCount = " + std::to_string(data.vertices.size()));
 
-  
-    // ObjVertex → Rendererで使っているVertex形式へ変換
-    std::vector<Vertex> convertedVertices;
-    convertedVertices.reserve(objVertices.size());
-    Debug::Info("OBJ loaded. vertexCount = " + std::to_string(objVertices.size()));
-
-    for (const auto& v : objVertices)
-    {
-        convertedVertices.push_back({
-            v.x,  v.y,  v.z,
-            v.nx, v.ny, v.nz,
-            v.u,  v.v,
-            v.r,  v.g,  v.b,  v.a
-            });
-    }
-
-    // OBJ用頂点バッファを作成
+    // 頂点バッファを作成
     D3D11_BUFFER_DESC bufferDesc = {};
     bufferDesc.Usage = D3D11_USAGE_DEFAULT;
-    bufferDesc.ByteWidth = static_cast<UINT>(sizeof(Vertex) * convertedVertices.size());
+    bufferDesc.ByteWidth = static_cast<UINT>(sizeof(Vertex) * data.vertices.size());
     bufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
     bufferDesc.CPUAccessFlags = 0;
     bufferDesc.MiscFlags = 0;
     bufferDesc.StructureByteStride = 0;
 
     D3D11_SUBRESOURCE_DATA initData = {};
-    initData.pSysMem = convertedVertices.data();
+    initData.pSysMem = data.vertices.data();
 
     HRESULT hr = device->CreateBuffer(&bufferDesc, &initData, m_vertexBuffer.GetAddressOf());
     if (FAILED(hr))
     {
-        Debug::Error("Model::LoadFromObj failed : CreateBuffer failed");
+        Debug::Error("Model::CreateFromModelData failed : CreateBuffer failed");
         return false;
     }
 
-    m_vertexCount = static_cast<UINT>(convertedVertices.size());
-
-
+    m_vertexCount = static_cast<UINT>(data.vertices.size());
 
     return true;
 }
