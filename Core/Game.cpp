@@ -305,7 +305,10 @@ void Game::Update()
     // Assetsからモデルをドラッグしている状態を読み取り、ゲームの画面の上で離されたら飾りを置く。
     UpdateAssetDragState();
 #endif
-    m_propPlacer.Update();
+    if (IsInGameScene())
+    {
+        m_propPlacer.Update();
+    }
 
     HandleScenarioHotkeys();
 
@@ -330,7 +333,9 @@ void Game::Update()
     // Playingモードの時だけ建物/道路配置を更新する。
     // 呼び出し順が優先度チェーンになっており、片方がクリックを消費したら
     // もう片方は同じフレームでは動かない。
-    if (m_context.mode == GameMode::Playing)
+    // 街(建物・道路・住民)の更新は、ゲームシーンの間だけ。タイトル画面でクリックしても、街の操作(建物の配置など)が
+    // 同時に起きないようにする。
+    if (IsInGameScene() && m_context.mode == GameMode::Playing)
     {
         if (!m_context.inputConsumed)
         {
@@ -344,6 +349,11 @@ void Game::Update()
         // 住民の移動・需要更新は、ゲーム内時間の倍率(停止/倍速)に従って進める。
         m_demandSystem.Update(m_gameClock.GetScaledDeltaSeconds(), m_context, m_roadSystem.GetSegments());
     }
+}
+
+bool Game::IsInGameScene() const
+{
+    return m_sceneManager.GetCurrentSceneName() == SceneName::Game;
 }
 
 bool Game::IsGameUIVisible() const
@@ -555,6 +565,9 @@ void Game::Draw()
 
     m_sceneManager.Draw();
 
+    // 街(地面・建物・格子線・道路・住民)は、ゲームシーンの間だけ描く。タイトル画面には、街を出さない。
+    const bool inGame = IsInGameScene();
+    if (inGame)
     {
         PROFILE_SCOPE("Game::Draw ObjectLoop");
         for (auto& obj : m_objects)
@@ -568,17 +581,20 @@ void Game::Draw()
 
     const EditorUi::FrameInfo editorFrame = BuildEditorFrameInfo(); // ヒントの表示用(今フレームのモード・HUDの上か)
 
-    if (m_showGridOverlay)
+    if (inGame)
     {
-        m_field.DrawGridOverlay(m_debugRenderer, m_orientationRegistry);
-    }
-    m_propPlacer.Draw(); // Assetsからのドラッグ中のゴースト
-    m_demandSystem.Draw(m_debugRenderer);
+        if (m_showGridOverlay)
+        {
+            m_field.DrawGridOverlay(m_debugRenderer, m_orientationRegistry);
+        }
+        m_propPlacer.Draw(); // Assetsからのドラッグ中のゴースト
+        m_demandSystem.Draw(m_debugRenderer);
 
-    if (m_context.mode == GameMode::Playing)
-    {
-        m_buildController.Draw(m_editorUi.PanelFlag("Build"));
-        m_roadSystem.Draw();
+        if (m_context.mode == GameMode::Playing)
+        {
+            m_buildController.Draw(m_editorUi.PanelFlag("Build"));
+            m_roadSystem.Draw();
+        }
     }
 
 #ifdef ENABLE_EDITOR

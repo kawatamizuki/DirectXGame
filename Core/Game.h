@@ -52,6 +52,9 @@ public:
     void Finalize();
 
 private:
+    // 今、ゲームシーンか(タイトル画面ではないか)。街の更新・描画は、ゲームシーンの間だけ行う。
+    bool IsInGameScene() const;
+
     // ゲームプレイ用UI(上部HUD)を出すか。UIの初期化に成功していて、ゲームシーンの間だけtrue。
     bool IsGameUIVisible() const;
 
