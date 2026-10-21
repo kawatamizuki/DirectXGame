@@ -15,6 +15,7 @@
 #include "GameEconomy.h"
 #include "GridOrientationRegistry.h"
 #include "OrientedRectangleOverlap.h"
+#include "EditorSettings.h"
 #include "imgui.h"
 
 using namespace DirectX;
@@ -333,8 +334,8 @@ void BuildController::Update()
     POINT mousePos = m_context->input->GetMousePosition();
     Ray ray = m_context->camera->ScreenPointToRay(
         mousePos,
-        m_context->renderer->GetWindowWidth(),
-        m_context->renderer->GetWindowHeight());
+        m_context->renderer->GetViewWidth(),
+        m_context->renderer->GetViewHeight());
 
     XMFLOAT3 hitPoint;
     if (!m_field->RaycastGround(ray, hitPoint))
@@ -402,14 +403,31 @@ bool BuildController::TryPlaceAt(const XMFLOAT3& hitPoint)
     return PlaceBuilding(ComputePlacement(hitPoint));
 }
 
-void BuildController::Draw()
+void BuildController::RegisterEditorToggles(EditorSettings& settings)
+{
+    settings.RegisterToggle("orientation_chunks", "青マス(向きのチャンク)を表示", &m_showOrientationDebug,
+        "道路に揃って向きが確定したチャンクの境界・基準角度を描く(Playingモード)");
+}
+
+void BuildController::Draw(bool* open)
+{
+    // 「Build」パネルは、×やEditorメニューで閉じられる。閉じていても、世界側の表示(青マス・ゴースト)は続ける。
+    if (open == nullptr || *open)
+    {
+        DrawPanel(open);
+    }
+
+    DrawWorldOverlay();
+}
+
+void BuildController::DrawPanel(bool* open)
 {
     // 建物種別・配置ツールの選択UI。
     // 本格的なin-game UIに置き換える前提の仮のImGuiボタン。
     // 他のデバッグパネル(Debug/Hierarchy/Inspector)と重ならない位置に固定表示する
     // (重なると初回起動時に他パネルの下に隠れて見えなくなることがあるため)。
     ImGui::SetNextWindowPos(ImVec2(310.0f, 8.0f), ImGuiCond_FirstUseEver);
-    ImGui::Begin("Build");
+    ImGui::Begin("Build", open);
 
     if (m_context)
     {
@@ -463,7 +481,10 @@ void BuildController::Draw()
         ImGui::Text("%d degrees", m_selectedRotationStep * 90);
     }
     ImGui::End();
+}
 
+void BuildController::DrawWorldOverlay()
+{
     if (m_showOrientationDebug && m_orientationRegistry && m_field && m_context && m_context->debugRenderer)
     {
         m_orientationRegistry->DrawDebugOverlay(*m_context->debugRenderer, m_field->GetCellSize());

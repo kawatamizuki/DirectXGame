@@ -76,11 +76,16 @@ void GameClock::ResetToDefault()
     m_dayCount = 1;
 }
 
-void GameClock::DrawDebugUI()
+void GameClock::DrawDebugUI(bool* open)
 {
+    if (open && !*open)
+    {
+        return;
+    }
+
     // 他の常設パネル(Debug/Build/City Stats/Profiler/Log)と重ならない上部中央に配置する
     ImGui::SetNextWindowPos(ImVec2(490.0f, 8.0f), ImGuiCond_FirstUseEver);
-    ImGui::Begin("Time");
+    ImGui::Begin("Time", open);
 
     ImGui::Text("Day %d  %02d:%02d", m_dayCount, GetHour(), GetMinute());
 

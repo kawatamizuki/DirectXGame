@@ -5,6 +5,7 @@
 #include"SceneManager.h"
 #include "Model.h"
 #include "DebugEditor.h"
+#include "EditorUi.h"
 #include"DebugRenderer.h"
 #include "GameContext.h"
 #include "TimeManager.h"
@@ -14,6 +15,10 @@
 #include "GameFlags.h"
 #include "GameEconomy.h"
 #include "ScenarioManager.h"
+#include "AssetBrowser.h"
+#include "AssetViewer.h"
+#include "ModelCache.h"
+#include "PropPlacer.h"
 #include "GameUI.h"
 #include "GameObject.h"
 #include"Camera.h"
@@ -36,6 +41,10 @@ public:
 
     bool Initialize(HWND hwnd);
     void OnResize(UINT width, UINT height);
+
+    // エクスプローラーからウィンドウへファイル・フォルダがドロップされた(Window::SetDropFilesCallback から呼ぶ)。
+    // ここでは溜めるだけ。コピー(Assets/Incoming への取り込み)は、次のフレームの更新で行う。
+    void OnFilesDropped(const std::vector<std::wstring>& paths);
     void RunFrame();
     void Update();
     void Draw();
@@ -55,8 +64,35 @@ private:
     // F5=クイックセーブ、F9=クイックロード。
     void HandleScenarioHotkeys();
 
+    // EditorUiに渡す、今フレームの画面の情報(HUDの下端・ゲームシーンか・Playingか)。
+    EditorUi::FrameInfo BuildEditorFrameInfo() const;
+
+    // ゲームビュー(ドッキングの中央の枠)の位置・大きさを、描画(ビューポート)・マウスの座標・カメラの縦横比へ反映する。
+    void ApplyGameViewRect();
+
+    // Assetsパネルのモデルをドラッグしている状態を、ImGuiから読み取って GameContext::assetDrag に書く(毎フレーム、Updateで)。
+    void UpdateAssetDragState();
+
+    // 溜めてあるドロップを取り込む(AssetImporter)。取り込んだら、Assetsパネルで選び、結果を見せる。
+    void ProcessPendingDrops();
+
+    // Assetsの右クリック「シーンの中央に置く」: ゲームの画面(中央の透過部分)の中心の地面へ置く。
+    void PlaceAssetAtViewCenter(const std::string& modelPath);
+
+    // フォルダ(または、その下)のモデルを使っている飾りがシーンにあるか(フォルダの名前の変更・移動を止めるために使う)。
+    bool IsFolderUsedByProps(const std::string& folder) const;
+
     HWND m_hwnd;
     DebugEditor m_debugEditor;//imgui用
+
+    // Editorメニュー・パネルの配置(ドッキング)・ホバーのヒント・ショートカット一覧・エディタ機能のON/OFF。
+    EditorUi m_editorUi;
+
+    // 床の格子線を描くか(Editor > エディタ機能のON/OFF に登録している)。
+    bool m_showGridOverlay = true;
+
+    // モデルキャッシュ(一度読んだモデルをCache/Modelsに保存して、次回から軽くする)を使うか(同上)。
+    bool m_useModelCache = true;
     DebugRenderer m_debugRenderer;//ワイヤーフレームなどデバッグ用の描画
     Renderer m_renderer;
     InputManager m_inputManager;
@@ -72,6 +108,19 @@ private:
 
     // 所持金(建物・道路の建設費の支払い。セーブ対象)。
     GameEconomy m_gameEconomy;
+
+    // 素材(モデル)の一覧とサムネイルを見るパネル(F2で開閉。閉じている間は何もしない)。
+    AssetBrowser m_assetBrowser;
+
+    // エクスプローラーからドロップされた、まだ取り込んでいないパス。
+    std::vector<std::wstring> m_pendingDrops;
+
+    // 実行中に必要になったモデル(飾りPropなど)の置き場と、Assetsからのドラッグで飾りを置く部品。
+    ModelCache m_modelCache;
+    PropPlacer m_propPlacer;
+
+    // 選んだモデルを一括で読み込んで、並べて見る別ウィンドウ(重い処理はこちら。閉じている間は何も持たない)。
+    AssetViewer m_assetViewer;
 
     // セーブ/ロード(今の街の状態のスナップショットをファイルに保存・復元する)。
     ScenarioManager m_scenarioManager;

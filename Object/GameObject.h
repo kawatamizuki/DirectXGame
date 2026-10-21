@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include <string>
 #include "Model.h"
 #include "Transform.h"
 #include "BuildingType.h"
@@ -12,7 +13,8 @@ enum class ObjectKind
     Environment,
     Building,
     Road,
-    Agent // 代表住民などの個体シミュレーション対象の見た目用オブジェクト
+    Agent, // 代表住民などの個体シミュレーション対象の見た目用オブジェクト
+    Prop   // 飾り・目印。アセット(Assetsパネル)をシーンへドラッグして置いた物。マスを占有せず、セーブ対象(modelPathで保存)
 };
 
 class GameObject
@@ -35,6 +37,10 @@ public:
     // 建物が自分の配置情報を持つので、セーブで建物ごとに保存でき、将来の削除・改築・
     // レベルアップでも、そのオブジェクトの現在の値がそのまま保存される。
     BuildingPlacement placement;
+
+    // kind==Propの時だけ意味を持つ、モデルファイルのプロジェクト相対パス(区切りは「/」)。
+    // セーブはこのパスだけを保存し、読み込み時にModelCache経由で同じモデルを用意する。
+    std::string modelPath;
 
     // falseの間はRenderer::DrawModelを呼ばない(描画しない)。
     // 主にkind==Agentのオブジェクトが、House/Officeなど施設利用中(内部にいる間)は

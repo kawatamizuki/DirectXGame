@@ -46,8 +46,10 @@
 #include"RoadType.h"
 #include"RoadDrawMode.h"
 #include"CostPreview.h"
+#include"AssetDragState.h"
 
 class Renderer;
+class ModelCache;
 class InputManager;
 class TimeManager;
 class Camera;
@@ -106,11 +108,17 @@ struct GameContext
     // ホバーが、建物・道路の配置やオブジェクト選択に抜けないようにするために各システムが見る。
     bool mouseOverUI = false;
 
-    // ゲームプレイ用UIが画面の上端に占めている高さ(ピクセル。HUDが出ていない時は0)。
-    // デバッグ用GUI(ImGui)の固定配置のパネルが、HUDの下から始まるように避けるために使う。
+    // ゲームプレイ用UIが、ゲームビューの上端に占めている高さ(ピクセル。HUDが出ていない時は0)。
+    // HUDはゲームビューの中に描くようになったので、エディタのパネルの配置には使わない(情報として残している)。
     float hudTopInset = 0.0f;
 
     // 毎フレーム先頭でリセットされる。建物・道路の配置が、今カーソルの位置で建設した場合の費用を書き込み、
     // HUDがカーソルの横に表示する。
     CostPreview costPreview;
+
+    // 実行中に必要になったモデル(飾りPropなど)をパスで持つ置き場。Propが Model* を持ち続けても住所が変わらない。
+    ModelCache* modelCache = nullptr;
+
+    // Assetsパネルからモデルをゲームの画面へドラッグしている状態(AssetBrowserが書き、PropPlacerが読む)。
+    AssetDragState assetDrag;
 };

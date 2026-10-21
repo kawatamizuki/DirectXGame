@@ -639,11 +639,16 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
     }
 }
 
-void DemandSystem::DrawDebugUI() const
+void DemandSystem::DrawDebugUI(bool* open) const
 {
+    if (open && !*open)
+    {
+        return;
+    }
+
     // Debug/Hierarchy/Inspector/Editor Settings(既存パネル)と重ならない中央上部に配置する
     ImGui::SetNextWindowPos(ImVec2(310.0f, 200.0f), ImGuiCond_FirstUseEver);
-    ImGui::Begin("City Stats");
+    ImGui::Begin("City Stats", open);
     ImGui::Text("Houses: %d", m_lastStats.houseCount);
     ImGui::Text("Offices: %d", m_lastStats.officeCount);
     ImGui::Text("Population (represented): %d", m_lastStats.populationTotal);

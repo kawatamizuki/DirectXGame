@@ -1,5 +1,7 @@
 ﻿#include "ModelLoaderRegistry.h"
 #include <cctype>
+#include <chrono>
+#include "BakedModelCache.h"
 #include "ObjModelLoader.h"
 #include "FbxModelLoader.h"
 #include "Debug.h"
@@ -59,11 +61,23 @@ bool ModelLoaderRegistry::LoadFromFile(const std::string& filePath, ModelData& o
         return false;
     }
 
+    // 一度読んで焼いて(保存して)ある物があれば、それを読むだけにする(OBJ/FBXの解析・座標系の変換を飛ばす)。
+    if (BakedModelCache::TryLoad(filePath, out))
+    {
+        return true;
+    }
+    out.Clear();
+
+    const auto start = std::chrono::steady_clock::now();
     if (!loader->LoadFromFile(filePath, out))
     {
         Debug::Error(std::string("ModelLoaderRegistry: ") + loader->Name() + " での読み込みに失敗しました : " + filePath);
         return false;
     }
+    const double loaderMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+
+    // 次回から軽くするために保存する。失敗しても、この読み込み自体は成功として続ける。
+    BakedModelCache::Store(filePath, out, loaderMs);
     return true;
 }
 

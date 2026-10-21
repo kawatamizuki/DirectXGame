@@ -45,7 +45,8 @@ public:
     void ResetToDefault() override;
 
     // 所持金・初期所持金を操作するデバッグ用ImGuiパネル(「Economy」ウィンドウ)。
-    void DrawDebugUI();
+    // openがnullptrでなければ、タイトルバーの×で閉じられ、*openがfalseの間は描かない。
+    void DrawDebugUI(bool* open = nullptr);
 
 private:
     // 0〜kMaxCashに収める。

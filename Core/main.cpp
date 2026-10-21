@@ -1,4 +1,4 @@
-
+﻿
 #include "Window.h"
 #include "Game.h"
 
@@ -35,6 +35,13 @@ int WINAPI wWinMain(
         [&game](UINT width, UINT height)
         {
             game.OnResize(width, height);
+        });
+
+    // エクスプローラーからドロップされたファイル・フォルダは、Gameが溜めて、次のフレームの更新で取り込む。
+    window.SetDropFilesCallback(
+        [&game](const std::vector<std::wstring>& paths)
+        {
+            game.OnFilesDropped(paths);
         });
 
     MSG msg = {};

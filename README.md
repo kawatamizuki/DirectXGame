@@ -29,6 +29,16 @@ DirectX11を用いた描画処理の学習と、就職作品としての開発�
 ├ GameObject / Transform
 └ Window Resize
 
+### エディタと素材管理(Unity風)
+- パネルのドッキング(Hierarchy / Inspector / Assets / Log など。配置は自動で保存)と、上部の **Editor メニュー**(パネルの表示、レイアウトの初期化、ヒントのON/OFF、機能のON/OFF、ショートカット一覧)
+- ウィンドウにカーソルを置くと、使えるキーが小さく出るヒント
+- **Assets**(F2): フォルダの木とサムネイルの一覧。実行中にフォルダの作成・名前の変更・移動
+- **Asset Viewer**: 選んだフォルダ・モデルを一括で読み込んで、並べて確認(時間分割の読み込み)
+- モデルのキャッシュ(一度読んだら、次回から約12倍速)
+- Assetsからゲームの画面へドラッグ&ドロップで飾りを置く(セーブ対応)、エクスプローラーからのドロップで素材を取り込む
+
+使い方の全て: [docs/guide/asset_browser_guide.md](docs/guide/asset_browser_guide.md) / 設計: [docs/design/asset_browser.md](docs/design/asset_browser.md) / 学習メモ: [docs/study/](docs/study/)
+
 ## 使用技術
 - C++
 - DirectX11

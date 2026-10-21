@@ -3,7 +3,7 @@
 このプロジェクトが使っている(または使う予定の)外部の素材・ライブラリの出所とライセンスの一覧です。
 **新しい素材やライブラリを入れる時は、入れる前にこのファイルへ追記します**(末尾の「追加する時のチェックリスト」参照)。
 
-最終更新: 2026-10-20
+最終更新: 2026-10-21
 ※ 内容は取得元のページ・同梱のライセンス文書で確認した範囲です。法的な助言ではありません。提出・配布の前に、各ライセンスの原文を確認してください。
 
 ---
@@ -45,14 +45,14 @@ Kenney の素材は、公式サイトの方針として CC0(パブリックド�
 
 | 場所 | 名前 | バージョン | ライセンス | 著作権 | 取得元 |
 |---|---|---|---|---|---|
-| `imgui/` | Dear ImGui(本体と DirectX11/Win32 バックエンド) | 1.92.8 | MIT | Omar Cornut and contributors | https://github.com/ocornut/imgui |
+| `imgui/` | Dear ImGui(本体と DirectX11/Win32 バックエンド)。**docking ブランチ**(パネルのドッキング用。2026-10-21 に本家 1.92.8 から差し替え) | 1.92.8-docking(公式リポジトリのタグ `v1.92.8-docking`) | MIT | Omar Cornut and contributors | https://github.com/ocornut/imgui |
 | `imgui/imstb_truetype.h` | stb_truetype(Dear ImGui 同梱の改変版) | 1.26 | パブリックドメイン(MIT とのデュアル) | Sean Barrett | https://github.com/nothings/stb |
 | `imgui/imstb_rectpack.h` | stb_rect_pack(Dear ImGui 同梱) | 1.01 | パブリックドメイン(MIT とのデュアル) | Sean Barrett | https://github.com/nothings/stb |
 | `imgui/imstb_textedit.h` | stb_textedit(Dear ImGui 同梱) | - | パブリックドメイン(MIT とのデュアル) | Sean Barrett | https://github.com/nothings/stb |
 | `External/DirectXTK/` | DirectX Tool Kit の WICTextureLoader11 のみ | - | MIT | Microsoft Corporation | https://github.com/microsoft/DirectXTK |
 | `External/ufbx/` | ufbx(`ufbx.h`、`ufbx.c`、`LICENSE`) | **v0.23.1**(コミット `26a482ae66871d7de36eb722aa060bce95bce274`) | **MIT と Unlicense(パブリックドメイン)のデュアルライセンス。選択: Unlicense**(帰属表示は不要)。念のため `LICENSE` ファイルは同梱している | Samuli Raivio | https://github.com/ufbx/ufbx(2026-10-20 に取得) |
 
-- `imgui/` には `LICENSE.txt` を同梱していません。**配布物に含める時は、Dear ImGui の MIT ライセンス全文(https://github.com/ocornut/imgui/blob/master/LICENSE.txt)を添えてください。**
+- `imgui/LICENSE.txt` に Dear ImGui の MIT ライセンス全文を同梱しています(docking 版への差し替えで、公式のタグから一緒に取得)。**配布物に含める時も、このファイルを添えてください。** docking 版は本家に追従する枝で、マルチビューポート(パネルを別のOSウィンドウにする機能)は使っていません。
 - DirectXTK の2ファイルには、先頭に `Copyright (c) Microsoft Corporation. Licensed under the MIT License.` の記載があります。
 
 - ufbx のファイルの SHA-256(改ざん・取り違えの確認用): `ufbx.h` = `f787be52…72895dc`、`ufbx.c` = `4a956c26…bda7e1d`、`LICENSE` = `0dd48eba…f3615391`(先頭8桁と末尾7桁)。
@@ -80,3 +80,8 @@ Libraries: Dear ImGui (MIT), stb (public domain / MIT), DirectX Tool Kit (MIT), 
 4. **クレジットが必要か**(必須・推奨・不要)を確認し、必要なら「4. クレジット表記」に足す。
 5. **AI・生成物・クレジット以外の条件**(AI学習の禁止、用途の制限など)を確認する。
 6. 使わなくなった素材は、このファイルから削除せず「使用していない」と書いて残す(過去に提出した版との整合のため)。
+
+## 素材の置き場所(アセットブラウザ)
+- 新しい素材パックは、まず `Assets/Incoming/<パック名>/` に置く(**Gitに入れない**。`.gitignore` 済み)。F2のアセットブラウザで見て、使うものだけ `Assets/Models/<パック名>/` へ移す。
+- **移す前に**、上の「追加する時のチェックリスト」に従って、このファイルに出所・ライセンス・条件を追記する。再配布できない素材(例: SimplePoly City)は、`Assets/Models/` に移しても元ファイルをそのままGitに入れない(`.gitignore` に追加するか、専用形式に変換した物だけを入れる)。
+- サムネイルは `Cache/Thumbnails/` に作られる(Git管理外)。素材から作った画像なので、公開する場所に置かない。

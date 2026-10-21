@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include <string>
 #include <vector>
 #include <DirectXMath.h>
 #include "RoadSegment.h"
@@ -13,6 +14,13 @@ struct SnapshotBuilding
     BuildingType type = BuildingType::House;
     Transform transform;          // 位置・回転・拡大(見た目)
     BuildingPlacement placement;  // 配置の確定結果(占有範囲・基準座標系・ローカルマス)
+};
+
+// セーブする飾り(Prop)1つぶん。モデルは「プロジェクト相対のファイルパス」で持ち、読み込み時に同じモデルを用意する。
+struct SnapshotProp
+{
+    std::string modelPath;  // 区切りは「/」。絶対パスは持たない(提出物に個人のフォルダ名が混ざらないように)
+    Transform transform;    // 位置・回転・拡大
 };
 
 // セーブする青マス1つぶん。GridOrientationRegistryは「先に作られた方が優先」なので、
@@ -39,6 +47,7 @@ struct WorldSnapshot
     std::vector<RoadSegment> roads;                          // debugLoad(混雑の表示用)は保存しない
     std::vector<SnapshotBuilding> buildings;                 // 配列の添字がそのまま建物のuid(他の保存データが建物を指す時に使う)
     std::vector<SnapshotOrientationCell> orientationCells;   // 作られた順(=優先順)
+    std::vector<SnapshotProp> props;                         // 飾り。無い(古いセーブ)なら空
 
     // システムごとの状態の区画。キーがISaveable::SaveKey()。各区画には"version"が入る。
     Json state = Json::MakeObject();

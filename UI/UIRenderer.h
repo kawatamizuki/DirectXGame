@@ -46,7 +46,8 @@ public:
 
     // 1フレームの描画を始める。screenW/screenHは今のウィンドウ(描画先)の大きさ。
     // 前のフレームでアトラスが満杯になっていた場合は、ここで焼き直す。
-    void BeginFrame(float screenW, float screenH);
+    // screenW/screenH: HUDを配置する四角(ゲームビュー)の大きさ。originX/originY: その左上(ウィンドウのクライアント座標)。
+    void BeginFrame(float screenW, float screenH, float originX = 0.0f, float originY = 0.0f);
 
     // 溜めた図形・文字をまとめて描く。
     void EndFrame();
@@ -130,6 +131,8 @@ private:
 
     FontAtlas m_atlas;
     std::vector<Vertex> m_vertices;
+    float m_originX = 0.0f; // 描く四角の左上(ビューポートの位置)
+    float m_originY = 0.0f;
     float m_screenW = 1.0f;
     float m_screenH = 1.0f;
     float m_solidU = 0.0f;

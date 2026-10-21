@@ -206,8 +206,10 @@ bool UIRenderer::Initialize(ID3D11Device* device, ID3D11DeviceContext* context, 
     return true;
 }
 
-void UIRenderer::BeginFrame(float screenW, float screenH)
+void UIRenderer::BeginFrame(float screenW, float screenH, float originX, float originY)
 {
+    m_originX = originX;
+    m_originY = originY;
     m_screenW = (screenW > 1.0f) ? screenW : 1.0f;
     m_screenH = (screenH > 1.0f) ? screenH : 1.0f;
     m_vertices.clear();
@@ -272,6 +274,8 @@ void UIRenderer::Flush()
     m_context->UpdateSubresource(m_constantBuffer.Get(), 0, nullptr, &constants, 0, 0);
 
     D3D11_VIEWPORT viewport = {};
+    viewport.TopLeftX = m_originX;
+    viewport.TopLeftY = m_originY;
     viewport.Width = m_screenW;
     viewport.Height = m_screenH;
     viewport.MaxDepth = 1.0f;

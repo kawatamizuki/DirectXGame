@@ -51,6 +51,30 @@ namespace
         return object;
     }
 
+    // セーブデータに書かれたモデルのパスとして安全か。プロジェクトの中を指す相対パスだけを認める
+    // (他人から受け取ったセーブデータで、PCの任意のファイルを読ませないため)。
+    bool IsSafeModelPath(const std::string& path)
+    {
+        if (path.empty() || path.size() > 260 || path.find('\\') != std::string::npos || path.find(':') != std::string::npos ||
+            path[0] == '/')
+        {
+            return false;
+        }
+        size_t position = 0;
+        while (position <= path.size())
+        {
+            const size_t slash = path.find('/', position);
+            const std::string segment = path.substr(position, slash == std::string::npos ? std::string::npos : slash - position);
+            if (segment.empty() || segment == "." || segment == "..")
+            {
+                return false;
+            }
+            if (slash == std::string::npos) { break; }
+            position = slash + 1;
+        }
+        return true;
+    }
+
     // 有限の数値か(NaN/無限大を弾く)。
     bool IsFiniteNumber(const Json* json)
     {
@@ -180,6 +204,17 @@ namespace ScenarioFile
             cells.Push(std::move(entry));
         }
         root.Set("orientationCells", std::move(cells));
+
+        // 飾り(Prop): モデルのパスと置き方。無い場合も空の配列を書く(読む側が「無い」と「空」を区別しなくてよい)。
+        Json props = Json::MakeArray();
+        for (const SnapshotProp& prop : snapshot.props)
+        {
+            Json entry = Json::MakeObject();
+            entry.Set("model", prop.modelPath);
+            entry.Set("transform", ToJson(prop.transform));
+            props.Push(std::move(entry));
+        }
+        root.Set("props", std::move(props));
 
         return root;
     }
@@ -366,6 +401,42 @@ namespace ScenarioFile
             warnings.push_back("orientationCells が配列ではないため無視しました");
         }
 
+        // ---- 飾り(Prop) ----
+        // 古いセーブには無い(その場合は空)。飾りは他のデータから添字で指されないので、不正な1件は警告して飛ばし、
+        // 他の飾りと街の読み込みは続ける(モデルのパスが危険な形、位置が不正、など)。
+        const Json* props = root.Find("props");
+        if (props && props->IsArray())
+        {
+            for (size_t i = 0; i < props->Size(); ++i)
+            {
+                const Json& entry = props->At(i);
+                const std::string prefix = "props[" + std::to_string(i) + "] ";
+                SnapshotProp prop;
+                const Json* transform = entry.IsObject() ? entry.Find("transform") : nullptr;
+                prop.modelPath = entry.IsObject() ? entry.GetString("model", "") : std::string();
+
+                if (!IsSafeModelPath(prop.modelPath))
+                {
+                    warnings.push_back(prefix + "のモデルのパスが不正なため飛ばしました: \"" + prop.modelPath + "\"");
+                    continue;
+                }
+                if (!transform || !transform->IsObject() ||
+                    !ReadVec3Key(*transform, "position", prop.transform.position) ||
+                    !ReadVec3Key(*transform, "rotation", prop.transform.rotation) ||
+                    !ReadVec3Key(*transform, "scale", prop.transform.scale))
+                {
+                    warnings.push_back(prefix + "の transform(位置・回転・拡大)が不正なため飛ばしました");
+                    continue;
+                }
+                prop.transform.SetRotationEuler(prop.transform.rotation);
+                result.props.push_back(std::move(prop));
+            }
+        }
+        else if (props)
+        {
+            warnings.push_back("props が配列ではないため無視しました");
+        }
+
         // ---- システムごとの状態の区画 ----
         // 中身の解釈は各ISaveableに任せるので、ここでは区画をそのまま持つ。
         const Json* state = root.Find("state");
@@ -382,7 +453,7 @@ namespace ScenarioFile
         for (const auto& member : root.Members())
         {
             const std::string& key = member.first;
-            if (key != "version" && key != "state" && key != "roads" && key != "buildings" && key != "orientationCells")
+            if (key != "version" && key != "state" && key != "roads" && key != "buildings" && key != "orientationCells" && key != "props")
             {
                 warnings.push_back("知らない項目 \"" + key + "\" を無視しました");
             }

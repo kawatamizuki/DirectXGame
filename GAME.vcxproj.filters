@@ -174,6 +174,9 @@
     <ClCompile Include="Graphics\ModelLoaderRegistry.cpp">
       <Filter>ソース ファイル\Graphics</Filter>
     </ClCompile>
+    <ClCompile Include="Graphics\BakedModelCache.cpp">
+      <Filter>ソース ファイル\Graphics</Filter>
+    </ClCompile>
     <ClCompile Include="Graphics\ObjModelLoader.cpp">
       <Filter>ソース ファイル\Graphics</Filter>
     </ClCompile>
@@ -221,6 +224,42 @@
     </ClCompile>
     <ClCompile Include="DebugTools\Profiler.cpp">
       <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\AssetCatalog.cpp">
+      <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\ThumbnailCache.cpp">
+      <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\ModelPreviewRenderer.cpp">
+      <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\AssetBrowser.cpp">
+      <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\AssetViewer.cpp">
+      <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\AssetImporter.cpp">
+      <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
+    <ClCompile Include="Object\ModelCache.cpp">
+      <Filter>ソース ファイル\Object</Filter>
+    </ClCompile>
+    <ClCompile Include="Field\PropPlacer.cpp">
+      <Filter>ソース ファイル\Field</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\EditorUi.cpp">
+      <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\EditorSettings.cpp">
+      <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\ShortcutTable.cpp">
+      <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
+    <ClCompile Include="Graphics\OffscreenTarget.cpp">
+      <Filter>ソース ファイル\Graphics</Filter>
     </ClCompile>
     <ClCompile Include="Object\Transform.cpp">
       <Filter>ソース ファイル\Object</Filter>
@@ -410,6 +449,9 @@
     <ClInclude Include="Graphics\ModelLoaderRegistry.h">
       <Filter>ヘッダー ファイル\Graphics</Filter>
     </ClInclude>
+    <ClInclude Include="Graphics\BakedModelCache.h">
+      <Filter>ヘッダー ファイル\Graphics</Filter>
+    </ClInclude>
     <ClInclude Include="Graphics\ObjModelLoader.h">
       <Filter>ヘッダー ファイル\Graphics</Filter>
     </ClInclude>
@@ -475,6 +517,48 @@
     </ClInclude>
     <ClInclude Include="DebugTools\Profiler.h">
       <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\AssetCatalog.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\AssetViewer.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\AssetImporter.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
+    <ClInclude Include="Field\PropPlacement.h">
+      <Filter>ヘッダー ファイル\Field</Filter>
+    </ClInclude>
+    <ClInclude Include="Object\ModelCache.h">
+      <Filter>ヘッダー ファイル\Object</Filter>
+    </ClInclude>
+    <ClInclude Include="Field\PropPlacer.h">
+      <Filter>ヘッダー ファイル\Field</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\AssetDragState.h">
+      <Filter>ヘッダー ファイル\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\EditorUi.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\EditorSettings.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\ShortcutTable.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\ThumbnailCache.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\ModelPreviewRenderer.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\AssetBrowser.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
+    <ClInclude Include="Graphics\OffscreenTarget.h">
+      <Filter>ヘッダー ファイル\Graphics</Filter>
     </ClInclude>
     <ClInclude Include="Object\Transform.h">
       <Filter>ヘッダー ファイル\Object</Filter>
@@ -581,4 +665,4 @@
       <Filter>リソース ファイル</Filter>
     </None>
   </ItemGroup>
-</Project>
+</Project>

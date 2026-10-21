@@ -730,8 +730,8 @@ void RoadSystem::Update()
     POINT mousePos = m_context->input->GetMousePosition();
     Ray ray = m_context->camera->ScreenPointToRay(
         mousePos,
-        m_context->renderer->GetWindowWidth(),
-        m_context->renderer->GetWindowHeight());
+        m_context->renderer->GetViewWidth(),
+        m_context->renderer->GetViewHeight());
 
     XMFLOAT3 hitPoint;
     if (!m_field->RaycastGround(ray, hitPoint))
@@ -1532,8 +1532,8 @@ void RoadSystem::DrawConfirmIcon()
     XMFLOAT3 anchor = m_curvePendingSegments.back().end;
     bool onScreen = m_context->camera->WorldToScreen(
         anchor,
-        m_context->renderer->GetWindowWidth(),
-        m_context->renderer->GetWindowHeight(),
+        m_context->renderer->GetViewWidth(),
+        m_context->renderer->GetViewHeight(),
         screenPos);
 
     if (!onScreen)
@@ -1542,9 +1542,13 @@ void RoadSystem::DrawConfirmIcon()
     }
 
     // アイコンがカーソル/道路の真上に重ならないよう、少し横にずらして表示する。
-    ImGui::SetNextWindowPos(ImVec2(static_cast<float>(screenPos.x) + 24.0f, static_cast<float>(screenPos.y) - 16.0f));
+    // screenPosはゲームビューの左上が原点。ImGuiはウィンドウ全体の座標なので、ビューの位置を足す。
+    ImGui::SetNextWindowPos(ImVec2(
+        static_cast<float>(screenPos.x) + m_context->renderer->GetViewX() + 24.0f,
+        static_cast<float>(screenPos.y) + m_context->renderer->GetViewY() - 16.0f));
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoCollapse;
+        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoCollapse |
+        ImGuiWindowFlags_NoDocking; // カーソルの横に出る小さな確認ボタン。ドッキングの対象にしない
     ImGui::Begin("##RoadCurveConfirm", nullptr, flags);
 
     bool valid = IsPendingCurvePathValid();

@@ -79,11 +79,16 @@ void GameEconomy::ResetToDefault()
     m_cash = m_config.startingCash;
 }
 
-void GameEconomy::DrawDebugUI()
+void GameEconomy::DrawDebugUI(bool* open)
 {
+    if (open && !*open)
+    {
+        return;
+    }
+
     // 他の常設パネル(Time/Build/City Stats/Profiler/Log)と重ならない位置に初回だけ置く。
     ImGui::SetNextWindowPos(ImVec2(490.0f, 200.0f), ImGuiCond_FirstUseEver);
-    ImGui::Begin("Economy");
+    ImGui::Begin("Economy", open);
 
     ImGui::Text("Cash: %d", m_cash);
 

@@ -56,7 +56,8 @@ public:
     // 住民の出勤・帰宅は、context.clockの時刻とm_scheduleの予定表で決まる。
     void Update(float deltaTime, GameContext& context, std::vector<RoadSegment>& segments);
 
-    void DrawDebugUI() const;
+    // openがnullptrでなければ、タイトルバーの×で閉じられ、*openがfalseの間は描かない。
+    void DrawDebugUI(bool* open = nullptr) const;
 
     // 住民・統計・接続線・更新タイマーを初期状態に戻す(セーブデータの読み込み前の全消去に使う)。
     // 住民の見た目のGameObject(Agent)の削除は呼び出し側が行う。
