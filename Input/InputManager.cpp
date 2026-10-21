@@ -190,6 +190,9 @@ POINT InputManager::GetMousePosition() const
         ScreenToClient(m_hwnd, &point);
     }
 
+    // ウィンドウの座標から、ゲームビューの左上を原点にした座標へ。
+    point.x -= m_viewOriginX;
+    point.y -= m_viewOriginY;
     return point;
 }
 

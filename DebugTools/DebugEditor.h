@@ -64,6 +64,10 @@ public:
     DebugEditor();
     ~DebugEditor();
     bool Initialize(HWND hwnd, GameContext* context);
+
+    // パネルの表示/非表示と、エディタ機能のON/OFFのスイッチを、EditorUi(Editorメニュー)につなぐ。借りるだけ。
+    void AttachEditorUi(class EditorUi* editorUi);
+
     void BeginFrame();
     void Update();
     void UpdatePicking();//オブジェクトを選択するための関数
@@ -115,7 +119,11 @@ public:
 
     void Finalize();
 private:
+    // 名前のパネルの表示フラグ(EditorUiが持つ)。つないでいなければnullptr(=いつも表示)。
+    bool* GetPanelFlag(const char* name);
+
     GameContext* m_context = nullptr;
+    class EditorUi* m_editorUi = nullptr;
     //BOXの描画フラグ
     bool m_showSelectedBounds = false;
     bool m_showAllBounds = false;

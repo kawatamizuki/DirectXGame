@@ -17,6 +17,9 @@ namespace
     // ボタンを押した瞬間を見逃しても、後からいつでもパスを確認できるようにするため)。
     std::string s_exportedFilePath;
 
+    // trueの間はLog/Infoを記録しない(SetInfoSuppressedで切り替える)。
+    bool s_infoSuppressed = false;
+
     // 現在のログ全部(直近kMaxLogEntries件)をテキストファイルに書き出す。
     // 実行ファイルと同じフォルダ(カレントディレクトリ)に固定名で書き出すことで、
     // 毎回同じ場所を上書きし、ファイルが増え続けないようにする。
@@ -57,13 +60,31 @@ namespace
 
 namespace Debug
 {
+    void SetInfoSuppressed(bool suppressed)
+    {
+        s_infoSuppressed = suppressed;
+    }
+
+    ScopedInfoSuppress::ScopedInfoSuppress()
+        : m_previous(s_infoSuppressed)
+    {
+        s_infoSuppressed = true;
+    }
+
+    ScopedInfoSuppress::~ScopedInfoSuppress()
+    {
+        s_infoSuppressed = m_previous;
+    }
+
     void Log(const std::string& message)
     {
+        if (s_infoSuppressed) { return; }
         Output("[LOG] ", message);
     }
 
     void Info(const std::string& message)
     {
+        if (s_infoSuppressed) { return; }
         Output("[INFO] ", message);
     }
 
@@ -90,12 +111,17 @@ namespace Debug
 #endif
     }
 
-    void DrawDebugUI()
+    void DrawDebugUI(bool* open)
     {
+        if (open && !*open)
+        {
+            return;
+        }
+
         // 他の常設パネル(Build/City Stats/Profiler)と重ならない右側に配置する
         ImGui::SetNextWindowPos(ImVec2(1230.0f, 8.0f), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSize(ImVec2(290.0f, 400.0f), ImGuiCond_FirstUseEver);
-        ImGui::Begin("Log");
+        ImGui::Begin("Log", open);
 
         ImGui::Checkbox("Auto-scroll", &s_autoScroll);
         ImGui::SameLine();

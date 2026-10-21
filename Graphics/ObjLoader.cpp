@@ -2,7 +2,8 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include <cfloat> 
+#include <cfloat>
+#include <cmath>
 #include <algorithm>
 
 #include "ObjLoader.h"
@@ -18,6 +19,16 @@ namespace
     {
         float u, v;
     };
+
+    // リニア空間の値(0〜1)を、画面に出す時のsRGBの値に直す。
+    // BlenderがMTLに書く拡散色Kdは、リニア空間の値。このエンジンは、色を画面の値としてそのまま使う(光の計算もsRGBのまま)ので、
+    // 変換しないと、Blenderで見た色よりずっと暗く(例: 淡い青緑がほぼ黒に)なる。
+    float LinearToSrgb(float c)
+    {
+        if (c <= 0.0f) { return 0.0f; }
+        if (c >= 1.0f) { return 1.0f; }
+        return (c <= 0.0031308f) ? c * 12.92f : 1.055f * std::pow(c, 1.0f / 2.4f) - 0.055f;
+    }
 
 }
 
@@ -357,11 +368,23 @@ bool ObjLoader::LoadMtl(
     std::string line;
     std::string currentMaterialName; // 直近のnewmtl行で切り替わる、解析中のマテリアル名
     bool hasTexture = false;
+    bool kdIsLinear = false; // Blenderが書いたMTLなら、Kdはリニア空間の値(sRGBに直して使う)
 
     while (std::getline(file, line))
     {
         if (line.empty())
         {
+            continue;
+        }
+
+        // 先頭のコメント(例: "# Blender MTL File: 'x.blend'")で、書き出したソフトを判定する。
+        // Kenneyの "# Created by Kenney" や、SketchUpのMTLは対象外(今までと同じ扱い)。
+        if (line[0] == '#')
+        {
+            if (line.find("Blender") != std::string::npos)
+            {
+                kdIsLinear = true;
+            }
             continue;
         }
 
@@ -379,6 +402,12 @@ bool ObjLoader::LoadMtl(
         {
             DirectX::XMFLOAT3 color{};
             iss >> color.x >> color.y >> color.z;
+            if (kdIsLinear)
+            {
+                color.x = LinearToSrgb(color.x);
+                color.y = LinearToSrgb(color.y);
+                color.z = LinearToSrgb(color.z);
+            }
             outMaterialColors[currentMaterialName] = color;
         }
         // テクスチャ（拡散マップ）。現状モデル全体で1枚のみ扱う仕様のため最初の1つを採用する
@@ -397,4 +426,4 @@ bool ObjLoader::LoadMtl(
     }
 
     return true;
-}
+}

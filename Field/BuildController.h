@@ -24,7 +24,13 @@ public:
         Model* houseModel, Model* officeModel, Model* shopModel);
 
     void Update();
-    void Draw();
+
+    // 「Build」パネル(openがnullptrでなければ×で閉じられ、*openがfalseの間は出さない)と、
+    // 世界側の表示(青マス・ゴースト・配置枠)を描く。
+    void Draw(bool* open = nullptr);
+
+    // 「Editor > エディタ機能のON/OFF」に、このクラスの表示スイッチを登録する。
+    void RegisterEditorToggles(class EditorSettings& settings);
 
     // 確定した建物を世界に反映する(オブジェクトの生成・占有への登録・必要なら青マスの登録)。
     // プレイヤーが建物を置いた時と、セーブデータからの復元で、同じこの処理を使う
@@ -98,6 +104,9 @@ private:
     // placementを確定する: 置けない・払えない時は何もせずfalse。置ける時は建設費を払って建物を建てる。
     // クリック(Update)とTryPlaceAtの共通の入口。
     bool PlaceBuilding(const PlacementPreview& placement);
+
+    void DrawPanel(bool* open);   // 「Build」パネルのImGui部分
+    void DrawWorldOverlay();      // 青マス・ゴースト・配置枠(パネルが閉じていても出す)
 
     // 選択中の建物を90度回転する(4ステップで1周)。
     // ImGuiボタン・InputAction::Rotateの両方から呼ばれる(将来ImGuiを置き換えてもロジックは無傷)。

@@ -11,6 +11,7 @@
 #include"Ray.h"
 #include"BuildingType.h"
 #include"DemandSystem.h"
+#include"EditorUi.h"
 
 
 
@@ -44,6 +45,13 @@ bool DebugEditor::Initialize(HWND hwnd, GameContext* context)
     // (フォントファイルを同梱していないため実行環境のフォントを使う)。
     // 読み込みに失敗した場合(フォントが無い環境など)はImGui標準フォント(ASCIIのみ)にフォールバックする。
     ImGuiIO& io = ImGui::GetIO();
+
+    // パネルをタイトルバーのドラッグで動かし、他のパネルの横・上下・タブに吸着できるようにする(ドッキング)。
+    // 位置・大きさ・ドッキング状態は imgui.ini に保存される。複数のOSウィンドウに分ける機能(マルチビューポート)は使わない。
+    // ウィンドウの中身(スライダーなど)のドラッグでウィンドウが動かないよう、動かせるのはタイトルバーだけにする。
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    io.ConfigWindowsMoveFromTitleBarOnly = true;
+
     ImFont* japaneseFont = io.Fonts->AddFontFromFileTTF(
         "C:\\Windows\\Fonts\\meiryo.ttc", 18.0f, nullptr, io.Fonts->GetGlyphRangesJapanese());
     if (!japaneseFont)
@@ -64,6 +72,29 @@ bool DebugEditor::Initialize(HWND hwnd, GameContext* context)
 
 
     return true;
+}
+
+void DebugEditor::AttachEditorUi(EditorUi* editorUi)
+{
+    m_editorUi = editorUi;
+    if (!m_editorUi)
+    {
+        return;
+    }
+
+    // 「Editor > エディタ機能のON/OFF」に出すスイッチ。ここで持っている表示・操作の切り替えを登録する。
+    EditorSettings& settings = m_editorUi->Settings();
+    settings.RegisterToggle("bounds_selected", "選択中のBoundsを表示", &m_showSelectedBounds,
+        "選択中のオブジェクトの当たり判定の箱(OBB)を描く(Editingモード)");
+    settings.RegisterToggle("bounds_all", "全てのBoundsを表示", &m_showAllBounds,
+        "全てのオブジェクトの当たり判定の箱(OBB)を描く(Editingモード)");
+    settings.RegisterToggle("object_dragging", "ドラッグでオブジェクトを動かす", &m_enableObjectDragging,
+        "OFFにすると、オブジェクト本体のドラッグ移動をしない(ギズモは使える)");
+}
+
+bool* DebugEditor::GetPanelFlag(const char* name)
+{
+    return m_editorUi ? m_editorUi->PanelFlag(name) : nullptr;
 }
 
 
@@ -1187,7 +1218,7 @@ void DebugEditor::UpdateMoveGizmoHover()
     // 画面高さ
     float screenHeight =
         static_cast<float>(
-            m_context->renderer->GetWindowHeight()
+            m_context->renderer->GetViewHeight()
             );
 
     // カメラの縦FOV
@@ -1527,7 +1558,7 @@ void DebugEditor::UpdateScaleGizmoHover()
 
     float screenHeight =
         static_cast<float>(
-            m_context->renderer->GetWindowHeight()
+            m_context->renderer->GetViewHeight()
             );
 
     float fovY =
@@ -1723,7 +1754,7 @@ void DebugEditor::UpdateRotateGizmoHover()
 
     float screenHeight =
         static_cast<float>(
-            m_context->renderer->GetWindowHeight()
+            m_context->renderer->GetViewHeight()
             );
 
     float fovY =
@@ -2170,6 +2201,7 @@ void DebugEditor::DrawObjects()
             case ObjectKind::Building: kindLabel = "Building"; break;
             case ObjectKind::Road:     kindLabel = "Road";     break;
             case ObjectKind::Agent:    kindLabel = "Agent";    break;
+            case ObjectKind::Prop:     kindLabel = "Prop";     break;
             default: break;
             }
 
@@ -2361,45 +2393,14 @@ void DebugEditor::DrawEditorSettings()
 
 void DebugEditor::DrawHierarchyView()
 {
-    float windowHeight =
-        static_cast<float>(
-            m_context->renderer->GetWindowHeight()
-            );
+    // 位置と大きさはドックスペース(EditorUi)が決める。×や Editor > パネル で閉じている間は描かない。
+    bool* open = GetPanelFlag("Hierarchy");
+    if (open && !*open)
+    {
+        return;
+    }
 
-    float margin =
-        8.0f;
-
-    float leftWidth =
-        280.0f;
-
-    float debugHeight =
-        280.0f;
-
-    float bottomHeight =
-        220.0f;
-
-    ImGui::SetNextWindowPos(
-        ImVec2(
-            margin,
-            margin + m_context->hudTopInset + debugHeight
-        ),
-        ImGuiCond_Always
-    );
-
-    ImGui::SetNextWindowSize(
-        ImVec2(
-            leftWidth,
-            windowHeight - debugHeight - bottomHeight - margin * 3.0f - m_context->hudTopInset
-        ),
-        ImGuiCond_Always
-    );
-
-    ImGui::Begin(
-        "Hierarchy",
-        nullptr,
-        ImGuiWindowFlags_NoMove |
-        ImGuiWindowFlags_NoResize
-    );
+    ImGui::Begin("Hierarchy", open);
 
     DrawObjects();
 
@@ -2414,47 +2415,13 @@ void DebugEditor::DrawHierarchyView()
 }
 void DebugEditor::DrawInspectorView()
 {
-    float windowWidth =
-        static_cast<float>(
-            m_context->renderer->GetWindowWidth()
-            );
+    bool* open = GetPanelFlag("Inspector");
+    if (open && !*open)
+    {
+        return;
+    }
 
-    float windowHeight =
-        static_cast<float>(
-            m_context->renderer->GetWindowHeight()
-            );
-
-    float margin =
-        8.0f;
-
-    float rightWidth =
-        360.0f;
-
-    float bottomHeight =
-        220.0f;
-
-    ImGui::SetNextWindowPos(
-        ImVec2(
-            windowWidth - rightWidth - margin,
-            margin + m_context->hudTopInset
-        ),
-        ImGuiCond_Always
-    );
-
-    ImGui::SetNextWindowSize(
-        ImVec2(
-            rightWidth,
-            windowHeight - bottomHeight - margin * 2.0f - m_context->hudTopInset
-        ),
-        ImGuiCond_Always
-    );
-
-    ImGui::Begin(
-        "Inspector",
-        nullptr,
-        ImGuiWindowFlags_NoMove |
-        ImGuiWindowFlags_NoResize
-    );
+    ImGui::Begin("Inspector", open);
 
     DrawInspector();
 
@@ -2463,50 +2430,13 @@ void DebugEditor::DrawInspectorView()
 
 void DebugEditor::DrawEditorSettingsView()
 {
-    float windowWidth =
-        static_cast<float>(
-            m_context->renderer->GetWindowWidth()
-            );
+    bool* open = GetPanelFlag("Editor Settings");
+    if (open && !*open)
+    {
+        return;
+    }
 
-    float windowHeight =
-        static_cast<float>(
-            m_context->renderer->GetWindowHeight()
-            );
-
-    float margin =
-        8.0f;
-
-    float leftWidth =
-        280.0f;
-
-    float rightWidth =
-        360.0f;
-
-    float bottomHeight =
-        220.0f;
-
-    ImGui::SetNextWindowPos(
-        ImVec2(
-            leftWidth + margin * 2.0f,
-            windowHeight - bottomHeight - margin
-        ),
-        ImGuiCond_Always
-    );
-
-    ImGui::SetNextWindowSize(
-        ImVec2(
-            windowWidth - leftWidth - rightWidth - margin * 4.0f,
-            bottomHeight
-        ),
-        ImGuiCond_Always
-    );
-
-    ImGui::Begin(
-        "Editor Settings",
-        nullptr,
-        ImGuiWindowFlags_NoMove |
-        ImGuiWindowFlags_NoResize
-    );
+    ImGui::Begin("Editor Settings", open);
 
     DrawEditorSettings();
 
@@ -2515,37 +2445,13 @@ void DebugEditor::DrawEditorSettingsView()
 
 void DebugEditor::DrawDebugView()
 {
-    float margin =
-        8.0f;
+    bool* open = GetPanelFlag("Debug");
+    if (open && !*open)
+    {
+        return;
+    }
 
-    float leftWidth =
-        280.0f;
-
-    float debugHeight =
-        280.0f;
-
-    ImGui::SetNextWindowPos(
-        ImVec2(
-            margin,
-            margin + m_context->hudTopInset
-        ),
-        ImGuiCond_Always
-    );
-
-    ImGui::SetNextWindowSize(
-        ImVec2(
-            leftWidth,
-            debugHeight
-        ),
-        ImGuiCond_Always
-    );
-
-    ImGui::Begin(
-        "Debug",
-        nullptr,
-        ImGuiWindowFlags_NoMove |
-        ImGuiWindowFlags_NoResize
-    );
+    ImGui::Begin("Debug", open);
 
     DrawPerformance();
 
@@ -2706,7 +2612,7 @@ void DebugEditor::DrawMoveGizmo()
     // 画面高さ
     float screenHeight =
         static_cast<float>(
-            m_context->renderer->GetWindowHeight()
+            m_context->renderer->GetViewHeight()
             );
 
     // カメラの縦FOV
@@ -2904,7 +2810,7 @@ void DebugEditor::DrawMoveGizmo()
     if (WorldToScreen(xEnd, xScreenPos))
     {
         ImGui::GetForegroundDrawList()->AddText(
-            ImVec2(xScreenPos.x, xScreenPos.y),
+            ImVec2(xScreenPos.x + m_context->renderer->GetViewX(), xScreenPos.y + m_context->renderer->GetViewY()),
             IM_COL32(255, 0, 0, 255),
             "X"
         );
@@ -3012,7 +2918,7 @@ void DebugEditor::DrawMoveGizmo()
     if (WorldToScreen(yEnd, yScreenPos))
     {
         ImGui::GetForegroundDrawList()->AddText(
-            ImVec2(yScreenPos.x, yScreenPos.y),
+            ImVec2(yScreenPos.x + m_context->renderer->GetViewX(), yScreenPos.y + m_context->renderer->GetViewY()),
             IM_COL32(0, 255, 0, 255),
             "Y"
         );
@@ -3119,7 +3025,7 @@ void DebugEditor::DrawMoveGizmo()
     if (WorldToScreen(zEnd, zScreenPos))
     {
         ImGui::GetForegroundDrawList()->AddText(
-            ImVec2(zScreenPos.x, zScreenPos.y),
+            ImVec2(zScreenPos.x + m_context->renderer->GetViewX(), zScreenPos.y + m_context->renderer->GetViewY()),
             IM_COL32(0, 120, 255, 255),
             "Z"
         );
@@ -3181,7 +3087,7 @@ void DebugEditor::DrawScaleGizmo()
 
     float screenHeight =
         static_cast<float>(
-            m_context->renderer->GetWindowHeight()
+            m_context->renderer->GetViewHeight()
             );
 
     float fovY =
@@ -3386,7 +3292,7 @@ void DebugEditor::DrawRotateGizmo()
 
     float screenHeight =
         static_cast<float>(
-            m_context->renderer->GetWindowHeight()
+            m_context->renderer->GetViewHeight()
             );
 
     float fovY =
@@ -3650,8 +3556,8 @@ Ray DebugEditor::CreateMouseRay()
 
     return m_context->camera->ScreenPointToRay(
         mousePos,
-        m_context->renderer->GetWindowWidth(),
-        m_context->renderer->GetWindowHeight());
+        m_context->renderer->GetViewWidth(),
+        m_context->renderer->GetViewHeight());
 }
 
 bool DebugEditor::WorldToScreen(const DirectX::XMFLOAT3& worldPos,DirectX::XMFLOAT2& screenPos)
@@ -3691,10 +3597,10 @@ bool DebugEditor::WorldToScreen(const DirectX::XMFLOAT3& worldPos,DirectX::XMFLO
     }
 
     float width =
-        static_cast<float>(m_context->renderer->GetWindowWidth());
+        static_cast<float>(m_context->renderer->GetViewWidth());
 
     float height =
-        static_cast<float>(m_context->renderer->GetWindowHeight());
+        static_cast<float>(m_context->renderer->GetViewHeight());
 
     // NDC(-1〜1) → Screen座標
     screenPos.x =

@@ -53,7 +53,8 @@ public:
     void ResetToDefault() override;
 
     // 時刻・倍率を操作するデバッグ用ImGuiパネル(「Time」ウィンドウ)。
-    void DrawDebugUI();
+    // openがnullptrでなければ、タイトルバーの×で閉じられ、*openがfalseの間は描かない。
+    void DrawDebugUI(bool* open = nullptr);
 
 private:
     float m_timeOfDayHours = kStartHour;

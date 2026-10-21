@@ -1,4 +1,5 @@
-#include "Window.h"
+﻿#include "Window.h"
+#include <shellapi.h> // DragAcceptFiles / DragQueryFileW
 
 #ifdef ENABLE_EDITOR
 #include "imgui_impl_win32.h"
@@ -51,6 +52,10 @@ bool Window::Initialize(HINSTANCE hInstance, int nCmdShow)
     {
         return false;
     }
+
+    // エクスプローラーからのファイル・フォルダのドロップ(WM_DROPFILES)を受け付ける。
+    // (ゲームを管理者として実行していると、通常の権限のエクスプローラーからのドロップは、Windowsに拒否される)
+    DragAcceptFiles(m_hwnd, TRUE);
 
     ShowWindow(m_hwnd, nCmdShow);
 
@@ -135,6 +140,34 @@ LRESULT Window::HandleMessage(
         return 0;
     }
 
+    case WM_DROPFILES:
+    {
+        // ドロップされたパスを全て取り出して、コールバックへ渡す(コピーは、フレームの更新の中で行う)。
+        HDROP drop = reinterpret_cast<HDROP>(wparam);
+        const UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
+
+        std::vector<std::wstring> paths;
+        paths.reserve(count);
+        for (UINT i = 0; i < count; ++i)
+        {
+            const UINT length = DragQueryFileW(drop, i, nullptr, 0);
+            std::wstring path(static_cast<size_t>(length) + 1, L'\0');
+            const UINT copied = DragQueryFileW(drop, i, path.data(), length + 1);
+            path.resize(copied);
+            if (!path.empty())
+            {
+                paths.push_back(std::move(path));
+            }
+        }
+        DragFinish(drop);
+
+        if (m_dropFilesCallback && !paths.empty())
+        {
+            m_dropFilesCallback(paths);
+        }
+        return 0;
+    }
+
     case WM_DESTROY:
         PostQuitMessage(0);
         return 0;
@@ -145,4 +178,9 @@ LRESULT Window::HandleMessage(
 void Window::SetResizeCallback(ResizeCallback callback)
 {
     m_resizeCallback = callback;
+}
+
+void Window::SetDropFilesCallback(DropFilesCallback callback)
+{
+    m_dropFilesCallback = std::move(callback);
 }

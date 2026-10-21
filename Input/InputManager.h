@@ -45,7 +45,12 @@ public:
     void Update();
 
     void SetWindowHandle(HWND hwnd);
+    // マウスの位置(ピクセル)。ゲームビューの左上を原点にした値(SetViewOrigin で設定。無ければウィンドウの左上が原点)。
+    // ビューの外にカーソルがあれば、負の値やビューより大きい値になる。
     POINT GetMousePosition() const;
+
+    // ゲームビュー(ウィンドウの中のゲームの絵の四角)の左上の位置(ウィンドウのクライアント座標)。
+    void SetViewOrigin(int x, int y) { m_viewOriginX = x; m_viewOriginY = y; }
 
     bool IsAnyKeyPressed() const;//キーを問わず押されたときだけ
     bool IsAnyGamePadButtonPressed() const;//ボタンを問わず押されたときだけ
@@ -78,6 +83,8 @@ public:
 
 private:
     HWND m_hwnd;
+    int m_viewOriginX = 0;   // ゲームビューの左上(ウィンドウのクライアント座標)
+    int m_viewOriginY = 0;
 
     std::array<bool, 256> m_currentKeys;
     std::array<bool, 256> m_previousKeys;

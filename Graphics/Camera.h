@@ -18,6 +18,9 @@ public:
    const  DirectX::XMFLOAT3& GetPosition() const;
    float GetFovY() const;
 
+    // 縦横比だけを変える(ゲームビューの大きさが変わった時に、毎フレーム合わせる)。
+    void SetAspect(float aspect) { m_aspect = aspect; }
+
     void AddYawPitch(float yawDelta, float pitchDelta);
     void MoveForward(float distance);
     void MoveRight(float distance);

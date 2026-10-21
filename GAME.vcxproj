@@ -156,6 +156,7 @@
     <ClCompile Include="Graphics\Material.cpp" />
     <ClCompile Include="Graphics\Model.cpp" />
     <ClCompile Include="Graphics\ModelLoaderRegistry.cpp" />
+    <ClCompile Include="Graphics\BakedModelCache.cpp" />
     <ClCompile Include="Graphics\ObjModelLoader.cpp" />
     <ClCompile Include="Graphics\FbxModelLoader.cpp" />
     <ClCompile Include="Graphics\ObjLoader.cpp" />
@@ -183,6 +184,18 @@
     <ClCompile Include="Simulation\DemandSystem.cpp" />
     <ClCompile Include="Simulation\GameEconomy.cpp" />
     <ClCompile Include="DebugTools\Profiler.cpp" />
+    <ClCompile Include="DebugTools\AssetCatalog.cpp" />
+    <ClCompile Include="DebugTools\ThumbnailCache.cpp" />
+    <ClCompile Include="DebugTools\ModelPreviewRenderer.cpp" />
+    <ClCompile Include="DebugTools\AssetBrowser.cpp" />
+    <ClCompile Include="DebugTools\AssetViewer.cpp" />
+    <ClCompile Include="DebugTools\AssetImporter.cpp" />
+    <ClCompile Include="Object\ModelCache.cpp" />
+    <ClCompile Include="Field\PropPlacer.cpp" />
+    <ClCompile Include="DebugTools\EditorUi.cpp" />
+    <ClCompile Include="DebugTools\EditorSettings.cpp" />
+    <ClCompile Include="DebugTools\ShortcutTable.cpp" />
+    <ClCompile Include="Graphics\OffscreenTarget.cpp" />
     <ClCompile Include="Object\Transform.cpp" />
     <ClCompile Include="Field\Field.cpp" />
     <ClCompile Include="Field\IOccupancyGrid.cpp" />
@@ -233,6 +246,7 @@
     <ClInclude Include="Graphics\ModelData.h" />
     <ClInclude Include="Graphics\IModelLoader.h" />
     <ClInclude Include="Graphics\ModelLoaderRegistry.h" />
+    <ClInclude Include="Graphics\BakedModelCache.h" />
     <ClInclude Include="Graphics\ObjModelLoader.h" />
     <ClInclude Include="Graphics\FbxModelLoader.h" />
     <ClInclude Include="Graphics\ObjLoader.h" />
@@ -270,6 +284,20 @@
     <ClInclude Include="Simulation\DemandSystem.h" />
     <ClInclude Include="Simulation\GameEconomy.h" />
     <ClInclude Include="DebugTools\Profiler.h" />
+    <ClInclude Include="DebugTools\AssetCatalog.h" />
+    <ClInclude Include="DebugTools\ThumbnailCache.h" />
+    <ClInclude Include="DebugTools\ModelPreviewRenderer.h" />
+    <ClInclude Include="DebugTools\AssetBrowser.h" />
+    <ClInclude Include="DebugTools\AssetViewer.h" />
+    <ClInclude Include="DebugTools\AssetImporter.h" />
+    <ClInclude Include="Field\PropPlacement.h" />
+    <ClInclude Include="Object\ModelCache.h" />
+    <ClInclude Include="Field\PropPlacer.h" />
+    <ClInclude Include="Core\AssetDragState.h" />
+    <ClInclude Include="DebugTools\EditorUi.h" />
+    <ClInclude Include="DebugTools\EditorSettings.h" />
+    <ClInclude Include="DebugTools\ShortcutTable.h" />
+    <ClInclude Include="Graphics\OffscreenTarget.h" />
     <ClInclude Include="Object\Transform.h" />
     <ClInclude Include="Field\Field.h" />
     <ClInclude Include="Field\IOccupancyGrid.h" />
@@ -323,4 +351,4 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
-</Project>
+</Project>

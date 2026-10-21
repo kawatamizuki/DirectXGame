@@ -2,9 +2,11 @@
 #include "Debug.h"
 #include "Profiler.h"
 #include "InputAction.h"
-#ifdef ENABLE_EDITOR
+#include "BakedModelCache.h"
+#include "AssetImporter.h"
+#include <filesystem>
 #include "imgui.h"
-#endif
+#include "imgui_internal.h"
 
 
 Game::Game()
@@ -18,7 +20,6 @@ Game::~Game()
 
 bool Game::Initialize(HWND hwnd)
 {
-
     if (!m_renderer.Initialize(hwnd))
     {
         Debug::Error("Game::Initialize failed : Renderer initialize failed");
@@ -41,6 +42,8 @@ bool Game::Initialize(HWND hwnd)
     m_context.flags = &m_gameFlags;
     m_context.economy = &m_gameEconomy;
     m_context.scenario = &m_scenarioManager;
+    m_modelCache.Initialize(&m_renderer);
+    m_context.modelCache = &m_modelCache;
 
     // DebugRendererはフィールドの格子線・建物/道路のプレビュー描画にも使うため、
     // ENABLE_EDITORの外(Releaseビルドでも)で初期化する。
@@ -49,6 +52,14 @@ bool Game::Initialize(HWND hwnd)
         Debug::Error("Game::Initialize failed : DebugRenderer initialize failed");
         return false;
     }
+
+    // 素材の一覧パネル(F2で開閉)。開くまでは何も処理しないので、ここでは参照を渡すだけ。
+    m_assetBrowser.Initialize(&m_renderer, &m_dayNightCycle);
+    m_assetViewer.Initialize(&m_renderer, &m_dayNightCycle);
+    m_assetBrowser.SetOpenViewerHandler([this](const std::vector<AssetEntry>& models, const std::string& title)
+    {
+        m_assetViewer.Open(models, title);
+    });
 
     // ゲームプレイ用UI(独自の2D描画。ImGuiとは独立)。初期化に失敗してもゲーム自体は続けられるので、
     // UIだけを無効にして続行する(原因はログに出る)。
@@ -70,6 +81,12 @@ bool Game::Initialize(HWND hwnd)
         return false;
     }
 
+    // Editorメニュー: パネルを登録し、各システムの開閉・スイッチをつなぐ(設定ファイルを読むのは、全部登録した後)。
+    m_editorUi.Initialize();
+    m_debugEditor.AttachEditorUi(&m_editorUi);
+    m_assetBrowser.SetOpenFlag(m_editorUi.PanelFlag("Assets"));
+    m_assetViewer.SetOpenFlag(m_editorUi.PanelFlag("Asset Viewer"));
+
 #endif
 
 
@@ -82,8 +99,8 @@ bool Game::Initialize(HWND hwnd)
     m_camera.SetProjection(
         //視野角
         DirectX::XMConvertToRadians(45.0f),
-        static_cast<float>(m_renderer.GetWindowWidth()) /
-        static_cast<float>(m_renderer.GetWindowHeight()),
+        static_cast<float>(m_renderer.GetViewWidth()) /
+        static_cast<float>(m_renderer.GetViewHeight()),
         0.1f,
         100.0f
     );
@@ -134,6 +151,11 @@ bool Game::Initialize(HWND hwnd)
     }
 
     m_field.Initialize(20, 20, 1.0f);
+    m_propPlacer.Initialize(&m_context, &m_field);
+
+    // Assetsパネルの「シーンの中央に置く」と、フォルダ操作の「使用中」の判定を、ゲーム側のつなぎで渡す。
+    m_assetBrowser.SetPlaceAtCenterHandler([this](const AssetEntry& entry) { PlaceAssetAtViewCenter(entry.path); });
+    m_assetBrowser.SetFolderLockCheck([this](const std::string& folder) { return IsFolderUsedByProps(folder); });
 
     // 地面モデル(任意)。用意されていれば読み込み、Fieldの実サイズにぴったり合うよう
     // モデルの実測サイズ(GetBoundsMin/Max)からスケールを自動計算して配置する。
@@ -207,6 +229,15 @@ bool Game::Initialize(HWND hwnd)
 #ifdef ENABLE_EDITOR
     // 読み込みで建物などのオブジェクトが入れ替わるので、エディタの選択(添字)を解除する。
     m_scenarioManager.SetOnWorldReplaced([this]() { m_debugEditor.ClearSelection(); });
+
+    // 「Editor > エディタ機能のON/OFF」に出すスイッチ。全て登録し終えてから、保存してある設定を読む。
+    m_buildController.RegisterEditorToggles(m_editorUi.Settings());
+    m_editorUi.Settings().RegisterToggle("grid_overlay", "床の格子線を表示", &m_showGridOverlay,
+        "地面のマス目の線を描く(青マスの線も含む)");
+    m_editorUi.Settings().RegisterToggle("model_cache", "モデルキャッシュを使う", &m_useModelCache,
+        "OFFにすると、これから読むモデルは毎回ローダーで読み直す(保存済みのキャッシュは残る)。起動時の読み込みは、常にキャッシュを使う");
+    m_editorUi.LoadSettings();
+    BakedModelCache::SetEnabled(m_useModelCache);
 #endif
     return true;
 }
@@ -240,6 +271,7 @@ void Game::Update()
     m_context.inputConsumed = false;
     m_context.mouseOverUI = false;
     m_context.hudTopInset = 0.0f;
+    m_context.assetDrag = AssetDragState(); // ドラッグの状態も、毎フレーム、ImGuiから読み直す(UpdateAssetDragState)
     m_context.costPreview = CostPreview(); // 建設費のタグは、今フレームに建設ツールが書いた時だけ出す
 
     m_inputManager.Update();
@@ -253,8 +285,15 @@ void Game::Update()
     {
         //obj.transform.rotation.y += 0.01f;
     }
+
 #ifdef ENABLE_EDITOR
     m_debugEditor.BeginFrame();
+
+    // メニューバーとドックスペース(パネルを吸着させる土台)。ImGuiのパネルを描くより先に出す
+    // (ドックに吸着したパネルは、土台が先に出ていないと1フレーム隠れるため)。
+    // ここで、ゲームビュー(中央の枠)の位置と大きさが、今フレームの値で決まる。
+    m_editorUi.BeginFrame(BuildEditorFrameInfo());
+    ApplyGameViewRect();
 #endif
 
     // ゲームプレイ用UI(上部HUD)の入力は、ワールドへの操作(オブジェクト選択・建物/道路の配置)より先に
@@ -262,10 +301,30 @@ void Game::Update()
     // (ImGuiのBeginFrameの後なのは、ImGuiのパネルの上にいるかを今フレームの状態で見るため)
     UpdateGameUI();
 
+#ifdef ENABLE_EDITOR
+    // Assetsからモデルをドラッグしている状態を読み取り、ゲームの画面の上で離されたら飾りを置く。
+    UpdateAssetDragState();
+#endif
+    m_propPlacer.Update();
+
     HandleScenarioHotkeys();
 
 #ifdef ENABLE_EDITOR
+    // F2: 素材の一覧パネルの開閉(入力欄に文字を入力している間は、ショートカットとして扱わない)。
+    if (!ImGui::GetIO().WantTextInput && m_inputManager.IsKeyPressed(VK_F2))
+    {
+        m_assetBrowser.Toggle();
+    }
+#endif
+    // サムネイルの生成の進行と、選択中のモデルの詳細表示。パネルが閉じている間は何もしない。
+    BakedModelCache::SetEnabled(m_useModelCache); // Editorメニューで切り替えられる
+    ProcessPendingDrops();                         // エクスプローラーからドロップされた物の取り込み
+    m_assetBrowser.Update();
+    m_assetViewer.Update();
+
+#ifdef ENABLE_EDITOR
     m_debugEditor.Update();
+    m_editorUi.SaveSettingsIfChanged();
 #endif
 
     // Playingモードの時だけ建物/道路配置を更新する。
@@ -336,6 +395,125 @@ void Game::HandleScenarioHotkeys()
     }
 }
 
+EditorUi::FrameInfo Game::BuildEditorFrameInfo() const
+{
+    EditorUi::FrameInfo info;
+    // HUDはゲームビューの中に描くので、メニューバーは、ウィンドウの最上端から始める(HUDの下には置かない)。
+    info.hudTopInset = 0.0f;
+    info.inGameScene = IsGameUIVisible();
+    info.mouseOverGameHud = m_context.mouseOverUI;
+    info.playing = (m_context.mode == GameMode::Playing);
+    return info;
+}
+
+void Game::UpdateAssetDragState()
+{
+    const ImGuiPayload* payload = ImGui::GetDragDropPayload();
+    if (!payload || !payload->Data || !payload->IsDataType(AssetBrowser::kModelPayloadType))
+    {
+        return;
+    }
+
+    AssetDragState& state = m_context.assetDrag;
+    state.active = true;
+    state.path = static_cast<const char*>(payload->Data);
+
+    // ImGuiのどのウィンドウの上でもない(中央の透過部分や、ウィンドウの外)で、ゲームのHUDの上でもなければ、「ゲームの画面の上」。
+    // (ドッキングの中央の透過部分では、ImGuiのHoveredWindowが空になる)
+    ImGuiContext* imgui = ImGui::GetCurrentContext();
+    const ImVec2 mouse = ImGui::GetIO().MousePos;
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    const bool insideWindow = mouse.x >= 0.0f && mouse.y >= 0.0f && mouse.x < display.x && mouse.y < display.y;
+    state.overGameView = insideWindow && imgui && imgui->HoveredWindow == nullptr && !m_context.mouseOverUI;
+    state.dropped = state.overGameView && ImGui::IsMouseReleased(ImGuiMouseButton_Left);
+}
+
+void Game::OnFilesDropped(const std::vector<std::wstring>& paths)
+{
+    m_pendingDrops.insert(m_pendingDrops.end(), paths.begin(), paths.end());
+}
+
+void Game::ProcessPendingDrops()
+{
+    if (m_pendingDrops.empty())
+    {
+        return;
+    }
+
+    std::vector<std::filesystem::path> sources;
+    sources.reserve(m_pendingDrops.size());
+    for (const std::wstring& path : m_pendingDrops)
+    {
+        sources.emplace_back(path);
+    }
+    m_pendingDrops.clear();
+
+    // 元の場所のファイルは動かさず、Assets/Incoming/ へコピーする。
+    const ImportResult result = AssetImporter::Import(sources);
+
+    Debug::Info("AssetImporter: " + result.message);
+    for (const std::string& warning : result.warnings)
+    {
+        Debug::Warning("AssetImporter: " + warning);
+    }
+
+    m_assetBrowser.ShowImportResult(result.message, result.importedFolders.empty() ? std::string() : result.importedFolders.front());
+}
+
+void Game::ApplyGameViewRect()
+{
+    float x = 0.0f, y = 0.0f, width = 0.0f, height = 0.0f;
+    if (!m_editorUi.GetGameViewRect(x, y, width, height))
+    {
+        return; // ドックスペースがまだ無い: ウィンドウ全体のまま
+    }
+
+    // ゲームの絵(3D・デバッグ線・HUD)は、この四角だけに描く。マウスの座標は、この四角の左上が原点になる。
+    m_renderer.SetGameViewRect(x, y, width, height);
+    m_inputManager.SetViewOrigin(static_cast<int>(m_renderer.GetViewX()), static_cast<int>(m_renderer.GetViewY()));
+
+    // カメラの縦横比は、ビューの縦横比(ウィンドウの縦横比ではない)。
+    m_camera.SetAspect(static_cast<float>(m_renderer.GetViewWidth()) / static_cast<float>(m_renderer.GetViewHeight()));
+}
+
+void Game::PlaceAssetAtViewCenter(const std::string& modelPath)
+{
+    // ゲームビューの中心(ビューの左上が原点の座標)。
+    float x = static_cast<float>(m_renderer.GetViewWidth()) * 0.5f;
+    float y = static_cast<float>(m_renderer.GetViewHeight()) * 0.5f;
+    if (m_propPlacer.PlaceAtScreenPoint(modelPath, x, y))
+    {
+        return;
+    }
+
+    // 画面の中心の先に地面が無い(カメラが水平に近い・地面の外を向いている)時は、フィールドの中心へ置く。
+    if (!m_propPlacer.PlaceAt(modelPath, DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f)))
+    {
+        Debug::Warning("Game: 飾りを置けませんでした(モデルを読めません) : " + modelPath);
+    }
+    else
+    {
+        Debug::Info("Game: 画面の中心に地面が見えないので、フィールドの中心へ置きました");
+    }
+}
+
+bool Game::IsFolderUsedByProps(const std::string& folder) const
+{
+    for (const GameObject& obj : m_objects)
+    {
+        if (obj.kind != ObjectKind::Prop)
+        {
+            continue;
+        }
+        const std::string& path = obj.modelPath;
+        if (path.size() > folder.size() && path.compare(0, folder.size(), folder) == 0 && path[folder.size()] == '/')
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 void Game::UpdateGameUI()
 {
     if (!IsGameUIVisible())
@@ -344,8 +522,8 @@ void Game::UpdateGameUI()
     }
 
     HudInput input;
-    input.screenW = static_cast<float>(m_renderer.GetWindowWidth());
-    input.screenH = static_cast<float>(m_renderer.GetWindowHeight());
+    input.screenW = static_cast<float>(m_renderer.GetViewWidth());
+    input.screenH = static_cast<float>(m_renderer.GetViewHeight());
 
     POINT mouse = m_inputManager.GetMousePosition();
     input.mouseX = static_cast<float>(mouse.x);
@@ -388,12 +566,18 @@ void Game::Draw()
         }
     }
 
-    m_field.DrawGridOverlay(m_debugRenderer, m_orientationRegistry);
+    const EditorUi::FrameInfo editorFrame = BuildEditorFrameInfo(); // ヒントの表示用(今フレームのモード・HUDの上か)
+
+    if (m_showGridOverlay)
+    {
+        m_field.DrawGridOverlay(m_debugRenderer, m_orientationRegistry);
+    }
+    m_propPlacer.Draw(); // Assetsからのドラッグ中のゴースト
     m_demandSystem.Draw(m_debugRenderer);
 
     if (m_context.mode == GameMode::Playing)
     {
-        m_buildController.Draw();
+        m_buildController.Draw(m_editorUi.PanelFlag("Build"));
         m_roadSystem.Draw();
     }
 
@@ -402,12 +586,18 @@ void Game::Draw()
 #endif
 
     // 人流・需要シミュレーションの統計・プロファイラ・ログはモードによらず常時表示する
-    m_demandSystem.DrawDebugUI();
-    m_gameClock.DrawDebugUI();
-    m_gameEconomy.DrawDebugUI();
-    m_scenarioManager.DrawDebugUI();
-    Profiler::DrawDebugUI(m_objects, m_roadSystem, m_occupancyGrid, m_demandSystem);
-    Debug::DrawDebugUI();
+    // (Editorメニューのパネル一覧、またはタイトルバーの×で閉じられる)。
+    m_demandSystem.DrawDebugUI(m_editorUi.PanelFlag("City Stats"));
+    m_gameClock.DrawDebugUI(m_editorUi.PanelFlag("Time"));
+    m_gameEconomy.DrawDebugUI(m_editorUi.PanelFlag("Economy"));
+    m_assetBrowser.DrawDebugUI();
+    m_assetViewer.DrawDebugUI();
+    m_scenarioManager.DrawDebugUI(m_editorUi.PanelFlag("Scenario"));
+    Profiler::DrawDebugUI(m_objects, m_roadSystem, m_occupancyGrid, m_demandSystem, m_editorUi.PanelFlag("Profiler"));
+    Debug::DrawDebugUI(m_editorUi.PanelFlag("Log"));
+
+    // ホバーのヒントとショートカット一覧。全てのパネルを描いた後。
+    m_editorUi.EndFrame(editorFrame);
 
     // DebugRendererはフィールドの格子線・建物/道路の見た目にも使うため、
     // ENABLE_EDITORの外(Releaseビルドでも)でFlushする。
@@ -417,9 +607,12 @@ void Game::Draw()
     // (ImGuiはm_debugEditor.EndFrameで最前面に描かれる)。
     if (IsGameUIVisible())
     {
+        // HUDは、ゲームビューの中に描く(ビューの左上を原点にして、ビューの大きさに合わせて並べる)。
         m_uiRenderer.BeginFrame(
-            static_cast<float>(m_renderer.GetWindowWidth()),
-            static_cast<float>(m_renderer.GetWindowHeight()));
+            static_cast<float>(m_renderer.GetViewWidth()),
+            static_cast<float>(m_renderer.GetViewHeight()),
+            m_renderer.GetViewX(),
+            m_renderer.GetViewY());
         m_gameUI.Draw(BuildHudState());
         m_uiRenderer.EndFrame();
     }
@@ -462,6 +655,7 @@ void Game::UpdateWindowTitle()
 
 void Game::Finalize()
 {
+    m_editorUi.SaveSettingsIfChanged(true);
 #ifdef ENABLE_EDITOR
     m_debugEditor.Finalize();
 #endif

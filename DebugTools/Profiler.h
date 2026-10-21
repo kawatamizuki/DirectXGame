@@ -26,7 +26,8 @@ public:
         const std::vector<GameObject>& objects,
         const RoadSystem& roadSystem,
         const IOccupancyGrid& occupancy,
-        const DemandSystem& demand);
+        const DemandSystem& demand,
+        bool* open = nullptr);   // nullptrでなければ、タイトルバーの×で閉じられ、*openがfalseの間は描かない
 
 private:
     static std::unordered_map<std::string, float> s_sectionTimesMs;

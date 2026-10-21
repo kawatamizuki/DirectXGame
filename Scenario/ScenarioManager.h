@@ -72,7 +72,8 @@ public:
     const std::string& GetLastMessage() const { return m_lastMessage; }
 
     // 保存・読み込みを操作するデバッグ用ImGuiパネル(「Scenario」ウィンドウ)。
-    void DrawDebugUI();
+    // openがnullptrでなければ、タイトルバーの×で閉じられ、*openがfalseの間は描かない。
+    void DrawDebugUI(bool* open = nullptr);
 
 private:
     bool ReadFileBytes(const std::string& path, std::string& bytes, std::string& error) const;

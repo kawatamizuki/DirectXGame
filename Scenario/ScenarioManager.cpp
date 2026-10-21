@@ -11,6 +11,7 @@
 #include "IOccupancyGrid.h"
 #include "GridOrientationRegistry.h"
 #include "GameObjectFactory.h"
+#include "ModelCache.h"
 #include "JsonFormat.h"
 #include "ScenarioFile.h"
 #include "Debug.h"
@@ -83,6 +84,17 @@ void ScenarioManager::CaptureSnapshot(WorldSnapshot& snapshot) const
                 saveContext.buildingUidByObjectId[obj.id] = static_cast<int>(snapshot.buildings.size());
                 snapshot.buildings.push_back(building);
             }
+            else if (obj.kind == ObjectKind::Prop)
+            {
+                // 飾り: モデルのパスと置き方だけを保存する(モデル自体は、読み込み時にModelCacheから用意する)。
+                if (!obj.modelPath.empty())
+                {
+                    SnapshotProp prop;
+                    prop.modelPath = obj.modelPath;
+                    prop.transform = obj.transform;
+                    snapshot.props.push_back(std::move(prop));
+                }
+            }
             else if (obj.kind != ObjectKind::Environment && obj.kind != ObjectKind::Agent)
             {
                 // 保存の対象に入っていない種類のオブジェクト。黙って欠落させないよう警告する
@@ -124,6 +136,7 @@ void ScenarioManager::ClearWorld()
     {
         GameObjectFactory::DespawnAllOfKind(*m_context->objects, ObjectKind::Building);
         GameObjectFactory::DespawnAllOfKind(*m_context->objects, ObjectKind::Agent);
+        GameObjectFactory::DespawnAllOfKind(*m_context->objects, ObjectKind::Prop);
     }
     if (m_roadSystem)
     {
@@ -167,6 +180,21 @@ bool ScenarioManager::ApplySnapshot(const WorldSnapshot& snapshot, std::string& 
         }
         // 失敗しても添字(uid)を保つため、0(未割当)を入れておく。
         loadContext.buildingObjectIds.push_back(objectId);
+    }
+
+    // ---- 飾り(Prop): モデルのパスから同じモデルを用意して置く。ファイルが無い・読めない物は、警告して飛ばす(落ちない) ----
+    int failedProps = 0;
+    for (const SnapshotProp& prop : snapshot.props)
+    {
+        Model* model = m_context->modelCache ? m_context->modelCache->Get(prop.modelPath) : nullptr;
+        if (!model)
+        {
+            Debug::Warning("ScenarioManager: 飾りのモデルを用意できなかったため飛ばしました : " + prop.modelPath);
+            failedProps++;
+            continue;
+        }
+        GameObject& spawned = GameObjectFactory::Spawn(*m_context->objects, model, prop.transform, ObjectKind::Prop);
+        spawned.modelPath = prop.modelPath;
     }
 
     // ---- 道路: 区間をそのまま設定(検証・再生はしない)。ノード・占有・メッシュは作り直される ----
@@ -226,9 +254,17 @@ bool ScenarioManager::ApplySnapshot(const WorldSnapshot& snapshot, std::string& 
     message = "道路 " + std::to_string(snapshot.roads.size()) +
               " / 建物 " + std::to_string(snapshot.buildings.size()) +
               " / 青マス " + std::to_string(snapshot.orientationCells.size());
+    if (!snapshot.props.empty())
+    {
+        message += " / 飾り " + std::to_string(snapshot.props.size() - static_cast<size_t>(failedProps));
+    }
     if (failedBuildings > 0)
     {
         message += " (建物 " + std::to_string(failedBuildings) + " 件の生成に失敗)";
+    }
+    if (failedProps > 0)
+    {
+        message += " (飾り " + std::to_string(failedProps) + " 件のモデルを用意できず省略)";
     }
     return true;
 }
@@ -313,6 +349,7 @@ bool ScenarioManager::Save(const std::string& path, std::string& message)
     message = "保存しました: " + path + " (道路 " + std::to_string(snapshot.roads.size()) +
               " / 建物 " + std::to_string(snapshot.buildings.size()) +
               " / 青マス " + std::to_string(snapshot.orientationCells.size()) +
+              " / 飾り " + std::to_string(snapshot.props.size()) +
               "、" + std::to_string(bytes.size()) + " バイト)";
     m_lastMessage = message;
     Debug::Log("ScenarioManager: " + message);
@@ -394,11 +431,16 @@ bool ScenarioManager::LoadStartScenario()
     return Load(kStartScenarioPath, message);
 }
 
-void ScenarioManager::DrawDebugUI()
+void ScenarioManager::DrawDebugUI(bool* open)
 {
+    if (open && !*open)
+    {
+        return;
+    }
+
     // 他の常設パネル(Time/Build/City Stats/Profiler/Log)と重ならない位置に置く
     ImGui::SetNextWindowPos(ImVec2(740.0f, 72.0f), ImGuiCond_FirstUseEver);
-    ImGui::Begin("Scenario");
+    ImGui::Begin("Scenario", open);
 
     ImGui::InputText("Path", m_pathBuffer, sizeof(m_pathBuffer));
 

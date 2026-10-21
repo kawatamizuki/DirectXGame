@@ -29,11 +29,17 @@ void Profiler::DrawDebugUI(
     const std::vector<GameObject>& objects,
     const RoadSystem& roadSystem,
     const IOccupancyGrid& occupancy,
-    const DemandSystem& demand)
+    const DemandSystem& demand,
+    bool* open)
 {
+    if (open && !*open)
+    {
+        return;
+    }
+
     // Debug/Hierarchy/Inspector/Editor Settings(既存パネル)と重ならない中央上部に配置する
     ImGui::SetNextWindowPos(ImVec2(310.0f, 350.0f), ImGuiCond_FirstUseEver);
-    ImGui::Begin("Profiler");
+    ImGui::Begin("Profiler", open);
 
     ImGui::Text("-- Section times (ms) --");
     for (const auto& pair : s_sectionTimesMs)
@@ -48,6 +54,7 @@ void Profiler::DrawDebugUI(
     int buildingCount = 0;
     int roadCount = 0;
     int agentCount = 0;
+    int propCount = 0;
 
     for (const GameObject& obj : objects)
     {
@@ -57,6 +64,7 @@ void Profiler::DrawDebugUI(
         case ObjectKind::Building:    buildingCount++; break;
         case ObjectKind::Road:        roadCount++;     break;
         case ObjectKind::Agent:       agentCount++;    break;
+        case ObjectKind::Prop:        propCount++;     break;
         }
     }
 
@@ -65,6 +73,7 @@ void Profiler::DrawDebugUI(
     ImGui::Text("Building: %d", buildingCount);
     ImGui::Text("Road: %d", roadCount);
     ImGui::Text("Agent: %d", agentCount);
+    ImGui::Text("Prop: %d", propCount);
 
     ImGui::Separator();
     ImGui::Text("-- Memory --");

@@ -5,6 +5,8 @@
 #pragma comment(lib, "d3dcompiler.lib")
 
 #include "Renderer.h"
+#include <algorithm>
+#include <cmath>
 #include"Vertex.h"
 #include "ObjLoader.h"
 #include"Debug.h"
@@ -211,6 +213,21 @@ bool Renderer::Initialize(HWND hwnd)
     if (FAILED(hr))
     {
         Debug::Error("CreateDepthStencilState failed");
+        return false;
+    }
+
+    // ラスタライザ状態を作る。裏向きの三角形は描かずに捨てる(背面カリング)。
+    // モデルの頂点は、読み込み時にエンジンの座標系(左手系)へ変換されており(ModelData::ConvertFromRightHanded)、
+    // 画面上で時計回りの三角形が表。FrontCounterClockwise=FALSEはDirect3Dの既定と同じ向き。
+    D3D11_RASTERIZER_DESC rasterDesc = {};
+    rasterDesc.FillMode = D3D11_FILL_SOLID;
+    rasterDesc.CullMode = D3D11_CULL_BACK;
+    rasterDesc.FrontCounterClockwise = FALSE;
+    rasterDesc.DepthClipEnable = TRUE;
+    hr = m_device->CreateRasterizerState(&rasterDesc, m_rasterizerState.GetAddressOf());
+    if (FAILED(hr))
+    {
+        Debug::Error("CreateRasterizerState failed");
         return false;
     }
     //========================================
@@ -522,6 +539,19 @@ void Renderer::SetLighting(const LightingState& lighting)
     m_lighting = lighting;
 }
 
+void Renderer::ApplyLighting(const LightingState& lighting)
+{
+    LightBuffer lightBuffer{};
+    lightBuffer.directionToLight = lighting.directionToLight;
+    lightBuffer.lightColor = lighting.lightColor;
+    lightBuffer.ambientSky = lighting.ambientSky;
+    lightBuffer.ambientGround = lighting.ambientGround;
+    m_context->UpdateSubresource(m_lightBuffer.Get(), 0, nullptr, &lightBuffer, 0, 0);
+
+    ID3D11Buffer* lightConstantBuffer = m_lightBuffer.Get();
+    m_context->PSSetConstantBuffers(2, 1, &lightConstantBuffer);
+}
+
 void Renderer::BeginFrame()
 {
     // 画面を消すときの色を指定する
@@ -531,25 +561,21 @@ void Renderer::BeginFrame()
     float clearColor[4] = { m_lighting.skyColor.x, m_lighting.skyColor.y, m_lighting.skyColor.z, 1.0f };
 
     // 光の状態をピクセルシェーダーへ送る(フレーム中は変わらないのでここで1回だけ更新する)。
-    {
-        LightBuffer lightBuffer{};
-        lightBuffer.directionToLight = m_lighting.directionToLight;
-        lightBuffer.lightColor = m_lighting.lightColor;
-        lightBuffer.ambientSky = m_lighting.ambientSky;
-        lightBuffer.ambientGround = m_lighting.ambientGround;
-        m_context->UpdateSubresource(m_lightBuffer.Get(), 0, nullptr, &lightBuffer, 0, 0);
+    ApplyLighting(m_lighting);
 
-        ID3D11Buffer* lightConstantBuffer = m_lightBuffer.Get();
-        m_context->PSSetConstantBuffers(2, 1, &lightConstantBuffer);
-    }
-
+    // 描く範囲は、ゲームビューの四角(設定していなければウィンドウ全体)。この後に描く3D・デバッグ線は、この範囲に収まる。
     D3D11_VIEWPORT vp = {};
-    vp.Width = static_cast<float>(m_windowWidth);
-    vp.Height = static_cast<float>(m_windowHeight);
+    vp.TopLeftX = GetViewX();
+    vp.TopLeftY = GetViewY();
+    vp.Width = static_cast<float>(GetViewWidth());
+    vp.Height = static_cast<float>(GetViewHeight());
     vp.MinDepth = 0.0f;
     vp.MaxDepth = 1.0f;
 
     m_context->RSSetViewports(1, &vp);
+
+    // 3D描画のカリング設定(前のフレームにUIなどが変えた状態が残らないよう、毎フレーム設定し直す)。
+    m_context->RSSetState(m_rasterizerState.Get());
 
 
     // このフレームで使う描画先を設定する
@@ -579,6 +605,23 @@ void Renderer::BeginFrame()
     m_context->ClearDepthStencilView(m_depthStencilView.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
 }
 
+
+void Renderer::SetGameViewRect(float x, float y, float width, float height)
+{
+    // ウィンドウの内側に収め、1ピクセル未満にはしない(0で割る・ビューポートが不正になるのを防ぐ)。
+    const float windowW = static_cast<float>(m_windowWidth);
+    const float windowH = static_cast<float>(m_windowHeight);
+    x = (std::max)(0.0f, (std::min)(x, windowW - 1.0f));
+    y = (std::max)(0.0f, (std::min)(y, windowH - 1.0f));
+    width = (std::max)(1.0f, (std::min)(width, windowW - x));
+    height = (std::max)(1.0f, (std::min)(height, windowH - y));
+
+    m_viewCustom = true;
+    m_viewX = std::floor(x);
+    m_viewY = std::floor(y);
+    m_viewWidth = static_cast<UINT>(width);
+    m_viewHeight = static_cast<UINT>(height);
+}
 
 void Renderer::Resize(UINT width, UINT height)
 {
@@ -871,6 +914,9 @@ void Renderer::DrawModel(const Model& model, const Transform& transform, const C
     // 深度テストを有効化
     m_context->OMSetDepthStencilState(m_depthStencilState.Get(), 0);
 
+    // カリング設定。DrawModelの間にUIやデバッグ描画が状態を変えても、モデルは必ず自分の設定で描く。
+    m_context->RSSetState(m_rasterizerState.Get());
+
     // 頂点レイアウト設定
     m_context->IASetInputLayout(m_inputLayout.Get());
 
@@ -1096,6 +1142,7 @@ void Renderer::Finalize()
     m_materialBuffer.Reset();
     m_constantBuffer.Reset();
     m_samplerState.Reset();
+    m_rasterizerState.Reset();
     m_inputLayout.Reset();
     m_pixelShader.Reset();
     m_vertexShader.Reset();
@@ -1110,4 +1157,3 @@ void Renderer::Finalize()
 
     Debug::Info("Renderer Finalize successfully");
 }
-
