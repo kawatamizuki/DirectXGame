@@ -2,7 +2,9 @@
 #include <optional>
 #include <string>
 #include "UIRenderer.h"
-#include "UITheme.h"
+#include "UISkin.h"
+#include "ProceduralUISkin.h"
+#include "GameMenu.h"
 #include "DemandSystem.h"
 #include "CostPreview.h"
 
@@ -23,6 +25,9 @@ struct HudState
     CostPreview costTag;
     float cursorX = -1.0f;
     float cursorY = -1.0f;
+
+    // ゲーム内メニュー(右下のボタンと、開いた時の項目)に出す内容。
+    MenuModel menu;
 };
 
 // マウスの状態と画面サイズ(毎フレーム、GameUIの外から渡す)。
@@ -33,6 +38,8 @@ struct HudInput
     float mouseX = -1.0f;           // 描画先(ウィンドウのクライアント領域)の左上からのピクセル座標
     float mouseY = -1.0f;
     bool pressed = false;           // 左ボタンを押したフレーム
+    bool down = false;              // 左ボタンを押している間(ボタンの「押している」見た目に使う)
+    bool menuEnabled = true;        // ゲーム内メニューを使える状態か(Playingの時だけtrue)
     bool blockedByOtherUI = false;  // デバッグGUI(ImGui)のパネルの上にカーソルがある時はtrue(HUDは反応しない)
 };
 
@@ -41,26 +48,21 @@ struct HudResult
 {
     bool mouseOverUI = false;                   // カーソルがHUDの上にあるか(ワールドへの操作を止めるのに使う)
     bool consumedClick = false;                 // このフレームのクリックをHUDが受け取ったか
+    MenuCommand menuCommand;                    // ゲーム内メニューで押された命令(無ければNone)
+    bool menuOpen = false;                      // ゲーム内メニューが開いているか(開いている間は、ゲーム内の時間を止める)
 };
 
-// ゲームプレイ用の上部HUDバー。配置・入力・描画をまとめて担当する(ImGuiは使わない)。
+// ゲームプレイ用の上部HUDバーと、ゲーム内メニュー。配置・入力をまとめて担当する(ImGuiは使わない)。
 // 長さはすべて「画面の高さ1080を基準にしたピクセル」で決めておき、画面サイズに応じた倍率をかけて描く。
+// 箱・ボタン・アイコン・文字の色の「描き方」は、全てIUISkin(UISkin.h)を通す。見た目の差し替えは、SetSkinで行う。
 class GameUI
 {
 public:
-    // 指標のチップ(アイコン+文字の小さな角丸の箱)の種類。
-    enum class ChipIcon
-    {
-        Population,
-        Jobs,
-        Residents
-    };
-
     struct Chip
     {
         UIRect rect;
         std::string text;
-        ChipIcon icon = ChipIcon::Population;
+        UIIcon icon = UIIcon::Population;
     };
 
     // 1フレームぶんの配置結果。テストで「はみ出し・重なりが無いか」を確かめられるよう公開している。
@@ -111,6 +113,16 @@ public:
     // uiRendererとdayNightCycleは呼び出し側が所有する(このクラスは借りるだけ)。
     void Initialize(UIRenderer* uiRenderer, const DayNightCycle* dayNightCycle);
 
+    // 見た目(スキン)を差し替える。skinは呼び出し側が所有する(借りるだけ)。nullptrなら、標準の図形スキンに戻す。
+    void SetSkin(IUISkin* skin) { m_skin = skin ? skin : &m_defaultSkin; }
+    IUISkin& GetSkin() { return *m_skin; }
+
+    // ゲーム内メニューの開閉(Escキー・ゲーム側の都合で閉じる時に使う)。
+    bool IsMenuOpen() const { return m_menu.IsOpen(); }
+    void OpenMenu() { m_menu.Open(); }
+    void CloseMenu() { m_menu.Close(); }
+    const GameMenu& GetMenu() const { return m_menu; }
+
     // 配置を計算し、マウスの当たり判定とクリック処理を行う。毎フレーム、ワールドへの入力処理より先に呼ぶ。
     HudResult Update(const HudInput& input, const HudState& state);
 
@@ -122,20 +134,18 @@ public:
     CostTagLayout ComputeCostTagLayout(const HudState& state) const;
 
     const Layout& GetLayout() const { return m_layout; }
-    UITheme& GetTheme() { return m_theme; }
+
+    // 標準スキンの色・太さ(調整用)。別のスキンを使っている間は、見た目に影響しない。
+    UITheme& GetTheme() { return m_defaultSkin.GetTheme(); }
 
 private:
     void ComputeLayout(float screenW, float screenH, const HudState& state);
-
-    // アイコン(すべて図形で描く。素材は使わない)。
-    void DrawSunIcon(float cx, float cy, float radius);
-    void DrawMoonIcon(float cx, float cy, float radius);
-    void DrawCoinIcon(float cx, float cy, float radius);
-    void DrawChipIcon(ChipIcon icon, float cx, float cy, float size);
     void DrawCostTag(const HudState& state);
 
     UIRenderer* m_ui = nullptr;
     const DayNightCycle* m_cycle = nullptr;
-    UITheme m_theme;
+    ProceduralUISkin m_defaultSkin;     // 標準の見た目(図形)
+    IUISkin* m_skin = &m_defaultSkin;   // 今使っている見た目。差し替えはSetSkin
+    GameMenu m_menu;
     Layout m_layout;
 };

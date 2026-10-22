@@ -20,6 +20,10 @@ public:
     using DropFilesCallback = std::function<void(const std::vector<std::wstring>& paths)>;
     void SetDropFilesCallback(DropFilesCallback callback);
 
+    // マウスのホイールが回された時に呼ばれる(WM_MOUSEWHEEL)。notchesは回転量(1目盛り=1.0。奥へ回すと正)。
+    using MouseWheelCallback = std::function<void(float notches)>;
+    void SetMouseWheelCallback(MouseWheelCallback callback);
+
     HWND GetHWND() const;
 private:
     HWND m_hwnd;
@@ -31,6 +35,7 @@ private:
     LRESULT HandleMessage(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
     ResizeCallback m_resizeCallback;
     DropFilesCallback m_dropFilesCallback;
+    MouseWheelCallback m_mouseWheelCallback;
 
 
 };

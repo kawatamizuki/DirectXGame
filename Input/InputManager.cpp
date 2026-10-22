@@ -39,6 +39,14 @@ InputManager::InputManager()
         KeyCode::R
     };
 
+    // 街づくり(Playing)のカメラ: WASDと矢印キーで平行移動、Shiftで速く、中ボタンのドラッグで地面をつかんで動かす。
+    m_keyboardMapping[InputAction::CameraForward] = { KeyCode::W, KeyCode::Up };
+    m_keyboardMapping[InputAction::CameraBack]    = { KeyCode::S, KeyCode::Down };
+    m_keyboardMapping[InputAction::CameraLeft]    = { KeyCode::A, KeyCode::Left };
+    m_keyboardMapping[InputAction::CameraRight]   = { KeyCode::D, KeyCode::Right };
+    m_keyboardMapping[InputAction::CameraFast]    = { KeyCode::Shift };
+    m_keyboardMapping[InputAction::CameraDrag]    = { KeyCode::MouseMiddle };
+
     //========================================
     // Editor用キーボード割り当て
     //========================================
@@ -140,9 +148,13 @@ void InputManager::Update()
 {
     m_previousKeys = m_currentKeys;
 
+    // このゲームのウィンドウが前面にある時だけ、キー・マウスのボタンを読む。
+    // GetAsyncKeyState は、他のアプリで打っているキーも拾うので、フォーカスが無い時は「何も押されていない」にする
+    // (別のウィンドウで文字を打ちながら、ゲームのカメラが動いてしまわないように)。
+    const bool focused = (m_hwnd == nullptr) || (GetForegroundWindow() == m_hwnd);
     for (int i = 0; i < 256; ++i)
     {
-        m_currentKeys[i] = (GetAsyncKeyState(i) & 0x8000) != 0;
+        m_currentKeys[i] = focused && ((GetAsyncKeyState(i) & 0x8000) != 0);
     }
 
     m_previousGamePadState = m_currentGamePadState;

@@ -433,6 +433,8 @@ void BuildController::DrawPanel(bool* open)
     {
         int tool = static_cast<int>(m_context->placementTool);
         ImGui::Text("Tool");
+        ImGui::RadioButton("None", &tool, static_cast<int>(PlacementTool::None));
+        ImGui::SameLine();
         ImGui::RadioButton("Building", &tool, static_cast<int>(PlacementTool::Building));
         ImGui::SameLine();
         ImGui::RadioButton("Road", &tool, static_cast<int>(PlacementTool::Road));
@@ -444,7 +446,11 @@ void BuildController::DrawPanel(bool* open)
     // (道路/建物のツール選択によらず常に切り替えられるようにここに置く)。
     ImGui::Checkbox("Show orientation chunks (debug)", &m_showOrientationDebug);
 
-    if (m_context && m_context->placementTool == PlacementTool::Road)
+    if (m_context && m_context->placementTool == PlacementTool::None)
+    {
+        ImGui::TextUnformatted("(pick in the in-game menu, or choose a tool above)");
+    }
+    else if (m_context && m_context->placementTool == PlacementTool::Road)
     {
         int roadType = static_cast<int>(m_context->roadType);
         ImGui::RadioButton(GetRoadTypeDefinition(RoadType::Narrow).name, &roadType, static_cast<int>(RoadType::Narrow));

@@ -20,6 +20,7 @@ public:
 
     // 縦横比だけを変える(ゲームビューの大きさが変わった時に、毎フレーム合わせる)。
     void SetAspect(float aspect) { m_aspect = aspect; }
+    float GetAspect() const { return m_aspect; }
 
     void AddYawPitch(float yawDelta, float pitchDelta);
     void MoveForward(float distance);
@@ -43,6 +44,7 @@ public:
 
 private:
     void UpdateTargetFromYawPitch();
+    void SyncYawPitchFromView();
 
     DirectX::XMFLOAT3 m_position;
     DirectX::XMFLOAT3 m_target;

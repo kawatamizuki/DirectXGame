@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstdio>
 #include "DayNightCycle.h"
+#include "UILayoutUtil.h"
 
 namespace
 {
@@ -30,21 +31,6 @@ namespace
     constexpr float kChipGap = 8.0f;
     constexpr float kBlockGap = 24.0f;   // 左のブロック・中央の所持金・右のチップの間に最低限空ける幅
 
-    // 画面の高さに応じた倍率。1080を基準に、小さい画面でも読める0.75〜大きい画面での2.0に収める。
-    float ScaleForHeight(float screenH)
-    {
-        float scale = screenH / 1080.0f;
-        if (scale < 0.75f) { scale = 0.75f; }
-        if (scale > 2.0f) { scale = 2.0f; }
-        return scale;
-    }
-
-    // 文字サイズは整数ピクセルに丸める(FontAtlasが整数サイズで焼くため、描画と測定で同じ大きさになるように)。
-    float RoundSize(float size)
-    {
-        float rounded = std::floor(size + 0.5f);
-        return (rounded < 1.0f) ? 1.0f : rounded;
-    }
 
     // 1234567 → "1,234,567"
     std::string FormatWithCommas(int value)
@@ -82,7 +68,7 @@ void GameUI::Initialize(UIRenderer* uiRenderer, const DayNightCycle* dayNightCyc
 void GameUI::ComputeLayout(float screenW, float screenH, const HudState& state)
 {
     Layout layout;
-    float s = ScaleForHeight(screenH);
+    float s = UIScaleForHeight(screenH);
     layout.scale = s;
     layout.screenW = screenW;
     layout.screenH = screenH;
@@ -106,14 +92,14 @@ void GameUI::ComputeLayout(float screenW, float screenH, const HudState& state)
     std::snprintf(timeBuffer, sizeof(timeBuffer), "%02d:%02d", hour, minute);
     layout.timeText = timeBuffer;
 
-    layout.timeTextSize = RoundSize(kTimeFontSize * s);
+    layout.timeTextSize = UIRoundFontSize(kTimeFontSize * s);
     layout.timeTextX = textX;
     layout.timeTextY = 5.0f * s;
     float timeWidth = m_ui->MeasureString(layout.timeText, layout.timeTextSize);
 
     // 日数は時刻のすぐ右に、ベースラインを揃えて小さく置く。
     layout.dayText = "Day " + std::to_string(state.dayCount);
-    layout.dayTextSize = RoundSize(kDayFontSize * s);
+    layout.dayTextSize = UIRoundFontSize(kDayFontSize * s);
     layout.dayTextX = textX + timeWidth + 8.0f * s;
     float timeBaseline = layout.timeTextY + m_ui->GetAscent(layout.timeTextSize);
     layout.dayTextY = timeBaseline - m_ui->GetAscent(layout.dayTextSize);
@@ -128,23 +114,23 @@ void GameUI::ComputeLayout(float screenW, float screenH, const HudState& state)
     // ---- 右のチップ: 人口・雇用・住民。右端から左へ並べる ----
     struct ChipSource
     {
-        ChipIcon icon;
+        UIIcon icon;
         std::string text;
     };
     const ChipSource sources[3] =
     {
-        { ChipIcon::Population, std::string("人口 ") + FormatWithCommas(state.stats.populationTotal) },
-        { ChipIcon::Jobs, std::string("雇用 ") + FormatWithCommas(state.stats.jobsFilled) + "/" + FormatWithCommas(state.stats.jobCapacityTotal) },
-        { ChipIcon::Residents, std::string("住民 ") + FormatWithCommas(state.stats.agentCount) },
+        { UIIcon::Population, std::string("人口 ") + FormatWithCommas(state.stats.populationTotal) },
+        { UIIcon::Jobs, std::string("雇用 ") + FormatWithCommas(state.stats.jobsFilled) + "/" + FormatWithCommas(state.stats.jobCapacityTotal) },
+        { UIIcon::Residents, std::string("住民 ") + FormatWithCommas(state.stats.agentCount) },
     };
 
-    float chipFontSize = RoundSize(kChipFontSize * s);
+    float chipFontSize = UIRoundFontSize(kChipFontSize * s);
     float chipHeight = kChipHeight * s;
     float chipY = (layout.bar.h - chipHeight) * 0.5f;
 
     // ---- 中央の所持金: コインのアイコン+「1,000円」。他の指標より大きな文字 ----
     layout.cashText = FormatWithCommas(state.cash) + "円";
-    layout.cashTextSize = RoundSize(kCashFontSize * s);
+    layout.cashTextSize = UIRoundFontSize(kCashFontSize * s);
     float cashTextWidth = m_ui->MeasureString(layout.cashText, layout.cashTextSize);
     layout.coinRadius = kCoinRadius * s;
     float cashWidth = (kCashPadding * 2.0f + kCashIconGap) * s + layout.coinRadius * 2.0f + cashTextWidth;
@@ -193,6 +179,7 @@ void GameUI::ComputeLayout(float screenW, float screenH, const HudState& state)
     m_layout = layout;
 }
 
+
 HudResult GameUI::Update(const HudInput& input, const HudState& state)
 {
     HudResult result;
@@ -203,62 +190,31 @@ HudResult GameUI::Update(const HudInput& input, const HudState& state)
 
     ComputeLayout(input.screenW, input.screenH, state);
 
-    bool over = !input.blockedByOtherUI && m_layout.bar.Contains(input.mouseX, input.mouseY);
-    result.mouseOverUI = over;
+    // ゲーム内メニュー。開いている間は、画面全体がメニュー(後ろのゲームへ何も届かない)。
+    MenuInput menuInput;
+    menuInput.screenW = input.screenW;
+    menuInput.screenH = input.screenH;
+    menuInput.topInset = m_layout.bar.Bottom();
+    menuInput.mouseX = input.mouseX;
+    menuInput.mouseY = input.mouseY;
+    menuInput.pressed = input.pressed;
+    menuInput.down = input.down;
+    menuInput.enabled = input.menuEnabled;
+    menuInput.blockedByOtherUI = input.blockedByOtherUI;
+    MenuResult menuResult = m_menu.Update(menuInput, state.menu);
+    result.menuCommand = menuResult.command;
+    result.menuOpen = m_menu.IsOpen();
 
-    // バーの上で押したクリックはHUDが受け取る(ワールドへ抜けない)。
-    // 今のバーにはボタンが無いので、押せるものは無い(将来メニューなどのボタンを足す時は、ここで当たり判定をする)。
-    if (over && input.pressed)
+    bool overBar = !input.blockedByOtherUI && m_layout.bar.Contains(input.mouseX, input.mouseY);
+    result.mouseOverUI = overBar || menuResult.mouseOverUI;
+
+    // バーの上で押したクリックはHUDが受け取る(ワールドへ抜けない)。バーには、押せるものは無い。
+    if ((overBar && input.pressed) || menuResult.consumedClick)
     {
         result.consumedClick = true;
     }
 
     return result;
-}
-
-void GameUI::DrawSunIcon(float cx, float cy, float radius)
-{
-    UIColor ray = Color(1.00f, 0.62f, 0.10f);
-    float rayInner = radius * 0.72f;
-    float rayOuter = radius * 1.00f;
-    float rayThickness = radius * 0.14f;
-    constexpr float kTwoPi = 6.28318530717959f;
-    for (int i = 0; i < 8; ++i)
-    {
-        float angle = kTwoPi * static_cast<float>(i) / 8.0f;
-        float dx = std::cos(angle);
-        float dy = std::sin(angle);
-        m_ui->DrawLine(cx + dx * rayInner, cy + dy * rayInner, cx + dx * rayOuter, cy + dy * rayOuter, rayThickness, ray);
-    }
-    m_ui->FillCircle(cx, cy, radius * 0.58f, Color(0.90f, 0.52f, 0.08f));
-    m_ui->FillCircle(cx, cy, radius * 0.48f, Color(1.00f, 0.86f, 0.25f));
-}
-
-void GameUI::DrawMoonIcon(float cx, float cy, float radius)
-{
-    m_ui->FillCircle(cx, cy, radius * 0.80f, Color(0.45f, 0.48f, 0.72f));
-    m_ui->FillCircle(cx, cy, radius * 0.70f, Color(0.96f, 0.95f, 0.82f));
-    // クレーター
-    UIColor crater = Color(0.84f, 0.83f, 0.68f);
-    m_ui->FillCircle(cx - radius * 0.22f, cy - radius * 0.18f, radius * 0.16f, crater);
-    m_ui->FillCircle(cx + radius * 0.20f, cy + radius * 0.10f, radius * 0.20f, crater);
-    m_ui->FillCircle(cx - radius * 0.05f, cy + radius * 0.34f, radius * 0.10f, crater);
-}
-
-void GameUI::DrawCoinIcon(float cx, float cy, float radius)
-{
-    // 金貨: 濃い金色の縁、明るい金色の面、左上のハイライト、中央の「¥」。
-    m_ui->FillCircle(cx, cy, radius, Color(0.62f, 0.38f, 0.06f));
-    m_ui->FillCircle(cx, cy, radius * 0.88f, Color(0.98f, 0.76f, 0.16f));
-    m_ui->FillCircle(cx, cy, radius * 0.68f, Color(1.00f, 0.86f, 0.38f));
-    m_ui->FillCircle(cx - radius * 0.36f, cy - radius * 0.40f, radius * 0.16f, Color(1.00f, 0.97f, 0.80f));
-
-    float markSize = std::floor(radius * 1.25f + 0.5f);
-    if (markSize < 1.0f) { markSize = 1.0f; }
-    UITextStyle mark;
-    mark.color = Color(0.55f, 0.32f, 0.04f);
-    float markWidth = m_ui->MeasureString("\xC2\xA5", markSize); // 「¥」(U+00A5)
-    m_ui->DrawString(cx - markWidth * 0.5f, cy - m_ui->GetLineHeight(markSize) * 0.5f, "\xC2\xA5", markSize, mark);
 }
 
 GameUI::CostTagLayout GameUI::ComputeCostTagLayout(const HudState& state) const
@@ -271,7 +227,7 @@ GameUI::CostTagLayout GameUI::ComputeCostTagLayout(const HudState& state) const
 
     float s = m_layout.scale;
     tag.visible = true;
-    tag.fontSize = RoundSize(kTagFontSize * s);
+    tag.fontSize = UIRoundFontSize(kTagFontSize * s);
 
     // 道路はマス数も一緒に出す(「6マス  -120円」)。建物は金額だけ(「-100円」)。0円は符号を付けない。
     std::string amount = (state.costTag.cost > 0)
@@ -324,66 +280,17 @@ void GameUI::DrawCostTag(const HudState& state)
         return;
     }
 
-    float s = m_layout.scale;
-    const UITheme& T = m_theme;
     bool affordable = tag.warningText.empty();
 
-    // 払えない時は、箱の枠と文字を赤にして目立たせる。
-    UIColor warning = Color(0.82f, 0.12f, 0.10f);
-    UIColor border = affordable ? T.chipBorder : warning;
+    // 払えない時は、箱の枠と文字を赤にして目立たせる(赤い枠は、スキンのTagWarning)。
+    m_skin->DrawPanel(*m_ui, tag.rect, affordable ? UIPanelStyle::Tag : UIPanelStyle::TagWarning, m_layout.scale);
 
-    m_ui->FillRoundedRect(UIRect{ tag.rect.x + 1.5f * s, tag.rect.y + 2.5f * s, tag.rect.w, tag.rect.h }, T.chipRadius * s * 0.6f, T.panelShadow, T.panelShadow);
-    m_ui->FillRoundedRect(tag.rect, T.chipRadius * s * 0.6f, T.chipFill, T.chipFill);
-    m_ui->StrokeRoundedRect(tag.rect, T.chipRadius * s * 0.6f, T.chipBorderThickness * s, border);
-
-    UITextStyle costStyle;
-    costStyle.color = affordable ? T.textColor : warning;
-    m_ui->DrawString(tag.textX, tag.costTextY, tag.costText, tag.fontSize, costStyle);
+    m_ui->DrawString(tag.textX, tag.costTextY, tag.costText, tag.fontSize,
+        m_skin->GetTextStyle(affordable ? UITextRole::Normal : UITextRole::Warning));
 
     if (!affordable)
     {
-        UITextStyle warningStyle;
-        warningStyle.color = warning;
-        m_ui->DrawString(tag.textX, tag.warningTextY, tag.warningText, tag.fontSize, warningStyle);
-    }
-}
-
-void GameUI::DrawChipIcon(ChipIcon icon, float cx, float cy, float size)
-{
-    float half = size * 0.5f;
-    UIColor body = m_theme.iconColor;
-
-    switch (icon)
-    {
-    case ChipIcon::Population:
-    {
-        // 家: 屋根(三角)と壁(四角)とドア
-        m_ui->FillTriangle(cx - half, cy - half * 0.05f, cx + half, cy - half * 0.05f, cx, cy - half, Color(0.85f, 0.35f, 0.25f));
-        m_ui->FillRect(UIRect{ cx - half * 0.72f, cy - half * 0.05f, half * 1.44f, half * 1.05f }, Color(1.00f, 0.92f, 0.70f));
-        m_ui->StrokeRoundedRect(UIRect{ cx - half * 0.72f, cy - half * 0.05f, half * 1.44f, half * 1.05f }, 0.0f, 1.2f, body);
-        m_ui->FillRect(UIRect{ cx - half * 0.18f, cy + half * 0.30f, half * 0.36f, half * 0.70f }, body);
-        break;
-    }
-    case ChipIcon::Jobs:
-    {
-        // ブリーフケース: 取っ手と本体
-        UIColor caseColor = Color(0.62f, 0.40f, 0.22f);
-        m_ui->StrokeRoundedRect(UIRect{ cx - half * 0.32f, cy - half * 0.92f, half * 0.64f, half * 0.60f }, 2.0f, 1.6f, body);
-        m_ui->FillRoundedRect(UIRect{ cx - half, cy - half * 0.40f, size, half * 1.45f }, 2.5f, caseColor, caseColor);
-        m_ui->FillRect(UIRect{ cx - half, cy + half * 0.12f, size, half * 0.14f }, Color(0.40f, 0.24f, 0.12f));
-        m_ui->FillRect(UIRect{ cx - half * 0.14f, cy + half * 0.02f, half * 0.28f, half * 0.34f }, Color(1.00f, 0.85f, 0.30f));
-        break;
-    }
-    case ChipIcon::Residents:
-    {
-        // 人: 頭(円)と体(角丸)
-        UIColor skin = Color(1.00f, 0.82f, 0.62f);
-        UIColor shirt = Color(0.30f, 0.55f, 0.85f);
-        m_ui->FillRoundedRect(UIRect{ cx - half * 0.62f, cy + half * 0.02f, half * 1.24f, half * 0.98f }, half * 0.5f, shirt, shirt);
-        m_ui->FillCircle(cx, cy - half * 0.42f, half * 0.46f, body);
-        m_ui->FillCircle(cx, cy - half * 0.42f, half * 0.38f, skin);
-        break;
-    }
+        m_ui->DrawString(tag.textX, tag.warningTextY, tag.warningText, tag.fontSize, m_skin->GetTextStyle(UITextRole::Warning));
     }
 }
 
@@ -396,41 +303,20 @@ void GameUI::Draw(const HudState& state)
 
     const Layout& L = m_layout;
     float s = L.scale;
-    const UITheme& T = m_theme;
+    IUISkin& skin = *m_skin;
 
-    // ---- バー本体: 下に影、クリーム色のグラデーション、下端に茶色の太い線 ----
-    UIColor shadowTop = T.panelShadow;
-    UIColor shadowBottom = T.panelShadow;
-    shadowBottom.w = 0.0f;
-    m_ui->FillRoundedRect(UIRect{ 0.0f, L.bar.Bottom(), L.bar.w, 7.0f * s }, 0.0f, shadowTop, shadowBottom);
-
-    m_ui->FillRoundedRect(L.bar, 0.0f, T.panelTop, T.panelBottom);
-    m_ui->FillRect(UIRect{ 0.0f, L.bar.Bottom() - T.panelBorderThickness * s, L.bar.w, T.panelBorderThickness * s }, T.panelBorder);
+    // ---- バー本体 ----
+    skin.DrawPanel(*m_ui, L.bar, UIPanelStyle::Bar, s);
 
     // ---- 左: 昼夜アイコン、時刻、日数、タイムライン ----
     bool daytime = m_cycle ? m_cycle->IsDaytime(state.timeOfDayHours) : true;
-    if (daytime)
-    {
-        DrawSunIcon(L.iconCenterX, L.iconCenterY, L.iconRadius);
-    }
-    else
-    {
-        DrawMoonIcon(L.iconCenterX, L.iconCenterY, L.iconRadius);
-    }
+    skin.DrawIcon(*m_ui, daytime ? UIIcon::Sun : UIIcon::Moon, L.iconCenterX, L.iconCenterY, L.iconRadius * 2.0f, UIButtonState::Normal);
 
-    UITextStyle timeStyle;
-    timeStyle.color = T.textColor;
-    timeStyle.outline = true;
-    timeStyle.outlineColor = T.textOutline;
-    m_ui->DrawString(L.timeTextX, L.timeTextY, L.timeText, L.timeTextSize, timeStyle);
-
-    UITextStyle dayStyle;
-    dayStyle.color = T.subTextColor;
-    dayStyle.outline = true;
-    dayStyle.outlineColor = T.textOutline;
-    m_ui->DrawString(L.dayTextX, L.dayTextY, L.dayText, L.dayTextSize, dayStyle);
+    m_ui->DrawString(L.timeTextX, L.timeTextY, L.timeText, L.timeTextSize, skin.GetTextStyle(UITextRole::Outlined));
+    m_ui->DrawString(L.dayTextX, L.dayTextY, L.dayText, L.dayTextSize, skin.GetTextStyle(UITextRole::OutlinedSub));
 
     // タイムライン: 24時間ぶんの空の色を並べる。昼夜のどのあたりかが一目で分かる。
+    // 空の色は、昼夜サイクルのデータから決まる色なので、スキンではなくここで塗る(外枠と目印は、スキンが描く)。
     {
         const UIRect& tl = L.timeline;
         float segmentWidth = tl.w / 24.0f;
@@ -445,45 +331,39 @@ void GameUI::Draw(const HudState& state)
             // 継ぎ目に隙間ができないよう、少しだけ重ねて描く。
             m_ui->FillRect(UIRect{ tl.x + segmentWidth * static_cast<float>(i), tl.y, segmentWidth + 0.75f, tl.h }, sky);
         }
-        m_ui->StrokeRoundedRect(UIRect{ tl.x - 1.0f, tl.y - 1.0f, tl.w + 2.0f, tl.h + 2.0f }, 3.0f * s, 2.0f * s, T.panelBorder);
+        skin.DrawPanel(*m_ui, UIRect{ tl.x - 1.0f, tl.y - 1.0f, tl.w + 2.0f, tl.h + 2.0f }, UIPanelStyle::Frame, s);
 
-        // 今の時刻の目印(白い線を濃い縁で挟む)。
         float markerX = tl.x + tl.w * (state.timeOfDayHours / 24.0f);
-        m_ui->DrawLine(markerX, tl.y - 4.0f * s, markerX, tl.Bottom() + 4.0f * s, 4.5f * s, T.panelBorder);
-        m_ui->DrawLine(markerX, tl.y - 3.0f * s, markerX, tl.Bottom() + 3.0f * s, 2.0f * s, Color(1.0f, 1.0f, 1.0f));
+        skin.DrawIcon(*m_ui, UIIcon::TimeMarker, markerX, tl.y + tl.h * 0.5f, tl.h, UIButtonState::Normal);
     }
 
     // ---- 中央: 所持金(コインのアイコン+金額。他の指標より大きな文字) ----
     {
-        m_ui->FillRoundedRect(UIRect{ L.cashBox.x, L.cashBox.y + 2.0f * s, L.cashBox.w, L.cashBox.h }, T.chipRadius * s, T.panelShadow, T.panelShadow);
-        m_ui->FillRoundedRect(L.cashBox, T.chipRadius * s, T.chipFill, T.chipFill);
-        m_ui->StrokeRoundedRect(L.cashBox, T.chipRadius * s, T.chipBorderThickness * s, T.chipBorder);
-        DrawCoinIcon(L.coinCenterX, L.coinCenterY, L.coinRadius);
-
-        UITextStyle cashStyle;
-        cashStyle.color = T.textColor;
-        m_ui->DrawString(L.cashTextX, L.cashTextY, L.cashText, L.cashTextSize, cashStyle);
+        skin.DrawPanel(*m_ui, L.cashBox, UIPanelStyle::Chip, s);
+        skin.DrawIcon(*m_ui, UIIcon::Coin, L.coinCenterX, L.coinCenterY, L.coinRadius * 2.0f, UIButtonState::Normal);
+        m_ui->DrawString(L.cashTextX, L.cashTextY, L.cashText, L.cashTextSize, skin.GetTextStyle(UITextRole::Normal));
     }
 
     // ---- 右: 指標のチップ ----
-    UITextStyle chipStyle;
-    chipStyle.color = T.textColor;
-    float chipFontSize = RoundSize(kChipFontSize * s);
+    UITextStyle chipStyle = skin.GetTextStyle(UITextRole::Normal);
+    float chipFontSize = UIRoundFontSize(kChipFontSize * s);
     for (int i = 0; i < L.chipCount; ++i)
     {
         const Chip& chip = L.chips[i];
-        m_ui->FillRoundedRect(chip.rect, T.chipRadius * s, T.chipFill, T.chipFill);
-        m_ui->StrokeRoundedRect(chip.rect, T.chipRadius * s, T.chipBorderThickness * s, T.chipBorder);
+        skin.DrawPanel(*m_ui, chip.rect, UIPanelStyle::Chip, s);
 
         float iconSize = kChipIconSize * s;
         float iconCx = chip.rect.x + kChipPadding * s + iconSize * 0.5f;
         float iconCy = chip.rect.y + chip.rect.h * 0.5f;
-        DrawChipIcon(chip.icon, iconCx, iconCy, iconSize);
+        skin.DrawIcon(*m_ui, chip.icon, iconCx, iconCy, iconSize, UIButtonState::Normal);
 
         float textX = chip.rect.x + (kChipPadding + kChipIconSize + kChipIconGap) * s;
         float textY = chip.rect.y + (chip.rect.h - m_ui->GetLineHeight(chipFontSize)) * 0.5f;
         m_ui->DrawString(textX, textY, chip.text, chipFontSize, chipStyle);
     }
+
+    // ゲーム内メニュー(右下のボタン、開いた時の一覧)。バーより手前に描く(開いた時の幕は、バーの下から始まる)。
+    m_menu.Draw(*m_ui, skin);
 
     // カーソルの横の建設費タグは、HUDの上にも重なりうるので最後(最前面)に描く。
     DrawCostTag(state);

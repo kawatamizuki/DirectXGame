@@ -44,6 +44,13 @@ int WINAPI wWinMain(
             game.OnFilesDropped(paths);
         });
 
+    // マウスのホイール(街づくりのカメラのズームなど)。
+    window.SetMouseWheelCallback(
+        [&game](float notches)
+        {
+            game.OnMouseWheel(notches);
+        });
+
     MSG msg = {};
 
     while (true)

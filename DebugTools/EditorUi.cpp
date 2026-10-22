@@ -355,13 +355,13 @@ void EditorUi::DrawHoverHint(const FrameInfo& info)
         // どのウィンドウの上でもない=中央の透過部分(ゲームの画面)の上。
         hintContext = info.playing ? "Game:Playing" : "Game:Editing";
 
-        std::vector<const ShortcutEntry*> camera = ShortcutTable::ForContext("Game");
-        for (size_t i = 0; i < camera.size() && i < 2; ++i) // カメラの操作は先頭の2行だけ(残りはショートカット一覧)
+        // 今のモード(Playing / Editing)の操作。長い時は、先頭の8行だけ(残りは、ショートカット一覧で見る)。
+        lines = ShortcutTable::ForContext(info.playing ? "Playing" : "Editing");
+        constexpr size_t kMaxHintLines = 8;
+        if (lines.size() > kMaxHintLines)
         {
-            lines.push_back(camera[i]);
+            lines.resize(kMaxHintLines);
         }
-        std::vector<const ShortcutEntry*> mode = ShortcutTable::ForContext(info.playing ? "Playing" : "Editing");
-        lines.insert(lines.end(), mode.begin(), mode.end());
 
         ImGuiDockNode* central = m_dockId ? ImGui::DockBuilderGetCentralNode(m_dockId) : nullptr;
         if (central)

@@ -3899,6 +3899,14 @@ void DebugEditor::UpdateFreeCamera()
         return;
     }
 
+    // フリーカメラは、Editingモードだけ。Playing(実際に遊ぶ状態)は、街づくり用のカメラ(CityCameraController。
+    // 平行移動とズーム)が動かすので、ここでは動かさない(WASDなどの取り合いを避ける)。
+    if (m_context->mode == GameMode::Playing)
+    {
+        m_isFreeCameraActive = false;
+        return;
+    }
+
     if (m_isDraggingGizmo || m_isDraggingObject)
     {
         return;

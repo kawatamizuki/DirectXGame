@@ -325,6 +325,9 @@ void Game::Update()
     m_assetBrowser.Update();
     m_assetViewer.Update();
 
+    // 街づくり(Playing)のカメラ。フリーカメラ(DebugEditor::Update の中)は、Editingの間だけ動く。
+    UpdateCityCamera();
+
 #ifdef ENABLE_EDITOR
     m_debugEditor.Update();
     m_editorUi.SaveSettingsIfChanged();
@@ -375,7 +378,229 @@ HudState Game::BuildHudState() const
     POINT mouse = m_inputManager.GetMousePosition();
     state.cursorX = static_cast<float>(mouse.x);
     state.cursorY = static_cast<float>(mouse.y);
+    state.menu = BuildMenuModel();
     return state;
+}
+
+namespace
+{
+    // メニューに出す日本語の名前。ゲームの中身(建物・道路の種類)が増えたら、ここに足す。
+    // 値段は、BuildingDefinition::cost・RoadTypeDefinition::costPerCell(建設費の表)から読むので、表の数字を変えれば、メニューも変わる。
+    const char* BuildingMenuName(BuildingType type)
+    {
+        switch (type)
+        {
+        case BuildingType::House:  return "住宅";
+        case BuildingType::Office: return "オフィス";
+        case BuildingType::Shop:   return "お店";
+        }
+        return "?";
+    }
+
+    UIIcon BuildingMenuIcon(BuildingType type)
+    {
+        switch (type)
+        {
+        case BuildingType::House:  return UIIcon::House;
+        case BuildingType::Office: return UIIcon::Office;
+        case BuildingType::Shop:   return UIIcon::Shop;
+        }
+        return UIIcon::House;
+    }
+
+    const char* RoadMenuName(RoadType type)
+    {
+        switch (type)
+        {
+        case RoadType::Narrow: return "細い道";
+        case RoadType::Normal: return "ふつうの道";
+        case RoadType::Large:  return "広い道";
+        }
+        return "?";
+    }
+
+    UIIcon RoadMenuIcon(RoadType type)
+    {
+        switch (type)
+        {
+        case RoadType::Narrow: return UIIcon::RoadNarrow;
+        case RoadType::Normal: return UIIcon::RoadNormal;
+        case RoadType::Large:  return UIIcon::RoadLarge;
+        }
+        return UIIcon::RoadNormal;
+    }
+}
+
+MenuModel Game::BuildMenuModel() const
+{
+    MenuModel model;
+    const int cash = m_gameEconomy.GetCash();
+    const bool buildingTool = (m_context.placementTool == PlacementTool::Building);
+    const bool roadTool = (m_context.placementTool == PlacementTool::Road);
+
+    const BuildingType buildingTypes[] = { BuildingType::House, BuildingType::Office, BuildingType::Shop };
+    for (BuildingType type : buildingTypes)
+    {
+        const BuildingDefinition& def = GetBuildingDefinition(type);
+        MenuItem item;
+        item.icon = BuildingMenuIcon(type);
+        item.name = BuildingMenuName(type);
+        item.detail = std::to_string(def.cost) + "円";
+        item.affordable = (cash >= def.cost);
+        item.selected = buildingTool && (m_buildController.GetSelectedType() == type);
+        item.command = { MenuCommandType::SelectBuilding, static_cast<int>(type) };
+        model.buildings.push_back(item);
+    }
+
+    const RoadType roadTypes[] = { RoadType::Narrow, RoadType::Normal, RoadType::Large };
+    for (RoadType type : roadTypes)
+    {
+        const RoadTypeDefinition& def = GetRoadTypeDefinition(type);
+        MenuItem item;
+        item.icon = RoadMenuIcon(type);
+        item.name = RoadMenuName(type);
+        item.detail = std::to_string(def.costPerCell) + "円/マス";
+        item.affordable = (cash >= def.costPerCell);
+        item.selected = roadTool && (m_context.roadType == type);
+        item.command = { MenuCommandType::SelectRoad, static_cast<int>(type) };
+        model.roads.push_back(item);
+    }
+
+    // 道路の引き方。道路を選んでいない時も、今の設定が分かるよう、選択の印を出す。
+    MenuItem straight;
+    straight.icon = UIIcon::RoadStraight;
+    straight.name = "直線";
+    straight.selected = (m_context.roadDrawMode == RoadDrawMode::Straight);
+    straight.command = { MenuCommandType::SetRoadDrawMode, static_cast<int>(RoadDrawMode::Straight) };
+    model.drawModes.push_back(straight);
+    MenuItem freehand;
+    freehand.icon = UIIcon::RoadFreehand;
+    freehand.name = "自由描き";
+    freehand.selected = (m_context.roadDrawMode == RoadDrawMode::Curve);
+    freehand.command = { MenuCommandType::SetRoadDrawMode, static_cast<int>(RoadDrawMode::Curve) };
+    model.drawModes.push_back(freehand);
+
+    // 情報タブ。
+    const DemandStats& stats = m_demandSystem.GetStats();
+    model.info.push_back({ "日数", std::to_string(m_gameClock.GetDayCount()) + "日目" });
+    model.info.push_back({ "所持金", std::to_string(cash) + "円" });
+    model.info.push_back({ "人口", std::to_string(stats.populationTotal) + "人" });
+    model.info.push_back({ "住民(代表)", std::to_string(stats.agentCount) + "人" });
+    model.info.push_back({ "雇用", std::to_string(stats.jobsFilled) + " / " + std::to_string(stats.jobCapacityTotal) });
+    model.info.push_back({ "住宅 / 職場", std::to_string(stats.houseCount) + " / " + std::to_string(stats.officeCount) });
+
+    // 配置中のしるし(閉じている間、左下に出す)。
+    if (buildingTool)
+    {
+        model.activeToolLabel = BuildingMenuName(m_buildController.GetSelectedType());
+    }
+    else if (roadTool)
+    {
+        model.activeToolLabel = std::string("道路(") + RoadMenuName(m_context.roadType) + ")";
+    }
+
+    model.statusText = m_menuStatus;
+    return model;
+}
+
+void Game::ApplyMenuCommand(const MenuCommand& command)
+{
+    switch (command.type)
+    {
+    case MenuCommandType::SelectBuilding:
+        m_roadSystem.CancelPlacement();
+        m_buildController.SetSelectedType(static_cast<BuildingType>(command.arg));
+        m_context.placementTool = PlacementTool::Building;
+        break;
+    case MenuCommandType::SelectRoad:
+        m_roadSystem.CancelPlacement();
+        m_context.roadType = static_cast<RoadType>(command.arg);
+        m_context.placementTool = PlacementTool::Road;
+        break;
+    case MenuCommandType::SetRoadDrawMode:
+        m_roadSystem.CancelPlacement();
+        m_context.roadDrawMode = static_cast<RoadDrawMode>(command.arg);
+        break;
+    case MenuCommandType::CancelPlacement:
+        m_roadSystem.CancelPlacement();
+        m_context.placementTool = PlacementTool::None;
+        break;
+    case MenuCommandType::Save:
+        m_scenarioManager.Save(ScenarioManager::kQuickSavePath, m_menuStatus);
+        break;
+    case MenuCommandType::Load:
+        m_scenarioManager.Load(ScenarioManager::kQuickSavePath, m_menuStatus);
+        break;
+    case MenuCommandType::None:
+        break;
+    }
+}
+
+void Game::HandleMenuKeys()
+{
+    if (m_context.mode != GameMode::Playing)
+    {
+        return;
+    }
+
+    bool overImGui = false;
+#ifdef ENABLE_EDITOR
+    // デバッグパネルの入力欄に文字を入力している間は、キーをゲームの操作として扱わない。
+    if (ImGui::GetIO().WantTextInput)
+    {
+        return;
+    }
+    overImGui = ImGui::GetIO().WantCaptureMouse;
+#endif
+
+    // Esc、または右クリック(ImGuiのパネルの上の右クリックは除く)。
+    const bool escape = m_inputManager.IsKeyPressed(VK_ESCAPE);
+    const bool cancel = escape || (m_inputManager.IsActionPressed(InputAction::Cancel) && !overImGui);
+
+    if (m_gameUI.IsMenuOpen())
+    {
+        // 開いている: 「戻る」と同じ。
+        if (cancel)
+        {
+            m_gameUI.CloseMenu();
+            m_context.inputConsumed = true;
+        }
+        return;
+    }
+
+    if (m_context.placementTool != PlacementTool::None)
+    {
+        // 配置中: 置きかけの道路があれば、先にそれをやめる(RoadSystemが同じキーで行う)。何も置きかけでなければ、配置ツール自体をやめる。
+        if (cancel && !m_roadSystem.HasPendingPlacement())
+        {
+            m_context.placementTool = PlacementTool::None;
+            m_context.inputConsumed = true;
+        }
+        return;
+    }
+
+    // 何も配置していない時のEscは、メニューを開く。
+    if (escape)
+    {
+        m_gameUI.OpenMenu();
+    }
+}
+
+void Game::SyncMenuTimeScale()
+{
+    const bool open = m_gameUI.IsMenuOpen();
+    if (open && !m_menuWasOpen)
+    {
+        // 開いた: 時間を止め、置きかけの道路はやめる(メニューを閉じた後に、中途半端な状態を残さない)。
+        m_scaleBeforeMenu = m_gameClock.GetTimeScale();
+        m_gameClock.SetTimeScale(0.0f);
+        m_roadSystem.CancelPlacement();
+    }
+    else if (!open && m_menuWasOpen)
+    {
+        m_gameClock.SetTimeScale(m_scaleBeforeMenu);
+    }
+    m_menuWasOpen = open;
 }
 
 void Game::HandleScenarioHotkeys()
@@ -436,6 +661,90 @@ void Game::UpdateAssetDragState()
     const bool insideWindow = mouse.x >= 0.0f && mouse.y >= 0.0f && mouse.x < display.x && mouse.y < display.y;
     state.overGameView = insideWindow && imgui && imgui->HoveredWindow == nullptr && !m_context.mouseOverUI;
     state.dropped = state.overGameView && ImGui::IsMouseReleased(ImGuiMouseButton_Left);
+}
+
+void Game::OnMouseWheel(float notches)
+{
+    m_inputManager.AddMouseWheel(notches);
+}
+
+void Game::UpdateCityCamera()
+{
+    const bool inGame = IsInGameScene();
+    const bool playing = inGame && m_context.mode == GameMode::Playing;
+
+    if (inGame && !m_wasInGameScene)
+    {
+        // ゲームシーンが始まった: フィールドの中心を、見下ろす最初の見え方にする(タイトル画面の水平なカメラのままにしない)。
+        m_cityCamera.SetBounds(m_field.GetWorldWidth() * 0.5f, m_field.GetWorldDepth() * 0.5f);
+        m_cityCamera.Reset(m_camera);
+    }
+    else if (playing && !m_wasPlayingInGame)
+    {
+        // Editing(フリーカメラ)からPlayingへ戻った: 今の視点を引き継ぐ(視点が飛ばないように)。
+        m_cityCamera.AdoptFrom(m_camera);
+    }
+    m_wasInGameScene = inGame;
+    m_wasPlayingInGame = playing;
+
+    // ホイールは、使わない時も取り出して捨てる(溜まったまま、次に使った時に一気に効かないように)。
+    const float wheel = m_inputManager.ConsumeMouseWheel();
+    if (!playing)
+    {
+        m_cameraDragging = false;
+        return;
+    }
+
+    // ImGuiのパネルの上や、文字を入力している間は、カメラを動かさない。ゲームのHUDの上も同じ。
+    bool typing = false;
+    bool overUI = m_context.mouseOverUI;
+#ifdef ENABLE_EDITOR
+    typing = ImGui::GetIO().WantTextInput;
+    overUI = overUI || ImGui::GetIO().WantCaptureMouse;
+#endif
+
+    const POINT mouse = m_inputManager.GetMousePosition(); // ゲームビューの左上が原点
+    const float viewWidth = static_cast<float>(m_renderer.GetViewWidth());
+    const float viewHeight = static_cast<float>(m_renderer.GetViewHeight());
+    const bool insideView = mouse.x >= 0 && mouse.y >= 0 &&
+                            static_cast<float>(mouse.x) < viewWidth && static_cast<float>(mouse.y) < viewHeight;
+    const bool cursorValid = insideView && !overUI;
+
+    // 中ボタン: ゲームビューの上で押した時に、つかみ始める。押している間は続け、離したら終わる。
+    if (m_inputManager.IsActionDown(InputAction::CameraDrag))
+    {
+        if (!m_cameraDragging && m_inputManager.IsActionPressed(InputAction::CameraDrag) && cursorValid)
+        {
+            m_cameraDragging = true;
+        }
+    }
+    else
+    {
+        m_cameraDragging = false;
+    }
+
+    CityCameraInput input;
+    input.deltaSeconds = m_timeManager.GetDeltaTime(); // 実時間(ゲーム内時間の停止・倍速に影響されない)
+    if (!typing && !m_gameUI.IsMenuOpen()) // メニューが開いている間は、キーでカメラを動かさない
+    {
+        input.panX = (m_inputManager.IsActionDown(InputAction::CameraRight) ? 1.0f : 0.0f) -
+                     (m_inputManager.IsActionDown(InputAction::CameraLeft) ? 1.0f : 0.0f);
+        input.panZ = (m_inputManager.IsActionDown(InputAction::CameraForward) ? 1.0f : 0.0f) -
+                     (m_inputManager.IsActionDown(InputAction::CameraBack) ? 1.0f : 0.0f);
+        input.fast = m_inputManager.IsActionDown(InputAction::CameraFast);
+    }
+    input.wheelNotches = cursorValid ? wheel : 0.0f; // UIの上のホイールは、ズームにしない
+    input.dragging = m_cameraDragging;
+    input.cursorValid = cursorValid;
+    input.cursorX = static_cast<float>(mouse.x);
+    input.cursorY = static_cast<float>(mouse.y);
+    input.prevCursorX = static_cast<float>(m_prevCameraCursor.x);
+    input.prevCursorY = static_cast<float>(m_prevCameraCursor.y);
+    input.viewWidth = viewWidth;
+    input.viewHeight = viewHeight;
+
+    m_cityCamera.Update(input, m_camera);
+    m_prevCameraCursor = mouse;
 }
 
 void Game::OnFilesDropped(const std::vector<std::wstring>& paths)
@@ -528,8 +837,14 @@ void Game::UpdateGameUI()
 {
     if (!IsGameUIVisible())
     {
+        // タイトル画面などでは、メニューを開いたままにしない(止めた時間も戻す)。
+        m_gameUI.CloseMenu();
+        SyncMenuTimeScale();
         return;
     }
+
+    // Esc・右クリック(メニューを閉じる/配置をやめる/メニューを開く)は、メニューの更新より先に処理する。
+    HandleMenuKeys();
 
     HudInput input;
     input.screenW = static_cast<float>(m_renderer.GetViewWidth());
@@ -539,7 +854,11 @@ void Game::UpdateGameUI()
     input.mouseX = static_cast<float>(mouse.x);
     input.mouseY = static_cast<float>(mouse.y);
 
-    input.pressed = m_inputManager.IsActionPressed(InputAction::Decide);
+    // HUD・メニューのボタンは、マウスの左ボタンだけで押す(Enter/Spaceは、建物を置く操作のためのキー)。
+    input.pressed = m_inputManager.IsKeyPressed(VK_LBUTTON);
+    input.down = m_inputManager.IsKeyDown(VK_LBUTTON);
+    input.menuEnabled = (m_context.mode == GameMode::Playing); // メニューは、実際に遊ぶ状態(Playing)だけ
+
 
 #ifdef ENABLE_EDITOR
     // デバッグGUI(ImGui)のパネルの上にカーソルがある時は、HUDは反応しない(ImGuiが手前に描かれるため)。
@@ -554,6 +873,12 @@ void Game::UpdateGameUI()
     {
         m_context.inputConsumed = true;
     }
+
+    if (result.menuCommand.type != MenuCommandType::None)
+    {
+        ApplyMenuCommand(result.menuCommand);
+    }
+    SyncMenuTimeScale();
 }
 
 void Game::Draw()

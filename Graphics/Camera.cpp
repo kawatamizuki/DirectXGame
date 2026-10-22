@@ -78,11 +78,31 @@ DirectX::XMFLOAT3 Camera::GetForward() const
 void Camera::SetPosition(float x, float y, float z)
 {
     m_position = { x, y, z };
+    SyncYawPitchFromView();
 }
 
 void Camera::SetTarget(float x, float y, float z)
 {
     m_target = { x, y, z };
+    SyncYawPitchFromView();
+}
+
+// 位置と注視点から、フリーカメラ用の yaw / pitch を求め直す。
+// これをしないと、別の方法(街づくり用のカメラなど)で位置・向きを変えた後に、フリーカメラの回転を始めた瞬間、
+// 古い yaw / pitch に戻って、視点が飛ぶ。向きの式は UpdateTargetFromYawPitch の逆。
+void Camera::SyncYawPitchFromView()
+{
+    const float dx = m_target.x - m_position.x;
+    const float dy = m_target.y - m_position.y;
+    const float dz = m_target.z - m_position.z;
+    const float length = sqrtf(dx * dx + dy * dy + dz * dz);
+    if (length < 1e-4f)
+    {
+        return; // 向きが作れない時は、今の値のまま
+    }
+
+    m_yaw = atan2f(dx, dz);
+    m_pitch = asinf(dy / length);
 }
 
 void Camera::SetProjection(float fovY, float aspect, float nearZ, float farZ)
