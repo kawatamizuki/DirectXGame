@@ -52,6 +52,11 @@ public:
     // ゲームビュー(ウィンドウの中のゲームの絵の四角)の左上の位置(ウィンドウのクライアント座標)。
     void SetViewOrigin(int x, int y) { m_viewOriginX = x; m_viewOriginY = y; }
 
+    // マウスのホイール。ウィンドウのメッセージ(WM_MOUSEWHEEL)で届いた回転量を溜めておき(AddMouseWheel)、
+    // 1フレームに1回、取り出す(ConsumeMouseWheel。取り出すと0に戻る)。単位は「ノッチ」(1目盛り=1.0。奥へ回すと正)。
+    void AddMouseWheel(float notches) { m_wheelNotches += notches; }
+    float ConsumeMouseWheel() { float value = m_wheelNotches; m_wheelNotches = 0.0f; return value; }
+
     bool IsAnyKeyPressed() const;//キーを問わず押されたときだけ
     bool IsAnyGamePadButtonPressed() const;//ボタンを問わず押されたときだけ
     bool IsAnyInputPressed() const;//キーボード or コントローラーの何かが押されたときだけ
@@ -85,6 +90,7 @@ private:
     HWND m_hwnd;
     int m_viewOriginX = 0;   // ゲームビューの左上(ウィンドウのクライアント座標)
     int m_viewOriginY = 0;
+    float m_wheelNotches = 0.0f;   // まだ取り出していないホイールの回転量(ノッチ)
 
     std::array<bool, 256> m_currentKeys;
     std::array<bool, 256> m_previousKeys;

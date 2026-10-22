@@ -90,7 +90,8 @@ struct GameContext
 
     // Playing中に「今何を配置しようとしているか」。
     // BuildController/RoadSystemが同じ左クリックを取り合わないよう、この値で処理を振り分ける。
-    PlacementTool placementTool = PlacementTool::Building;
+    // 初期値はNone: ゲーム内メニュー(右下の「メニュー」→建築)で選ぶまでは、クリックしても何も置かれない。
+    PlacementTool placementTool = PlacementTool::None;
 
     // Roadツール選択中に「今から配置する道路の種類」。BuildパネルのUIから設定される。
     RoadType roadType = RoadType::Normal;

@@ -195,6 +195,12 @@
     <ClCompile Include="UI\FontAtlas.cpp">
       <Filter>ソース ファイル\UI</Filter>
     </ClCompile>
+    <ClCompile Include="UI\GameMenu.cpp">
+      <Filter>ソース ファイル\UI</Filter>
+    </ClCompile>
+    <ClCompile Include="UI\ProceduralUISkin.cpp">
+      <Filter>ソース ファイル\UI</Filter>
+    </ClCompile>
     <ClCompile Include="UI\GameUI.cpp">
       <Filter>ソース ファイル\UI</Filter>
     </ClCompile>
@@ -239,6 +245,9 @@
     </ClCompile>
     <ClCompile Include="DebugTools\AssetViewer.cpp">
       <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\CityCameraController.cpp">
+      <Filter>ソース ファイル\Core</Filter>
     </ClCompile>
     <ClCompile Include="DebugTools\AssetImporter.cpp">
       <Filter>ソース ファイル\DebugTools</Filter>
@@ -473,6 +482,18 @@
     <ClInclude Include="UI\FontAtlas.h">
       <Filter>ヘッダー ファイル\UI</Filter>
     </ClInclude>
+    <ClInclude Include="UI\GameMenu.h">
+      <Filter>ヘッダー ファイル\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="UI\ProceduralUISkin.h">
+      <Filter>ヘッダー ファイル\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="UI\UILayoutUtil.h">
+      <Filter>ヘッダー ファイル\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="UI\UISkin.h">
+      <Filter>ヘッダー ファイル\UI</Filter>
+    </ClInclude>
     <ClInclude Include="UI\GameUI.h">
       <Filter>ヘッダー ファイル\UI</Filter>
     </ClInclude>
@@ -523,6 +544,9 @@
     </ClInclude>
     <ClInclude Include="DebugTools\AssetViewer.h">
       <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\CityCameraController.h">
+      <Filter>ヘッダー ファイル\Core</Filter>
     </ClInclude>
     <ClInclude Include="DebugTools\AssetImporter.h">
       <Filter>ヘッダー ファイル\DebugTools</Filter>

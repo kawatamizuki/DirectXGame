@@ -689,6 +689,28 @@ bool RoadSystem::CommitSegment(
     return true;
 }
 
+bool RoadSystem::HasPendingPlacement() const
+{
+    if (m_curveAwaitingConfirm || m_curveDragActive || !m_curvePendingSegments.empty())
+    {
+        return true;
+    }
+    XMFLOAT3 pendingStart{};
+    return m_straightStrategy && m_straightStrategy->HasPendingStart(pendingStart);
+}
+
+void RoadSystem::CancelPlacement()
+{
+    if (!m_straightStrategy || !m_curveStrategy)
+    {
+        return;
+    }
+    GetActiveStrategy()->Reset();
+    m_pendingStartRequiresSplit = false;
+    m_curveDragActive = false;
+    CancelPendingCurve();
+}
+
 void RoadSystem::Update()
 {
     m_hasLastHit = false;
@@ -700,10 +722,7 @@ void RoadSystem::Update()
 
     if (m_context->input->IsActionPressed(InputAction::Cancel))
     {
-        GetActiveStrategy()->Reset();
-        m_pendingStartRequiresSplit = false;
-        m_curveDragActive = false;
-        CancelPendingCurve();
+        CancelPlacement();
     }
 
     // Buildingツールが選択されている間は道路配置を行わない(BuildControllerにクリックを譲る)

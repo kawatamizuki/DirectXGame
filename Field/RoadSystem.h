@@ -51,6 +51,13 @@ public:
     // 青マスは順序に依存するため、ここでは作らない(GridOrientationRegistry::ImportCellsで保存した一覧を戻す)。
     void RestoreSegments(const std::vector<RoadSegment>& segments);
 
+    // 置きかけの道路(直線の1点目・フリーハンドのドラッグ中・確認待ちの曲線)があるか。
+    // Escや右クリックで、先に置きかけをやめるか、配置ツール自体をやめるかを決めるのに使う。
+    bool HasPendingPlacement() const;
+
+    // 置きかけの道路を全てやめる(Cancelキーと同じ処理)。ゲーム内メニューで別の物を選ぶ時などに呼ぶ。
+    void CancelPlacement();
+
     // 道路メッシュの頂点数(Profilerのメモリ内訳表示に使う)。
     // IRoadMeshGeneratorの完全な定義はRoadSystem.cpp側でしか見えていないため、実装は.cpp側に置く。
     size_t GetMeshVertexCount() const;

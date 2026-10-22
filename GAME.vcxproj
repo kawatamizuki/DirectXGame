@@ -163,7 +163,9 @@
     <ClCompile Include="Graphics\Renderer.cpp" />
     <ClCompile Include="Graphics\DayNightCycle.cpp" />
     <ClCompile Include="UI\FontAtlas.cpp" />
+    <ClCompile Include="UI\GameMenu.cpp" />
     <ClCompile Include="UI\GameUI.cpp" />
+    <ClCompile Include="UI\ProceduralUISkin.cpp" />
     <ClCompile Include="UI\UIRenderer.cpp" />
     <ClCompile Include="imgui\backends\imgui_impl_dx11.cpp" />
     <ClCompile Include="imgui\backends\imgui_impl_win32.cpp" />
@@ -189,6 +191,7 @@
     <ClCompile Include="DebugTools\ModelPreviewRenderer.cpp" />
     <ClCompile Include="DebugTools\AssetBrowser.cpp" />
     <ClCompile Include="DebugTools\AssetViewer.cpp" />
+    <ClCompile Include="Core\CityCameraController.cpp" />
     <ClCompile Include="DebugTools\AssetImporter.cpp" />
     <ClCompile Include="Object\ModelCache.cpp" />
     <ClCompile Include="Field\PropPlacer.cpp" />
@@ -254,7 +257,11 @@
     <ClInclude Include="Graphics\DayNightCycle.h" />
     <ClInclude Include="Graphics\LightingState.h" />
     <ClInclude Include="UI\FontAtlas.h" />
+    <ClInclude Include="UI\GameMenu.h" />
     <ClInclude Include="UI\GameUI.h" />
+    <ClInclude Include="UI\ProceduralUISkin.h" />
+    <ClInclude Include="UI\UILayoutUtil.h" />
+    <ClInclude Include="UI\UISkin.h" />
     <ClInclude Include="UI\UITheme.h" />
     <ClInclude Include="UI\UIRenderer.h" />
     <ClInclude Include="Graphics\Vertex.h" />
@@ -289,6 +296,7 @@
     <ClInclude Include="DebugTools\ModelPreviewRenderer.h" />
     <ClInclude Include="DebugTools\AssetBrowser.h" />
     <ClInclude Include="DebugTools\AssetViewer.h" />
+    <ClInclude Include="Core\CityCameraController.h" />
     <ClInclude Include="DebugTools\AssetImporter.h" />
     <ClInclude Include="Field\PropPlacement.h" />
     <ClInclude Include="Object\ModelCache.h" />

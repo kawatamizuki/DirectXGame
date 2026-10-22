@@ -17,6 +17,7 @@
 #include "ScenarioManager.h"
 #include "AssetBrowser.h"
 #include "AssetViewer.h"
+#include "CityCameraController.h"
 #include "ModelCache.h"
 #include "PropPlacer.h"
 #include "GameUI.h"
@@ -42,6 +43,9 @@ public:
     bool Initialize(HWND hwnd);
     void OnResize(UINT width, UINT height);
 
+    // マウスのホイールが回された(Window::SetMouseWheelCallback から呼ぶ)。ズームなどのために、入力に溜める。
+    void OnMouseWheel(float notches);
+
     // エクスプローラーからウィンドウへファイル・フォルダがドロップされた(Window::SetDropFilesCallback から呼ぶ)。
     // ここでは溜めるだけ。コピー(Assets/Incoming への取り込み)は、次のフレームの更新で行う。
     void OnFilesDropped(const std::vector<std::wstring>& paths);
@@ -52,6 +56,10 @@ public:
     void Finalize();
 
 private:
+    // 街づくり(Playing)のカメラを動かす。ゲームシーンが始まった時は最初の見え方にし、EditingからPlayingへ戻った時は
+    // 今の視点を引き継ぐ。入力(WASD・矢印・Shift・ホイール・中ボタンのドラッグ)を集めて、CityCameraControllerへ渡す。
+    void UpdateCityCamera();
+
     // 今、ゲームシーンか(タイトル画面ではないか)。街の更新・描画は、ゲームシーンの間だけ行う。
     bool IsInGameScene() const;
 
@@ -63,6 +71,18 @@ private:
 
     // HUDの入力処理(カーソルがHUD上か)。ワールドへの操作より先に呼ぶ。
     void UpdateGameUI();
+
+    // ゲーム内メニュー(右下の「メニュー」)に出す内容(建物・道路の項目と値段・街の情報)を集める。
+    MenuModel BuildMenuModel() const;
+
+    // メニューで押された命令(建物・道路を選ぶ・セーブ等)を、実際の処理につなぐ。
+    void ApplyMenuCommand(const MenuCommand& command);
+
+    // Esc・右クリックの扱い: メニューを閉じる/配置をやめる/メニューを開く。メニューの更新より先に呼ぶ。
+    void HandleMenuKeys();
+
+    // メニューが開いている間は、ゲーム内の時間を止める(閉じたら元の倍率へ戻す)。メニューの更新の後に呼ぶ。
+    void SyncMenuTimeScale();
 
     // F5=クイックセーブ、F9=クイックロード。
     void HandleScenarioHotkeys();
@@ -132,8 +152,18 @@ private:
     UIRenderer m_uiRenderer;
     GameUI m_gameUI;
     bool m_uiAvailable = false; // UIRendererの初期化に成功したか
+    bool m_menuWasOpen = false;        // 前のフレームで、ゲーム内メニューが開いていたか(開閉の瞬間を見つけるため)
+    float m_scaleBeforeMenu = 1.0f;    // メニューを開く前の、ゲーム内時間の倍率(閉じたら戻す)
+    std::string m_menuStatus;          // メニューのシステムタブに出す、直前のセーブ/ロードの結果
 
     Camera m_camera;
+
+    // 街づくり(Playing)用のカメラの動かし方(平面の移動+ズーム)。Editingは、DebugEditorのフリーカメラ。
+    CityCameraController m_cityCamera;
+    bool m_wasInGameScene = false;   // 前のフレームで、ゲームシーンだったか(始まった瞬間を見つけるため)
+    bool m_wasPlayingInGame = false; // 前のフレームで、ゲームシーンのPlayingだったか(EditingからPlayingへ戻った瞬間を見つけるため)
+    bool m_cameraDragging = false;   // 中ボタンで、地面をつかんでいる最中か
+    POINT m_prevCameraCursor = { 0, 0 }; // 前のフレームのカーソルの位置(ゲームビューの左上が原点)
 
     GameContext m_context;
 

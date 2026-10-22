@@ -140,6 +140,17 @@ LRESULT Window::HandleMessage(
         return 0;
     }
 
+    case WM_MOUSEWHEEL:
+    {
+        // 回転量は、1目盛りが WHEEL_DELTA(120)。ノッチ(1目盛り=1.0)にして渡す。
+        const float notches = static_cast<float>(GET_WHEEL_DELTA_WPARAM(wparam)) / static_cast<float>(WHEEL_DELTA);
+        if (m_mouseWheelCallback)
+        {
+            m_mouseWheelCallback(notches);
+        }
+        return 0;
+    }
+
     case WM_DROPFILES:
     {
         // ドロップされたパスを全て取り出して、コールバックへ渡す(コピーは、フレームの更新の中で行う)。
@@ -183,4 +194,9 @@ void Window::SetResizeCallback(ResizeCallback callback)
 void Window::SetDropFilesCallback(DropFilesCallback callback)
 {
     m_dropFilesCallback = std::move(callback);
+}
+
+void Window::SetMouseWheelCallback(MouseWheelCallback callback)
+{
+    m_mouseWheelCallback = std::move(callback);
 }
