@@ -572,6 +572,9 @@
     <ClInclude Include="Core\AssetDragState.h">
       <Filter>ヘッダー ファイル\Core</Filter>
     </ClInclude>
+    <ClInclude Include="DebugTools\EditorGuard.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
     <ClInclude Include="DebugTools\EditorUi.h">
       <Filter>ヘッダー ファイル\DebugTools</Filter>
     </ClInclude>

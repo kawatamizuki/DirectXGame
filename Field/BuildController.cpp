@@ -1,6 +1,7 @@
 ﻿#include <cmath>
 #include <algorithm>
 #include "BuildController.h"
+#include "EditorGuard.h"
 #include "GameContext.h"
 #include "Field.h"
 #include "IOccupancyGrid.h"
@@ -326,7 +327,7 @@ void BuildController::Update()
 
     // デバッグGUI(ImGui)の上、またはゲームプレイ用UI(上部HUDなど)の上では配置しない
     // (ゴーストプレビューも出さない)。
-    if (ImGui::GetIO().WantCaptureMouse || m_context->mouseOverUI)
+    if (IsMouseOverEditorUi() || m_context->mouseOverUI)
     {
         return;
     }
@@ -412,10 +413,15 @@ void BuildController::RegisterEditorToggles(EditorSettings& settings)
 void BuildController::Draw(bool* open)
 {
     // 「Build」パネルは、×やEditorメニューで閉じられる。閉じていても、世界側の表示(青マス・ゴースト)は続ける。
+#ifdef ENABLE_EDITOR
+    // 開発用のImGuiパネル。エディタが無いビルド(Release)では、出さない(ImGuiが初期化されていない)。
     if (open == nullptr || *open)
     {
         DrawPanel(open);
     }
+#else
+    (void)open;
+#endif
 
     DrawWorldOverlay();
 }

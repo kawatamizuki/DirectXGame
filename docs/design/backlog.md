@@ -32,7 +32,6 @@
 
 ## エンジン・技術基盤
 
-- **Releaseビルドでの ImGui / カメラ操作**: 現状、`DebugRenderer`はENABLE_EDITORの外で初期化・描画しているが、ImGuiの`NewFrame`/`Render`自体とFree Cameraの移動処理は`DebugEditor`経由で`ENABLE_EDITOR`(Releaseでは未定義)の中に閉じている。Build/City Stats/Profilerパネルや視点移動が配布版で動作しない可能性が高い。配布可能な版を作る際に対応が必要。
 - **GameObjectFactory::FindByIdの最適化**: 現状は線形探索。オブジェクト数が増えてボトルネックになったら、ハンドル+世代番号方式(id→indexの対応表)へのアップグレードを検討する(Profilerパネルで実測して判断)。
 - **建物・道路の削除機能**: `GameObjectFactory::Despawn`は用意済みだが、ゲーム内から呼び出す削除UIは未実装。実装する際は、道路の占有解放(`SetOccupied(false)`)やDemandSystem側の参照(自宅/職場が消えた代表住民の扱い)も合わせて対応が必要。
 
@@ -58,6 +57,8 @@
 - **素材のライセンス確認の残り**: `Models/cube.obj` の出所、`Models/RoadModels/` が City Kit (Roads) で正しいかの確認、取得したバージョンの記録。
 
 ## 対応済み(記録として残す)
+
+- ~~Releaseビルドでの ImGui / エディタ~~ → 2026-10-25 対応。Releaseは、エディタ(ENABLE_EDITOR)を定義せず、デバッグパネル・デバッグ線を出さない実行用のビルドにした。ゲーム内UI(HUD・メニュー・タイトル)だけで、最後まで遊べる。フリーハンド道路の確定は、Releaseではクリック・Enterで行う(画面上の確定ボタンは未実装)。経緯は[release_without_editor.md](../study/release_without_editor.md)。
 
 - ~~本格的なin-game UI(メニュー)・メニューを開いたら時間が止まる方式~~ → 2026-10-22 対応。右下の「メニュー」で開き、ゲーム内の時間が止まる。左の項目(建築・情報・研究・システム)から、建物・道路を選ぶと、メニューが閉じて時間が動き出し、選んだ物を置ける(Esc・右クリックでやめる)。ImGuiの「Build」パネルは、開発用に残している。見た目はスキンに分離。設計は [ui_skin.md](ui_skin.md)、使い方は[ガイド](../guide/asset_browser_guide.md)の§15、勉強資料は [ingame_menu_and_ui_skin.md](../study/ingame_menu_and_ui_skin.md)。
 

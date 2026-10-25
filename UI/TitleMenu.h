@@ -35,8 +35,8 @@ struct TitleResult
 class TitleMenu
 {
 public:
-    // ゲームのタイトル(仮)。決まったら、ここの1行(またはSetTitle)を変える。
-    static constexpr const char* kDefaultTitle = "街づくりゲーム(仮)";
+    // ゲームのタイトル。変える時は、ここの1行(またはSetTitle)を変える。
+    static constexpr const char* kDefaultTitle = "街づくりゲーム";
 
     struct Button
     {

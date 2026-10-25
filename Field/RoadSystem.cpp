@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <sstream>
 #include "RoadSystem.h"
+#include "EditorGuard.h"
 #include "GameContext.h"
 #include "Field.h"
 #include "IOccupancyGrid.h"
@@ -736,13 +737,23 @@ void RoadSystem::Update()
     // (アイコンのImGuiボタンが通常WantCaptureMouseを占有するはずだが、念のため明示的にガードする)。
     if (m_curveAwaitingConfirm)
     {
+#ifndef ENABLE_EDITOR
+        // エディタ(ImGui)が無いビルド(Release)には、確定/取消のImGuiボタンが出ない。代わりに、
+        // クリック・Enter・Spaceで確定する(置ける・払える時だけ。取消は、右クリック・Esc。上のCancelPlacementが処理する)。
+        if (m_context->input->IsActionPressed(InputAction::Decide) && IsPendingCurvePathValid() && IsPendingCurveAffordable())
+        {
+            ConfirmPendingCurve();
+            m_context->inputConsumed = true;
+            return;
+        }
+#endif
         // 確認待ちの間も、置きかけの道の費用をカーソルの横に出し続ける。
         PublishPendingCurveCostPreview();
         return;
     }
 
     // デバッグGUI(ImGui)の上、またはゲームプレイ用UI(上部HUDなど)の上では道路を引かない。
-    if (ImGui::GetIO().WantCaptureMouse || m_context->mouseOverUI)
+    if (IsMouseOverEditorUi() || m_context->mouseOverUI)
     {
         return;
     }
@@ -1535,10 +1546,13 @@ void RoadSystem::Draw()
         m_context->renderer->DrawModel(m_curveGhostModel, ghostTransform, *m_context->camera, 0.5f);
     }
 
+#ifdef ENABLE_EDITOR
+    // 確定/取消のImGuiボタン(エディタ用)。エディタが無いビルドでは、Updateのクリック・Enterで確定する。
     if (m_curveAwaitingConfirm)
     {
         DrawConfirmIcon();
     }
+#endif
 }
 
 void RoadSystem::DrawConfirmIcon()

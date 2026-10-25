@@ -290,6 +290,7 @@ void Game::Update()
 
 
 
+
     // 毎フレームのクリック消費状況をリセットしてから呼び出しを行う。
     // Editorのギズモ/選択と、プレイヤーの配置操作が同じクリックを二重処理するのを防ぐ
     m_context.inputConsumed = false;
@@ -1049,12 +1050,20 @@ void Game::Draw()
 
     if (inGame)
     {
-        if (m_showGridOverlay)
+#ifdef ENABLE_EDITOR
+        const bool showGrid = m_showGridOverlay; // Editorメニューで切り替える
+#else
+        // エディタが無いビルド(Release): 格子線は、建物・道路を置こうとしている間だけ出す(置く場所の目安)。
+        const bool showGrid = (m_context.placementTool != PlacementTool::None);
+#endif
+        if (showGrid)
         {
             m_field.DrawGridOverlay(m_debugRenderer, m_orientationRegistry);
         }
         m_propPlacer.Draw(); // Assetsからのドラッグ中のゴースト
-        m_demandSystem.Draw(m_debugRenderer);
+#ifdef ENABLE_EDITOR
+        m_demandSystem.Draw(m_debugRenderer); // 建物と道路の接続線(デバッグ表示)。エディタが無いビルドでは出さない
+#endif
 
         if (m_context.mode == GameMode::Playing)
         {
@@ -1067,6 +1076,7 @@ void Game::Draw()
     m_debugEditor.Draw();
 #endif
 
+#ifdef ENABLE_EDITOR
     // 人流・需要シミュレーションの統計・プロファイラ・ログはモードによらず常時表示する
     // (Editorメニューのパネル一覧、またはタイトルバーの×で閉じられる)。
     m_demandSystem.DrawDebugUI(m_editorUi.PanelFlag("City Stats"));
@@ -1080,6 +1090,7 @@ void Game::Draw()
 
     // ホバーのヒントとショートカット一覧。全てのパネルを描いた後。
     m_editorUi.EndFrame(editorFrame);
+#endif
 
     // DebugRendererはフィールドの格子線・建物/道路の見た目にも使うため、
     // ENABLE_EDITORの外(Releaseビルドでも)でFlushする。
