@@ -306,6 +306,7 @@
     <ClInclude Include="Object\ModelCache.h" />
     <ClInclude Include="Field\PropPlacer.h" />
     <ClInclude Include="Core\AssetDragState.h" />
+    <ClInclude Include="DebugTools\EditorGuard.h" />
     <ClInclude Include="DebugTools\EditorUi.h" />
     <ClInclude Include="DebugTools\EditorSettings.h" />
     <ClInclude Include="DebugTools\ShortcutTable.h" />
