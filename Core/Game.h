@@ -21,6 +21,7 @@
 #include "ModelCache.h"
 #include "PropPlacer.h"
 #include "GameUI.h"
+#include "TitleMenu.h"
 #include "GameObject.h"
 #include"Camera.h"
 #include "Field.h"
@@ -62,6 +63,12 @@ private:
 
     // 今、ゲームシーンか(タイトル画面ではないか)。街の更新・描画は、ゲームシーンの間だけ行う。
     bool IsInGameScene() const;
+
+    // 今、タイトル画面か。タイトル画面では、背景に初期マップの街を出し、スタート・終了のメニューを出す。
+    bool IsInTitleScene() const;
+
+    // タイトル画面の更新: 始まった瞬間に初期マップを読み込み、カメラを街のまわりでゆっくり回し、スタート・終了のボタンを処理する。
+    void UpdateTitle();
 
     // ゲームプレイ用UI(上部HUD)を出すか。UIの初期化に成功していて、ゲームシーンの間だけtrue。
     bool IsGameUIVisible() const;
@@ -152,6 +159,11 @@ private:
     UIRenderer m_uiRenderer;
     GameUI m_gameUI;
     bool m_uiAvailable = false; // UIRendererの初期化に成功したか
+    TitleMenu m_titleMenu;             // タイトル画面のスタート・終了のメニュー
+    bool m_wasInTitleScene = false;    // 前のフレームで、タイトル画面だったか(始まった瞬間を見つけるため)
+    float m_titleTime = 0.0f;          // タイトル画面が始まってからの時間(秒。カメラを回すのに使う)
+    DirectX::XMFLOAT3 m_titleFocus = { 0.0f, 0.0f, 0.0f }; // タイトル画面のカメラが見る点(街の中心)
+    float m_titleRadius = 10.0f;       // 街の広がり(中心から一番遠い建物・道路の端までの距離)
     bool m_menuWasOpen = false;        // 前のフレームで、ゲーム内メニューが開いていたか(開閉の瞬間を見つけるため)
     float m_scaleBeforeMenu = 1.0f;    // メニューを開く前の、ゲーム内時間の倍率(閉じたら戻す)
     std::string m_menuStatus;          // メニューのシステムタブに出す、直前のセーブ/ロードの結果

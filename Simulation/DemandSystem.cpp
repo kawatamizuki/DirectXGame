@@ -11,6 +11,7 @@
 #include "RoadProximity.h"
 #include "DebugRenderer.h"
 #include "Profiler.h"
+#include "WorldScale.h"
 #include "imgui.h"
 
 using namespace DirectX;
@@ -20,7 +21,7 @@ namespace
     // 建物から道路までの距離がこれを超える場合、「道路に接続していない」とみなす。
     // 「隣接している道だけを使う」という意図に近づけるため、グラフノードまでの距離ではなく
     // 道路区間そのものまでの距離(FindNearestPointOnRoad)に対して使う、狭めのしきい値。
-    constexpr float kAdjacentDistance = 1.5f;
+    constexpr float kAdjacentDistance = WorldScale::FromLegacy(1.5f); // マス基準(マスが1.0だった頃の1.5)。マスの大きさに連動する
 
     // Houseの位置とidだけを持つ軽量なコピー。
     // GameObject*のまま保持すると、途中でGameObjectFactory::Spawnが
@@ -226,7 +227,8 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
         agent.homeObjectId = homeId;
         agent.hasOffice = hasOffice;
         agent.officeObjectId = officeId;
-        agent.speed = entry.GetFloat("speed", agent.speed);
+        // 速さ・位置・大きさ・経路は、保存した時のマスの大きさでの値。今の大きさに合わせる(context.spaceScale)。
+        agent.speed = entry.GetFloat("speed", agent.speed / context.spaceScale) * context.spaceScale;
         agent.scheduleOffsetHours = entry.GetFloat("scheduleOffsetHours", 0.0f);
 
         // 状態の名前が未知なら、安全側の「家にいる」にする。職場が無い住民は常に家にいる。
@@ -247,6 +249,9 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
                     XMFLOAT3 point;
                     if (JsonToVec3(waypoints->At(w), point))
                     {
+                        point.x *= context.spaceScale;
+                        point.y *= context.spaceScale;
+                        point.z *= context.spaceScale;
                         agent.waypoints.push_back(point);
                     }
                 }
@@ -287,6 +292,12 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
         Transform transform;
         JsonToVec3(entry.Find("position") ? *entry.Find("position") : Json(), transform.position);
         JsonToVec3(entry.Find("scale") ? *entry.Find("scale") : Json(), transform.scale);
+        transform.position.x *= context.spaceScale;
+        transform.position.y *= context.spaceScale;
+        transform.position.z *= context.spaceScale;
+        transform.scale.x *= context.spaceScale;
+        transform.scale.y *= context.spaceScale;
+        transform.scale.z *= context.spaceScale;
         GameObject& marker = GameObjectFactory::Spawn(objects, m_agentModel, transform, ObjectKind::Agent);
         marker.visible = (agent.state == ResidentAgentState::Commuting || agent.state == ResidentAgentState::CommutingHome);
         agent.objectId = marker.id;
@@ -495,7 +506,8 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
             // House/Officeを実寸に合わせて1マスに収まるよう自動スケールする形に直した結果、
             // 建物の高さは0.6〜0.9m程度になった。キャラクターモデルの実測の高さは0.67mなので、
             // 建物より大きく見えないよう控えめな0.5倍にしている(見た目は後で調整可能)。
-            markerTransform.scale = { 0.5f, 0.5f, 0.5f };
+            const float agentScale = WorldScale::FromLegacy(0.5f); // マスの大きさに連動させる(マスが1.0の時は0.5)
+            markerTransform.scale = { agentScale, agentScale, agentScale };
 
             GameObject& marker = GameObjectFactory::Spawn(*context.objects, m_agentModel, markerTransform, ObjectKind::Agent);
             marker.visible = false; // 自宅内にいる扱いなので、通勤を始めるまでは表示しない

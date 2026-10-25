@@ -76,6 +76,10 @@ public:
     void DrawDebugUI(bool* open = nullptr);
 
 private:
+    // ApplySnapshotの本体。snapshotは、既に今のマスの大きさに合わせてある物。spaceScaleは、各ISaveableに伝える変換の比
+    // (今のマスの大きさ / 保存した時のマスの大きさ)。
+    bool ApplySnapshotImpl(const WorldSnapshot& snapshot, float spaceScale, std::string& message);
+
     bool ReadFileBytes(const std::string& path, std::string& bytes, std::string& error) const;
 
     GameContext* m_context = nullptr;

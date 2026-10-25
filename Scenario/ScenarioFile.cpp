@@ -143,6 +143,9 @@ namespace ScenarioFile
     {
         Json root = Json::MakeObject();
         root.Set("version", snapshot.version);
+        // 保存した時の1マスの大きさ。座標・大きさ・速さは、この大きさを基準にした値なので、
+        // 読み込む時に、今のマスの大きさとの比で変換できるように残す。
+        root.Set("cellSize", snapshot.cellSize);
         root.Set("state", snapshot.state);
 
         Json roads = Json::MakeArray();
@@ -250,6 +253,19 @@ namespace ScenarioFile
 
         WorldSnapshot result;
         result.version = version;
+
+        // 保存した時の1マスの大きさ。無い(マスの大きさを記録する前の古いセーブ)なら、当時の大きさ。
+        // 不正な値(0以下・数でない)は、当時の大きさとして扱う(変換の割り算で壊れないように)。
+        result.cellSize = WorldSnapshot::kLegacyCellSize;
+        const Json* cellSizeJson = root.Find("cellSize");
+        if (cellSizeJson && cellSizeJson->IsNumber() && cellSizeJson->AsFloat(0.0f) > 0.0f)
+        {
+            result.cellSize = cellSizeJson->AsFloat(WorldSnapshot::kLegacyCellSize);
+        }
+        else if (cellSizeJson)
+        {
+            warnings.push_back("cellSize が不正なため、古い大きさ(1.0)として扱いました");
+        }
 
         // ---- 道路 ----
         const Json* roads = root.Find("roads");
@@ -453,7 +469,7 @@ namespace ScenarioFile
         for (const auto& member : root.Members())
         {
             const std::string& key = member.first;
-            if (key != "version" && key != "state" && key != "roads" && key != "buildings" && key != "orientationCells" && key != "props")
+            if (key != "version" && key != "cellSize" && key != "state" && key != "roads" && key != "buildings" && key != "orientationCells" && key != "props")
             {
                 warnings.push_back("知らない項目 \"" + key + "\" を無視しました");
             }

@@ -54,6 +54,7 @@ void ScenarioManager::SetFormat(const ISnapshotFormat* format)
 void ScenarioManager::CaptureSnapshot(WorldSnapshot& snapshot) const
 {
     snapshot = WorldSnapshot();
+    snapshot.cellSize = m_field ? m_field->GetCellSize() : WorldSnapshot::kLegacyCellSize; // 保存した時のマスの大きさ(読み込みで変換するため)
     if (!m_context || !m_roadSystem || !m_orientationRegistry)
     {
         return;
@@ -164,10 +165,28 @@ bool ScenarioManager::ApplySnapshot(const WorldSnapshot& snapshot, std::string& 
         return false;
     }
 
+    // 保存した時の1マスの大きさが今と違えば(マスを大きくした後に、古いセーブを読む時など)、
+    // 場所・大きさに関する値を、今の大きさに合わせて変換した写しを使う。
+    const float spaceScale = (snapshot.cellSize > 0.0f) ? (m_field->GetCellSize() / snapshot.cellSize) : 1.0f;
+    if (spaceScale != 1.0f)
+    {
+        WorldSnapshot scaled = snapshot;
+        ScaleWorldSnapshot(scaled, spaceScale);
+        scaled.cellSize = m_field->GetCellSize();
+        Debug::Info("ScenarioManager: マスの大きさが保存した時(" + std::to_string(snapshot.cellSize) + ")と違うため、" +
+                    std::to_string(spaceScale) + " 倍に変換して読み込みます");
+        return ApplySnapshotImpl(scaled, spaceScale, message);
+    }
+    return ApplySnapshotImpl(snapshot, 1.0f, message);
+}
+
+bool ScenarioManager::ApplySnapshotImpl(const WorldSnapshot& snapshot, float spaceScale, std::string& message)
+{
     ClearWorld();
 
     LoadContext loadContext;
     loadContext.game = m_context;
+    loadContext.spaceScale = spaceScale;
 
     // ---- 建物: そのまま生成し、占有に登録する(青マスは保存した一覧を別に戻すので登録しない) ----
     int failedBuildings = 0;

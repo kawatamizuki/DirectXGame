@@ -35,8 +35,8 @@ namespace
     }
 
     // 道路⇔建物の向き合わせ(GridOrientationRegistryの主張、近くの建物角度の検索)で
-    // 「近く」とみなす距離。セルサイズの2倍程度(調整可能)。
-    constexpr float kOrientationAlignDistance = 2.0f;
+    // 「近く」とみなす距離(マスの何倍か。調整可能)。マスの大きさが変わっても、同じ比率を保つ。
+    constexpr float kOrientationAlignDistanceInCells = 2.0f;
 
     // segmentの道路面を表す向き付き矩形(中心線を道幅で膨らませた帯)を返す。
     // endExtensionだけ始点・終点側にも延長できる(行き止まりの見た目の延長に合わせる用)。
@@ -559,7 +559,8 @@ std::optional<float> RoadSystem::FindNearbyBuildingYaw(const XMFLOAT3& point) co
     }
 
     XMVECTOR pointVec = XMLoadFloat3(&point);
-    float bestDistSq = kOrientationAlignDistance * kOrientationAlignDistance;
+    const float alignDistance = kOrientationAlignDistanceInCells * (m_field ? m_field->GetCellSize() : 1.0f);
+    float bestDistSq = alignDistance * alignDistance;
     bool found = false;
     float bestYaw = 0.0f;
 

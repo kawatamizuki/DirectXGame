@@ -2,6 +2,7 @@
 #include <vector>
 #include <cstdint>
 #include <DirectXMath.h>
+#include "WorldScale.h"
 
 // 代表住民の行動状態。
 enum class ResidentAgentState
@@ -36,5 +37,5 @@ struct ResidentAgent
     // 全員が同じ瞬間に出発しないよう、生成時にResidentScheduleが住民idから決める。
     float scheduleOffsetHours = 0.0f;
 
-    float speed = 2.0f; // 移動速度(units/sec)
+    float speed = WorldScale::FromLegacy(2.0f); // 移動速度(units/sec)。1秒に2マス進む(マスの大きさに連動)
 };

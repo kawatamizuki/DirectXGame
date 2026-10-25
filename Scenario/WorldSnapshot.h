@@ -7,6 +7,7 @@
 #include "BuildingPlacement.h"
 #include "Transform.h"
 #include "Json.h"
+#include "WorldScale.h"
 
 // セーブする建物1棟ぶん(自己完結したレコード)。
 struct SnapshotBuilding
@@ -44,6 +45,11 @@ struct WorldSnapshot
 
     int version = kCurrentVersion;
 
+    // 保存した時の1マスの大きさ(ワールド単位)。座標・大きさ・速さは、この大きさを基準にした値。
+    // 読み込む時、今のマスの大きさとの比で変換する(ScaleWorldSnapshot)。記録が無い古いセーブは、当時の大きさ(kLegacyCellSize)。
+    static constexpr float kLegacyCellSize = WorldScale::kLegacyCellSize;
+    float cellSize = kLegacyCellSize;
+
     std::vector<RoadSegment> roads;                          // debugLoad(混雑の表示用)は保存しない
     std::vector<SnapshotBuilding> buildings;                 // 配列の添字がそのまま建物のuid(他の保存データが建物を指す時に使う)
     std::vector<SnapshotOrientationCell> orientationCells;   // 作られた順(=優先順)
@@ -52,3 +58,9 @@ struct WorldSnapshot
     // システムごとの状態の区画。キーがISaveable::SaveKey()。各区画には"version"が入る。
     Json state = Json::MakeObject();
 };
+
+// snapshotの、場所・大きさに関する値(道路の座標と幅、建物と飾りの位置と拡大、建物の占有範囲、青マスの原点)を、
+// factor倍する。マスの大きさを変えた時に、古いセーブの街を、今のマスの大きさに合わせて読み込むために使う。
+// 「何マス目か」の整数(マスの番号・マスの数)と、向き(角度)は変わらない。
+// システムごとの状態(state。住民の位置・速さなど)は、各システムが自分でLoadContext::spaceScaleを使って変換する。
+void ScaleWorldSnapshot(WorldSnapshot& snapshot, float factor);

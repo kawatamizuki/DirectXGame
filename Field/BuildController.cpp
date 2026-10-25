@@ -24,7 +24,7 @@ namespace
 {
     // 近くの道路/GridOrientationRegistryを「近い」とみなす距離。RoadSystem.cppの
     // kOrientationAlignDistanceと同じ考え方の値(セルサイズの2倍程度、調整可能)。
-    constexpr float kRoadAlignDistance = 2.0f;
+    constexpr float kRoadAlignDistanceInCells = 2.0f; // マスの何倍まで「近く」とみなすか(マスの大きさが変わっても、同じ比率を保つ)
 }
 
 void BuildController::Initialize(
@@ -100,7 +100,7 @@ BuildController::PlacementFrame BuildController::ComputePlacementFrame(const XMF
     if (m_roadSystem)
     {
         std::optional<NearestRoadPoint> nearest =
-            FindNearestPointOnRoad(m_roadSystem->GetSegments(), hitPoint, kRoadAlignDistance);
+            FindNearestPointOnRoad(m_roadSystem->GetSegments(), hitPoint, kRoadAlignDistanceInCells * m_field->GetCellSize());
         if (nearest.has_value())
         {
             const RoadSegment& segment = m_roadSystem->GetSegments()[nearest->segmentIndex];

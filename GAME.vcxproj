@@ -145,6 +145,7 @@
     <ClCompile Include="Scenario\Json.cpp" />
     <ClCompile Include="Scenario\JsonFormat.cpp" />
     <ClCompile Include="Scenario\ScenarioFile.cpp" />
+    <ClCompile Include="Scenario\WorldSnapshot.cpp" />
     <ClCompile Include="Scenario\ScenarioManager.cpp" />
     <ClCompile Include="Core\Window.cpp" />
     <ClCompile Include="DebugTools\Debug.cpp" />
@@ -163,6 +164,7 @@
     <ClCompile Include="Graphics\Renderer.cpp" />
     <ClCompile Include="Graphics\DayNightCycle.cpp" />
     <ClCompile Include="UI\FontAtlas.cpp" />
+    <ClCompile Include="UI\TitleMenu.cpp" />
     <ClCompile Include="UI\GameMenu.cpp" />
     <ClCompile Include="UI\GameUI.cpp" />
     <ClCompile Include="UI\ProceduralUISkin.cpp" />
@@ -236,6 +238,7 @@
     <ClInclude Include="Scenario\ScenarioManager.h" />
     <ClInclude Include="Scenario\ScenarioFile.h" />
     <ClInclude Include="Scenario\WorldSnapshot.h" />
+    <ClInclude Include="Field\WorldScale.h" />
     <ClInclude Include="Core\Window.h" />
     <ClInclude Include="DebugTools\Debug.h" />
     <ClInclude Include="DebugTools\DebugEditor.h" />
@@ -257,6 +260,7 @@
     <ClInclude Include="Graphics\DayNightCycle.h" />
     <ClInclude Include="Graphics\LightingState.h" />
     <ClInclude Include="UI\FontAtlas.h" />
+    <ClInclude Include="UI\TitleMenu.h" />
     <ClInclude Include="UI\GameMenu.h" />
     <ClInclude Include="UI\GameUI.h" />
     <ClInclude Include="UI\ProceduralUISkin.h" />

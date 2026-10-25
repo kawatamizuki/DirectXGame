@@ -147,6 +147,9 @@
     <ClCompile Include="Scenario\ScenarioFile.cpp">
       <Filter>ソース ファイル\Scenario</Filter>
     </ClCompile>
+    <ClCompile Include="Scenario\WorldSnapshot.cpp">
+      <Filter>ソース ファイル\Scenario</Filter>
+    </ClCompile>
     <ClCompile Include="Scenario\ScenarioManager.cpp">
       <Filter>ソース ファイル\Scenario</Filter>
     </ClCompile>
@@ -193,6 +196,9 @@
       <Filter>ソース ファイル\Graphics</Filter>
     </ClCompile>
     <ClCompile Include="UI\FontAtlas.cpp">
+      <Filter>ソース ファイル\UI</Filter>
+    </ClCompile>
+    <ClCompile Include="UI\TitleMenu.cpp">
       <Filter>ソース ファイル\UI</Filter>
     </ClCompile>
     <ClCompile Include="UI\GameMenu.cpp">
@@ -482,6 +488,9 @@
     <ClInclude Include="UI\FontAtlas.h">
       <Filter>ヘッダー ファイル\UI</Filter>
     </ClInclude>
+    <ClInclude Include="UI\TitleMenu.h">
+      <Filter>ヘッダー ファイル\UI</Filter>
+    </ClInclude>
     <ClInclude Include="UI\GameMenu.h">
       <Filter>ヘッダー ファイル\UI</Filter>
     </ClInclude>
@@ -588,6 +597,9 @@
       <Filter>ヘッダー ファイル\Object</Filter>
     </ClInclude>
     <ClInclude Include="Field\Field.h">
+      <Filter>ヘッダー ファイル\Field</Filter>
+    </ClInclude>
+    <ClInclude Include="Field\WorldScale.h">
       <Filter>ヘッダー ファイル\Field</Filter>
     </ClInclude>
     <ClInclude Include="Field\IOccupancyGrid.h">

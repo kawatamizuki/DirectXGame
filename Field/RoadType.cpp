@@ -1,4 +1,5 @@
 ﻿#include "RoadType.h"
+#include "WorldScale.h"
 #include <cmath>
 
 const RoadTypeDefinition& GetRoadTypeDefinition(RoadType type)
@@ -9,7 +10,7 @@ const RoadTypeDefinition& GetRoadTypeDefinition(RoadType type)
     static const RoadTypeDefinition narrowDef
     {
         "Narrow",
-        0.6f,  // width
+        WorldScale::FromLegacy(0.6f),  // width(マス基準。マスの大きさに連動する)
         50.0f, // capacity
         20,    // costPerCell(仮)
         1.0f   // pedestrianFriendliness(未使用)
@@ -19,7 +20,7 @@ const RoadTypeDefinition& GetRoadTypeDefinition(RoadType type)
     static const RoadTypeDefinition normalDef
     {
         "Normal",
-        1.0f,   // width
+        WorldScale::FromLegacy(1.0f),   // width(同上)
         100.0f, // capacity
         20,     // costPerCell(仮)
         0.7f    // pedestrianFriendliness(未使用)
@@ -29,7 +30,7 @@ const RoadTypeDefinition& GetRoadTypeDefinition(RoadType type)
     static const RoadTypeDefinition largeDef
     {
         "Large",
-        1.6f,   // width
+        WorldScale::FromLegacy(1.6f),   // width(同上)
         200.0f, // capacity
         20,     // costPerCell(仮。いずれ他の種類より高くする)
         0.4f    // pedestrianFriendliness(未使用)

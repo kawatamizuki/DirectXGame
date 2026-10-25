@@ -4,6 +4,9 @@
 #include "InputAction.h"
 #include "BakedModelCache.h"
 #include "AssetImporter.h"
+#include "WorldScale.h"
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -101,8 +104,8 @@ bool Game::Initialize(HWND hwnd)
         DirectX::XMConvertToRadians(45.0f),
         static_cast<float>(m_renderer.GetViewWidth()) /
         static_cast<float>(m_renderer.GetViewHeight()),
-        0.1f,
-        100.0f
+        WorldScale::kCameraNearPlane,
+        WorldScale::kCameraFarPlane
     );
 
 
@@ -150,8 +153,20 @@ bool Game::Initialize(HWND hwnd)
         return false;
     }
 
-    m_field.Initialize(20, 20, 1.0f);
+    m_field.Initialize(WorldScale::kFieldWidthCells, WorldScale::kFieldDepthCells, WorldScale::kCellSize);
     m_propPlacer.Initialize(&m_context, &m_field);
+
+    // 街づくりのカメラの距離。最初のズーム・一番寄る距離は絶対の値(マスを大きくすると、建物が大きく映る)、
+    // 一番引ける距離だけフィールドの幅に合わせる(一番引けば、全体が見える)。
+    // 平行移動の速さ・ズームの1目盛りの比率は、距離に比例するので、そのままでよい。
+    {
+        CityCameraSettings camera = m_cityCamera.GetSettings();
+        camera.defaultDistance = WorldScale::kCameraDefaultDistance;
+        camera.minDistance = WorldScale::kCameraMinDistance;
+        camera.maxDistance = WorldScale::kCameraMaxDistanceFieldRatio * m_field.GetWorldWidth();
+        camera.boundsMargin = 2.0f * m_field.GetCellSize(); // 最初は2.0(マス1.0の時の2マス分)
+        m_cityCamera.SetSettings(camera);
+    }
 
     // Assetsパネルの「シーンの中央に置く」と、フォルダ操作の「使用中」の判定を、ゲーム側のつなぎで渡す。
     m_assetBrowser.SetPlaceAtCenterHandler([this](const AssetEntry& entry) { PlaceAssetAtViewCenter(entry.path); });
@@ -249,8 +264,8 @@ void Game::OnResize(UINT width, UINT height)
     m_camera.SetProjection(
         DirectX::XMConvertToRadians(45.0f),
         static_cast<float>(width) / static_cast<float>(height),
-        0.1f,
-        100.0f
+        WorldScale::kCameraNearPlane,
+        WorldScale::kCameraFarPlane
     );
 }
 
@@ -265,6 +280,15 @@ void Game::RunFrame()
 void Game::Update()
 {
     Profiler::BeginFrame();
+
+
+
+
+
+
+
+
+
 
     // 毎フレームのクリック消費状況をリセットしてから呼び出しを行う。
     // Editorのギズモ/選択と、プレイヤーの配置操作が同じクリックを二重処理するのを防ぐ
@@ -328,6 +352,9 @@ void Game::Update()
     // 街づくり(Playing)のカメラ。フリーカメラ(DebugEditor::Update の中)は、Editingの間だけ動く。
     UpdateCityCamera();
 
+    // タイトル画面(背景の街・カメラ・スタート/終了のメニュー)。ゲームシーンの間は何もしない。
+    UpdateTitle();
+
 #ifdef ENABLE_EDITOR
     m_debugEditor.Update();
     m_editorUi.SaveSettingsIfChanged();
@@ -351,6 +378,113 @@ void Game::Update()
 
         // 住民の移動・需要更新は、ゲーム内時間の倍率(停止/倍速)に従って進める。
         m_demandSystem.Update(m_gameClock.GetScaledDeltaSeconds(), m_context, m_roadSystem.GetSegments());
+    }
+}
+
+bool Game::IsInTitleScene() const
+{
+    return m_sceneManager.GetCurrentSceneName() == SceneName::Title;
+}
+
+void Game::UpdateTitle()
+{
+    const bool inTitle = IsInTitleScene();
+    if (inTitle && !m_wasInTitleScene)
+    {
+        // タイトル画面が始まった: 背景に、初期マップの街を出す(無ければ、空のフィールドのまま)。
+        // 街の更新(住民・需要)は、ゲームシーンの間だけなので、背景は静止した街になる(カメラと昼夜の光だけが動く)。
+        m_titleTime = 0.0f;
+        if (m_scenarioManager.LoadStartScenario())
+        {
+            Debug::Info("Game: タイトル画面の背景に、初期マップを読み込みました");
+        }
+
+        // 街の広がり(建物・道路の端が入る四角の中心と、そこから一番遠い点までの距離)を求めて、カメラが回る中心にする。
+        bool any = false;
+        float minX = 0.0f, maxX = 0.0f, minZ = 0.0f, maxZ = 0.0f;
+        auto include = [&](float x, float z)
+        {
+            if (!any) { minX = maxX = x; minZ = maxZ = z; any = true; return; }
+            minX = (std::min)(minX, x); maxX = (std::max)(maxX, x);
+            minZ = (std::min)(minZ, z); maxZ = (std::max)(maxZ, z);
+        };
+        for (const GameObject& obj : m_objects)
+        {
+            if (obj.kind == ObjectKind::Building) { include(obj.transform.position.x, obj.transform.position.z); }
+        }
+        for (const RoadSegment& road : m_roadSystem.GetSegments())
+        {
+            include(road.start.x, road.start.z);
+            include(road.end.x, road.end.z);
+        }
+        if (any)
+        {
+            m_titleFocus = DirectX::XMFLOAT3((minX + maxX) * 0.5f, 0.0f, (minZ + maxZ) * 0.5f);
+            const float halfX = (maxX - minX) * 0.5f;
+            const float halfZ = (maxZ - minZ) * 0.5f;
+            m_titleRadius = std::sqrt(halfX * halfX + halfZ * halfZ) + m_field.GetCellSize();
+        }
+        else
+        {
+            m_titleFocus = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
+            m_titleRadius = m_field.GetWorldWidth() * 0.25f;
+        }
+    }
+    m_wasInTitleScene = inTitle;
+    if (!inTitle)
+    {
+        return;
+    }
+
+    // ---- カメラ: 街の中心を見下ろしながら、ゆっくり回る ----
+    m_titleTime += m_timeManager.GetDeltaTime();
+    {
+        constexpr float kPitch = 0.62f;         // 見下ろす角度(ラジアン。約35度)
+        constexpr float kYawStart = 0.6f;
+        constexpr float kYawSpeed = 0.08f;      // 1秒に回る角度(ラジアン)。約78秒で1周
+        float distance = m_titleRadius * 2.8f + 4.0f;
+        distance = (std::max)(10.0f, (std::min)(distance, m_field.GetWorldWidth() * 1.2f));
+        const float yaw = kYawStart + m_titleTime * kYawSpeed;
+        const float horizontal = std::cos(kPitch) * distance;
+        m_camera.SetTarget(m_titleFocus.x, 0.0f, m_titleFocus.z);
+        m_camera.SetPosition(
+            m_titleFocus.x + std::sin(yaw) * horizontal,
+            std::sin(kPitch) * distance,
+            m_titleFocus.z + std::cos(yaw) * horizontal);
+    }
+
+    // ---- メニュー(スタート・終了) ----
+    if (!m_uiAvailable)
+    {
+        // UIが使えない時は、Enterでだけ始められる。
+        if (m_inputManager.IsKeyPressed(VK_RETURN)) { m_sceneManager.ChangeScene(SceneName::Game); }
+        return;
+    }
+
+    TitleInput input;
+    input.screenW = static_cast<float>(m_renderer.GetViewWidth());
+    input.screenH = static_cast<float>(m_renderer.GetViewHeight());
+    const POINT mouse = m_inputManager.GetMousePosition(); // ゲームビューの左上が原点
+    input.mouseX = static_cast<float>(mouse.x);
+    input.mouseY = static_cast<float>(mouse.y);
+    input.pressed = m_inputManager.IsKeyPressed(VK_LBUTTON);
+    input.down = m_inputManager.IsKeyDown(VK_LBUTTON);
+    bool typing = false;
+#ifdef ENABLE_EDITOR
+    // デバッグGUI(ImGui)のパネルの上では反応しない。入力欄に文字を入力している間は、Enterも使わない。
+    input.blockedByOtherUI = ImGui::GetIO().WantCaptureMouse;
+    typing = ImGui::GetIO().WantTextInput;
+#endif
+
+
+    const TitleResult result = m_titleMenu.Update(input);
+    if (result.command == TitleCommand::Start || (!typing && m_inputManager.IsKeyPressed(VK_RETURN)))
+    {
+        m_sceneManager.ChangeScene(SceneName::Game);
+    }
+    else if (result.command == TitleCommand::Quit)
+    {
+        PostMessage(m_hwnd, WM_CLOSE, 0, 0); // ウィンドウを閉じる(Windowが終了の処理を行う)
     }
 }
 
@@ -890,9 +1024,11 @@ void Game::Draw()
 
     m_sceneManager.Draw();
 
-    // 街(地面・建物・格子線・道路・住民)は、ゲームシーンの間だけ描く。タイトル画面には、街を出さない。
+    // 街(地面・建物・道路・住民)は、ゲームシーンと、タイトル画面(背景)で描く。
+    // 格子線・建設のゴースト・接続線・デバッグ表示は、ゲームシーンだけ。
     const bool inGame = IsInGameScene();
-    if (inGame)
+    const bool inTitle = IsInTitleScene();
+    if (inGame || inTitle)
     {
         PROFILE_SCOPE("Game::Draw ObjectLoop");
         for (auto& obj : m_objects)
@@ -905,6 +1041,11 @@ void Game::Draw()
     }
 
     const EditorUi::FrameInfo editorFrame = BuildEditorFrameInfo(); // ヒントの表示用(今フレームのモード・HUDの上か)
+
+    if (inTitle)
+    {
+        m_roadSystem.Draw(); // 背景の街の道路(置きかけの表示は、更新されないので出ない)
+    }
 
     if (inGame)
     {
@@ -946,15 +1087,22 @@ void Game::Draw()
 
     // ゲームプレイ用UIは、3Dとデバッグ線の手前、ImGuiのデバッグパネルの奥に描く
     // (ImGuiはm_debugEditor.EndFrameで最前面に描かれる)。
-    if (IsGameUIVisible())
+    if (IsGameUIVisible() || (m_uiAvailable && inTitle))
     {
-        // HUDは、ゲームビューの中に描く(ビューの左上を原点にして、ビューの大きさに合わせて並べる)。
+        // HUD(タイトル画面では、スタート・終了のメニュー)は、ゲームビューの中に描く(ビューの左上を原点にして、ビューの大きさに合わせて並べる)。
         m_uiRenderer.BeginFrame(
             static_cast<float>(m_renderer.GetViewWidth()),
             static_cast<float>(m_renderer.GetViewHeight()),
             m_renderer.GetViewX(),
             m_renderer.GetViewY());
-        m_gameUI.Draw(BuildHudState());
+        if (inTitle)
+        {
+            m_titleMenu.Draw(m_uiRenderer, m_gameUI.GetSkin()); // 見た目(スキン)は、HUD・ゲーム内メニューと同じ物を使う
+        }
+        else
+        {
+            m_gameUI.Draw(BuildHudState());
+        }
         m_uiRenderer.EndFrame();
     }
 
