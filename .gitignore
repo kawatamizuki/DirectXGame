@@ -89,3 +89,6 @@ Assets/Incoming/
 
 # エディタの個人設定(パネルの表示・ヒントのON/OFFなど。Editorメニューが自動で書く。配置はimgui.iniに別に保存される)
 Settings/
+
+# 提出用の実行環境(tools/make_release_package.ps1 が作る)
+dist/

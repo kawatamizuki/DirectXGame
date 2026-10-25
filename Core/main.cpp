@@ -1,6 +1,7 @@
 ﻿
 #include "Window.h"
 #include "Game.h"
+#include <cwchar>
 
 #ifdef _DEBUG
 #include "DebugMemory.h"
@@ -16,6 +17,26 @@ int WINAPI wWinMain(
 
 #ifdef _DEBUG
     DebugMemory::EnableLeakCheck();
+#endif
+
+#ifndef ENABLE_EDITOR
+    // 実行用のビルド(Release): exeのあるフォルダを、作業フォルダにする。
+    // モデル・シェーダー・初期マップは、作業フォルダからの相対パスで読むため、ショートカットや別の場所から
+    // 起動しても、exeの隣の素材を、正しく読める(ダブルクリックだけで動く)。
+    // 開発用のビルド(Debug)は、プロジェクトのフォルダの素材を読むので、変えない。
+    {
+        wchar_t exePath[MAX_PATH] = {};
+        const DWORD length = GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+        if (length > 0 && length < MAX_PATH)
+        {
+            wchar_t* lastSeparator = wcsrchr(exePath, L'\\');
+            if (lastSeparator)
+            {
+                *lastSeparator = L'\0';
+                SetCurrentDirectoryW(exePath);
+            }
+        }
+    }
 #endif
 
     Window window;
