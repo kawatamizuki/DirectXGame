@@ -1,7 +1,9 @@
 #include "AudioSystem.h"
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include "Debug.h"
+#include "SoundPack.h"
 
 namespace
 {
@@ -54,6 +56,39 @@ bool AudioSystem::LoadTable(const std::string& path)
     }
     Debug::Info("AudioSystem: " + message);
     return true;
+}
+
+int AudioSystem::LoadPack(const std::string& path)
+{
+    if (!IsAvailable())
+    {
+        return 0;
+    }
+    std::vector<SoundPackEntry> entries;
+    std::string message;
+    if (!SoundPack::Read(path, entries, message))
+    {
+        // パックが無いのは、開発中は普通のこと。壊れている時だけ、警告する。
+        if (std::filesystem::exists(path))
+        {
+            Debug::Warning("AudioSystem: " + message);
+        }
+        return 0;
+    }
+    int registered = 0;
+    for (SoundPackEntry& entry : entries)
+    {
+        if (m_backend->RegisterMemoryFile(entry.name, std::move(entry.data)))
+        {
+            ++registered;
+        }
+        else
+        {
+            Debug::Warning("AudioSystem: 音のパックの中の音を登録できませんでした: " + entry.name);
+        }
+    }
+    Debug::Info("AudioSystem: " + message + "、登録 " + std::to_string(registered) + " 件");
+    return registered;
 }
 
 void AudioSystem::WarnOnce(const std::string& key, const std::string& message)

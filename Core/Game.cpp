@@ -56,6 +56,8 @@ bool Game::Initialize(HWND hwnd)
     {
         Debug::Warning("Game::Initialize : 音の初期化に失敗しました(音なしで続行します)");
     }
+    // 音のパック(配布版では、mp3をそのまま入れず、これに入れてある)。無ければ、Sounds/の普通のファイルから鳴らす。
+    m_audio.LoadPack("Sounds/sounds.pak");
     m_audio.LoadTable("Sounds/sounds.json");
 
     // プレイヤーが決めた音量(オプション)。ファイルが無ければ、全て100のまま。

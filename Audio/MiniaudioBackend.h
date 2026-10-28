@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include <vector>
 #include "IAudioBackend.h"
 
 // miniaudio(External/miniaudio)で、実際に音を鳴らす実装。wav・mp3を読める。
@@ -31,6 +32,7 @@ public:
     void SetGain(VoiceId voice, float gain) override;
     void Stop(VoiceId voice) override;
     bool IsPlaying(VoiceId voice) const override;
+    bool RegisterMemoryFile(const std::string& name, std::vector<unsigned char> data) override;
 
     // noDeviceの時だけ: 混ぜた波形(交互に並んだfloat、channels個で1フレーム)を、framesフレーム分、取り出す。
     // 戻り値は、取り出せたフレーム数。デバイスを開いている時は、0。

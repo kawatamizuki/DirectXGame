@@ -46,8 +46,11 @@ foreach ($name in 'SimpleShader.hlsl', 'DebugLineShader.hlsl', 'UIShader.hlsl', 
 # 初期マップ
 Copy-Required 'Scenarios\tutorial.json'
 
-# 音(音の表と、BGM・効果音のファイル。無くてもゲームは動くが、無音になる)
-foreach ($s in 'Sounds\sounds.json', 'Sounds\bgm_title.mp3', 'Sounds\ui_open.mp3') { Copy-Required $s }
+# 音(音の表と、音のパック)。BGMなどの素材は、「音源のファイルを、そのままの形で配ってはいけない」条件があるので、
+# mp3・wavは入れず、tools\pack_sounds.ps1 で作るパック(Sounds\sounds.pak)に入れる。
+Copy-Required 'Sounds\sounds.json'
+& (Join-Path $PSScriptRoot 'pack_sounds.ps1') -Output (Join-Path $out 'Sounds\sounds.pak')
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) { throw "音のパックの作成に失敗しました" }
 
 # 使うモデルと、そのテクスチャ(コード側のパスと、同じ相対パスで置く)
 $models = @(
@@ -86,7 +89,7 @@ $readme = @'
 
 ■ 遊び方
   タイトル画面の「スタート」(または Enter キー)で始まります。
-  右下の「メニュー」(または Esc キー)を押すと、時間が止まり、建築・情報・研究・システムが出ます。
+  右下の「メニュー」(または Esc キー)を押すと、時間が止まり、建築・情報・研究・システム・オプション(音量)が出ます。
   建築で、建物や道路を選ぶと、メニューが閉じて、置けるようになります。
 
 ■ 操作
@@ -106,11 +109,16 @@ $readme = @'
   *.hlsl, *.hlsli   描画のシェーダー(消さないでください)
   CityKit* / Models / RoadTiles   建物・住民・地面のモデル(消さないでください)
   Scenarios         最初の街のデータ
-  Sounds            BGM・効果音と、音の一覧(sounds.json)
+  Sounds            BGM・効果音(sounds.pak にまとめてあります)と、音の一覧(sounds.json)
   THIRD_PARTY_LICENSES.md、各 License.txt   使用した素材・ライブラリのライセンス
 '@
 [IO.File]::WriteAllText((Join-Path $out 'README.txt'), $readme, (New-Object System.Text.UTF8Encoding($true)))
 
+# ---- 4b. 安全確認: 音源のファイルが、そのままの形で、配布物に入っていないこと ----
+$rawAudio = Get-ChildItem -Path $out -Recurse -File | Where-Object { $_.Extension -in '.mp3', '.wav', '.ogg', '.flac' }
+if ($rawAudio) {
+    throw ("配布物に、音源のファイルがそのまま入っています(素材の規約で禁止): " + (($rawAudio | ForEach-Object { $_.FullName }) -join ', '))
+}
 # ---- 5. zip にする ----
 $zip = Join-Path $dist 'GAME.zip'
 if (Test-Path $zip) { [IO.File]::Delete($zip) }

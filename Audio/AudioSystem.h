@@ -35,6 +35,12 @@ public:
     const SoundTable& Table() const { return m_table; }
     bool LoadTable(const std::string& path);    // 失敗しても、ゲームは続けられる(音の表が空になるだけ)
 
+    // 音のパック(SoundPack。mp3をそのまま配布しないための、まとめたファイル)を読んで、中の音を、メモリの上のファイルとして、
+    // バックエンドに登録する。音の表のfileと同じ名前の音は、ディスクのファイルより先に、これが使われる。
+    // 戻り値は、登録できた音の数。パックが無い(開発中など)・壊れている時は、0を返すだけ(普通のファイルから鳴らせる)。
+    // 音を鳴らす前に呼ぶ(Initializeの後)。
+    int LoadPack(const std::string& path);
+
     // ---- 音量・ミュート ----
     AudioMixer& Mixer() { return m_mixer; }
     const AudioMixer& Mixer() const { return m_mixer; }

@@ -169,6 +169,7 @@
     <ClCompile Include="Audio\MiniaudioBackend.cpp" />
     <ClCompile Include="Audio\MiniaudioImpl.cpp" />
     <ClCompile Include="Audio\AudioSystem.cpp" />
+    <ClCompile Include="Audio\SoundPack.cpp" />
     <ClCompile Include="Audio\SoundTable.cpp" />
     <ClCompile Include="UI\TitleMenu.cpp" />
     <ClCompile Include="UI\GameMenu.cpp" />
@@ -273,6 +274,7 @@
     <ClInclude Include="Audio\AudioTypes.h" />
     <ClInclude Include="Audio\IAudioBackend.h" />
     <ClInclude Include="Audio\MiniaudioBackend.h" />
+    <ClInclude Include="Audio\SoundPack.h" />
     <ClInclude Include="Audio\SoundTable.h" />
     <ClInclude Include="UI\TitleMenu.h" />
     <ClInclude Include="UI\GameMenu.h" />

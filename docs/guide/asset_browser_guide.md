@@ -462,14 +462,15 @@ ImGuiの「Build」パネルは、そのまま残している(開発用)。ツ�
 .\tools\make_release_package.ps1 -NoBuild   (今ある x64\Release\GAME.exe で作る)
 ```
 - 出力: `dist\GAME\`(フォルダ)、`dist\GAME.zip`(約0.8MB)。`dist` は Git に入れません。
-- 中身: `GAME.exe`、シェーダー(`*.hlsl`・`Lighting.hlsli`)、使うモデルとテクスチャ、初期マップ(`Scenarios`)、ライセンス、`README.txt`(起動・操作の説明)。
+- 中身: `GAME.exe`、シェーダー(`*.hlsl`・`Lighting.hlsli`)、使うモデルとテクスチャ、初期マップ(`Scenarios`)、音(`Sounds/sounds.json` と **`Sounds/sounds.pak`**)、ライセンス、`README.txt`(起動・操作の説明)。
+- **音は、mp3 のまま入れません**。BGMの素材の規約が、「音源のファイルを、そのままの形で配ってはいけない」ためです。`tools\pack_sounds.ps1` で、`Sounds/*.mp3` を `sounds.pak` にまとめて入れます(`make_release_package.ps1` が自動で行います)。配布物に mp3・wav が残っていると、スクリプトが止まります。詳しくは docs/design/audio.md §14。
 - 必要な環境: Windows 10 / 11(64bit)、DirectX 11対応のGPU。C++のランタイムは exe に組み込み済みで、別のインストールは要りません。使うDLLは、全て Windows 標準です。
 - 日本語のフォントは、Windows標準のもの(メイリオ等)を使います。
 - 署名の無い exe のため、Windowsが警告を出すことがあります(「詳細情報」→「実行」。README.txt にも書いてあります)。
 - セーブ(`Saves`)・モデルのキャッシュ(`Cache`)は、exeの隣に作られます。書き込める場所に置いてください。
 
 ### 開発する時の注意
-- Release の exe は、**exe のあるフォルダ**の素材を読みます(どこから起動しても、同じ)。プロジェクトのフォルダの素材は、読みません。だから、`x64\Release\GAME.exe` を直接動かしても、素材が無く、起動しません。**Releaseの確認は、`dist\GAME\GAME.exe` で行ってください。**
+- Release の exe は、**素材(`SimpleShader.hlsl`)がある場所**を、exe のフォルダから上へ最大4段探して、見つかった所で動きます。配布用のフォルダ(`dist\GAME`)は exe の隣、開発中の `x64\Release\GAME.exe` は、プロジェクトのフォルダが見つかります。どこから起動しても、同じです。
 - Debug(開発用)は、従来どおり、プロジェクトのフォルダの素材を読みます(Visual Studio から、そのまま動きます)。
 - 使うモデル・シェーダーを増やした時は、`tools\make_release_package.ps1` の一覧に足してください(足し忘れると、渡した先で起動しません)。
 

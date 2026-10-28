@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <vector>
 #include "AudioTypes.h"
 
 // 実際に音を鳴らす部分の、差し替え口。「このファイルを、この大きさで鳴らす」だけを知っている、小さなインターフェース。
@@ -28,6 +29,11 @@ public:
 
     // まだ鳴っているか(繰り返さない音は、鳴り終わるとfalseになる)。
     virtual bool IsPlaying(VoiceId voice) const = 0;
+
+    // メモリの上のデータ(mp3・wavのバイト列)を、「nameというファイル」として登録する。以後、Play(name, ...) で、
+    // ディスクのファイルより先に、これが使われる(音のパック Sounds/sounds.pak の中身を鳴らすため)。
+    // 登録できない実装は、falseを返す(何もしない)。
+    virtual bool RegisterMemoryFile(const std::string& name, std::vector<unsigned char> data) { (void)name; (void)data; return false; }
 };
 
 // 何も鳴らさない実装。音が出せない環境でも、ゲームが落ちずに動くための、代わり。
