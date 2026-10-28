@@ -2,6 +2,7 @@
 #include "Window.h"
 #include "Game.h"
 #include <cwchar>
+#include <string>
 
 #ifdef _DEBUG
 #include "DebugMemory.h"
@@ -33,7 +34,22 @@ int WINAPI wWinMain(
             if (lastSeparator)
             {
                 *lastSeparator = L'\0';
-                SetCurrentDirectoryW(exePath);
+
+                // 素材(シェーダー)がある場所を、exeのフォルダから、上へ数段たどって探す。
+                // 配布用のフォルダ(exeの隣に素材がある)は、1段目で見つかる。開発中の x64\Release\GAME.exe は、
+                // 2段上のプロジェクトのフォルダで見つかる。どこにも無ければ、作業フォルダは変えない。
+                for (int level = 0; level < 4; ++level)
+                {
+                    const std::wstring probe = std::wstring(exePath) + L"\\SimpleShader.hlsl";
+                    if (GetFileAttributesW(probe.c_str()) != INVALID_FILE_ATTRIBUTES)
+                    {
+                        SetCurrentDirectoryW(exePath);
+                        break;
+                    }
+                    wchar_t* parent = wcsrchr(exePath, L'\\');
+                    if (!parent) { break; }
+                    *parent = L'\0';
+                }
             }
         }
     }

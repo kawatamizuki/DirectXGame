@@ -4,6 +4,8 @@
 #include "InputAction.h"
 #include "BakedModelCache.h"
 #include "AssetImporter.h"
+#include "MiniaudioBackend.h"
+#include "AudioSettings.h"
 #include "WorldScale.h"
 #include <algorithm>
 #include <cmath>
@@ -48,6 +50,23 @@ bool Game::Initialize(HWND hwnd)
     m_modelCache.Initialize(&m_renderer);
     m_context.modelCache = &m_modelCache;
 
+    // 音。デバイスが無い・初期化に失敗しても、ゲームは無音のまま続けられる(原因はログに出る)。
+    m_audio.SetBackend(std::make_unique<MiniaudioBackend>());
+    if (!m_audio.Initialize())
+    {
+        Debug::Warning("Game::Initialize : 音の初期化に失敗しました(音なしで続行します)");
+    }
+    m_audio.LoadTable("Sounds/sounds.json");
+
+    // プレイヤーが決めた音量(オプション)。ファイルが無ければ、全て100のまま。
+    AudioSettings savedVolumes;
+    if (savedVolumes.LoadFromFile(AudioSettings::kDefaultPath))
+    {
+        savedVolumes.ApplyTo(m_audio.Mixer());
+    }
+    m_savedAudioSettings = AudioSettings::FromMixer(m_audio.Mixer());
+    m_audioPanel.Initialize(&m_audio, "Sounds/sounds.json");
+
     // DebugRendererはフィールドの格子線・建物/道路のプレビュー描画にも使うため、
     // ENABLE_EDITORの外(Releaseビルドでも)で初期化する。
     if (!m_debugRenderer.Initialize(m_renderer.GetDevice(), m_renderer.GetContext()))
@@ -89,6 +108,7 @@ bool Game::Initialize(HWND hwnd)
     m_debugEditor.AttachEditorUi(&m_editorUi);
     m_assetBrowser.SetOpenFlag(m_editorUi.PanelFlag("Assets"));
     m_assetViewer.SetOpenFlag(m_editorUi.PanelFlag("Asset Viewer"));
+    m_audioPanel.SetOpenFlag(m_editorUi.PanelFlag("Audio"));
 
 #endif
 
@@ -380,6 +400,11 @@ void Game::Update()
         // 住民の移動・需要更新は、ゲーム内時間の倍率(停止/倍速)に従って進める。
         m_demandSystem.Update(m_gameClock.GetScaledDeltaSeconds(), m_context, m_roadSystem.GetSegments());
     }
+
+    // 音: 聞く位置はカメラ。時間は、ゲーム内の倍率に関係なく、実時間で進める(メニューで時間を止めても、曲のフェードは進む)。
+    m_audio.SetListenerPosition(m_camera.GetPosition());
+    m_audio.Update(m_timeManager.GetDeltaTime());
+    SaveAudioSettingsIfChanged();
 }
 
 bool Game::IsInTitleScene() const
@@ -395,6 +420,7 @@ void Game::UpdateTitle()
         // タイトル画面が始まった: 背景に、初期マップの街を出す(無ければ、空のフィールドのまま)。
         // 街の更新(住民・需要)は、ゲームシーンの間だけなので、背景は静止した街になる(カメラと昼夜の光だけが動く)。
         m_titleTime = 0.0f;
+        m_audio.PlayBgm("bgm_title", 1.5f);     // タイトルの曲。ゆっくり出す
         if (m_scenarioManager.LoadStartScenario())
         {
             Debug::Info("Game: タイトル画面の背景に、初期マップを読み込みました");
@@ -431,6 +457,10 @@ void Game::UpdateTitle()
             m_titleRadius = m_field.GetWorldWidth() * 0.25f;
         }
     }
+    if (!inTitle && m_wasInTitleScene)
+    {
+        m_audio.StopBgm(1.0f);                  // タイトルを離れたら、曲を消していく(スタート以外の経路でも)
+    }
     m_wasInTitleScene = inTitle;
     if (!inTitle)
     {
@@ -458,7 +488,11 @@ void Game::UpdateTitle()
     if (!m_uiAvailable)
     {
         // UIが使えない時は、Enterでだけ始められる。
-        if (m_inputManager.IsKeyPressed(VK_RETURN)) { m_sceneManager.ChangeScene(SceneName::Game); }
+        if (m_inputManager.IsKeyPressed(VK_RETURN))
+        {
+            m_audio.PlaySe("ui_open");
+            m_sceneManager.ChangeScene(SceneName::Game);
+        }
         return;
     }
 
@@ -481,6 +515,7 @@ void Game::UpdateTitle()
     const TitleResult result = m_titleMenu.Update(input);
     if (result.command == TitleCommand::Start || (!typing && m_inputManager.IsKeyPressed(VK_RETURN)))
     {
+        m_audio.PlaySe("ui_open");              // 「スタート」で鳴らす(終了では鳴らさない)
         m_sceneManager.ChangeScene(SceneName::Game);
     }
     else if (result.command == TitleCommand::Quit)
@@ -635,6 +670,12 @@ MenuModel Game::BuildMenuModel() const
     }
 
     model.statusText = m_menuStatus;
+
+    // オプション: 音量(0〜100)。今のミキサーの値を、そのまま見せる。
+    const AudioSettings volumes = AudioSettings::FromMixer(m_audio.Mixer());
+    model.sliders.push_back(MenuSlider{ "全体", static_cast<int>(MenuVolumeChannel::Master), volumes.master });
+    model.sliders.push_back(MenuSlider{ "BGM", static_cast<int>(MenuVolumeChannel::Bgm), volumes.bgm });
+    model.sliders.push_back(MenuSlider{ "効果音", static_cast<int>(MenuVolumeChannel::Se), volumes.se });
     return model;
 }
 
@@ -666,14 +707,56 @@ void Game::ApplyMenuCommand(const MenuCommand& command)
     case MenuCommandType::Load:
         m_scenarioManager.Load(ScenarioManager::kQuickSavePath, m_menuStatus);
         break;
+    case MenuCommandType::SetVolume:
+    {
+        AudioSettings volumes = AudioSettings::FromMixer(m_audio.Mixer());
+        switch (static_cast<MenuVolumeChannel>(command.arg))
+        {
+        case MenuVolumeChannel::Master: volumes.master = AudioSettings::Clamp(command.value); break;
+        case MenuVolumeChannel::Bgm:    volumes.bgm = AudioSettings::Clamp(command.value); break;
+        case MenuVolumeChannel::Se:     volumes.se = AudioSettings::Clamp(command.value); break;
+        default: break;
+        }
+        volumes.ApplyTo(m_audio.Mixer()); // 保存は、つかみ終わってから(SaveAudioSettingsIfChanged)
+        break;
+    }
     case MenuCommandType::None:
         break;
+    }
+}
+
+void Game::SaveAudioSettingsIfChanged()
+{
+    // スライダーをつかんでいる間は、毎フレーム書かない。離したら、変わった分を1回だけ保存する。
+    if (m_inputManager.IsKeyDown(VK_LBUTTON) || m_gameUI.IsMenuEditingNumber())
+    {
+        return;
+    }
+    const AudioSettings current = AudioSettings::FromMixer(m_audio.Mixer());
+    if (current == m_savedAudioSettings)
+    {
+        return;
+    }
+    if (current.SaveToFile(AudioSettings::kDefaultPath))
+    {
+        m_savedAudioSettings = current;
+    }
+    else
+    {
+        Debug::Warning("Game: 音量の設定を保存できませんでした: " + std::string(AudioSettings::kDefaultPath));
+        m_savedAudioSettings = current; // 毎フレーム、失敗を繰り返さない
     }
 }
 
 void Game::HandleMenuKeys()
 {
     if (m_context.mode != GameMode::Playing)
+    {
+        return;
+    }
+
+    // オプションの数字欄に入力中: Esc・右クリックは、入力をやめるだけ(メニューは閉じない。GameMenuが処理する)。
+    if (m_gameUI.IsMenuOpen() && m_gameUI.IsMenuEditingNumber())
     {
         return;
     }
@@ -730,6 +813,7 @@ void Game::SyncMenuTimeScale()
         m_scaleBeforeMenu = m_gameClock.GetTimeScale();
         m_gameClock.SetTimeScale(0.0f);
         m_roadSystem.CancelPlacement();
+        m_audio.PlaySe("ui_open");      // メニューを開いた時(ボタンでもEscでも)。閉じる時は鳴らさない
     }
     else if (!open && m_menuWasOpen)
     {
@@ -994,6 +1078,26 @@ void Game::UpdateGameUI()
     input.down = m_inputManager.IsKeyDown(VK_LBUTTON);
     input.menuEnabled = (m_context.mode == GameMode::Playing); // メニューは、実際に遊ぶ状態(Playing)だけ
 
+    // オプションの数字欄への入力(数字キー・テンキー・Backspace・Enter・Esc、右クリックも「やめる」)。
+    // 入力欄(ImGui)に文字を入力している間は、ゲームのキーとして扱わない。
+    bool imguiTyping = false;
+#ifdef ENABLE_EDITOR
+    imguiTyping = ImGui::GetIO().WantTextInput;
+#endif
+    if (!imguiTyping && m_gameUI.IsMenuOpen())
+    {
+        for (int digit = 0; digit <= 9; ++digit)
+        {
+            if (m_inputManager.IsKeyPressed('0' + digit) || m_inputManager.IsKeyPressed(VK_NUMPAD0 + digit))
+            {
+                input.typedDigits.push_back(static_cast<char>('0' + digit));
+            }
+        }
+        input.keyBackspace = m_inputManager.IsKeyPressed(VK_BACK);
+        input.keyEnter = m_inputManager.IsKeyPressed(VK_RETURN);
+        input.keyEscape = m_inputManager.IsKeyPressed(VK_ESCAPE) || m_inputManager.IsActionPressed(InputAction::Cancel);
+    }
+
 
 #ifdef ENABLE_EDITOR
     // デバッグGUI(ImGui)のパネルの上にカーソルがある時は、HUDは反応しない(ImGuiが手前に描かれるため)。
@@ -1012,6 +1116,10 @@ void Game::UpdateGameUI()
     if (result.menuCommand.type != MenuCommandType::None)
     {
         ApplyMenuCommand(result.menuCommand);
+    }
+    if (result.menuTabChanged)
+    {
+        m_audio.PlaySe("ui_open");      // 左のタブ(建築・情報・研究・システム)を開いた時。中の項目(建物の選択など)では鳴らさない
     }
     SyncMenuTimeScale();
 }
@@ -1084,6 +1192,7 @@ void Game::Draw()
     m_gameEconomy.DrawDebugUI(m_editorUi.PanelFlag("Economy"));
     m_assetBrowser.DrawDebugUI();
     m_assetViewer.DrawDebugUI();
+    m_audioPanel.DrawDebugUI();
     m_scenarioManager.DrawDebugUI(m_editorUi.PanelFlag("Scenario"));
     Profiler::DrawDebugUI(m_objects, m_roadSystem, m_occupancyGrid, m_demandSystem, m_editorUi.PanelFlag("Profiler"));
     Debug::DrawDebugUI(m_editorUi.PanelFlag("Log"));
@@ -1160,5 +1269,6 @@ void Game::Finalize()
     m_debugEditor.Finalize();
 #endif
     m_sceneManager.Finalize();
+    m_audio.Shutdown();
     m_renderer.Finalize();
 }

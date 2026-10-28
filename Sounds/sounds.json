@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "sounds": [
+    {
+      "id": "ui_open",
+      "file": "Sounds/ui_open.mp3",
+      "category": "Se",
+      "tag": "ui",
+      "volume": 0.8,
+      "maxVoices": 3
+    },
+    {
+      "id": "bgm_title",
+      "file": "Sounds/bgm_title.mp3",
+      "category": "Bgm",
+      "loop": true,
+      "stream": true,
+      "volume": 0.6
+    }
+  ]
+}

@@ -201,8 +201,13 @@ HudResult GameUI::Update(const HudInput& input, const HudState& state)
     menuInput.down = input.down;
     menuInput.enabled = input.menuEnabled;
     menuInput.blockedByOtherUI = input.blockedByOtherUI;
+    menuInput.typedDigits = input.typedDigits;
+    menuInput.keyBackspace = input.keyBackspace;
+    menuInput.keyEnter = input.keyEnter;
+    menuInput.keyEscape = input.keyEscape;
     MenuResult menuResult = m_menu.Update(menuInput, state.menu);
     result.menuCommand = menuResult.command;
+    result.menuTabChanged = menuResult.tabChanged;
     result.menuOpen = m_menu.IsOpen();
 
     bool overBar = !input.blockedByOtherUI && m_layout.bar.Contains(input.mouseX, input.mouseY);

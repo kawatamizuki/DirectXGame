@@ -4,7 +4,7 @@
 #include "UISkin.h"
 
 // ---- ゲーム内メニュー(カイロソフト風) ----
-// 右下の「メニュー」ボタンを押すと、ゲーム内の時間が止まり、左に縦の項目リスト(建築・情報・研究・システム)と、
+// 右下の「メニュー」ボタンを押すと、ゲーム内の時間が止まり、左に縦の項目リスト(建築・情報・研究・システム・オプション)と、
 // 選んだ項目の中身が出る。「戻る」(同じ場所のボタン)で閉じて、時間が動き出す。
 // このクラスは「配置(Layout)」と「入力(どのボタンを押したか)」だけを持つ。ゲームの中身(建物の定義・所持金・
 // 配置ツール)は知らず、毎フレーム渡される MenuModel だけを見て並べ、押された結果は MenuCommand で返す。
@@ -19,13 +19,32 @@ enum class MenuCommandType
     SetRoadDrawMode,    // arg = RoadDrawMode。道路の引き方(直線/自由)を切り替える
     CancelPlacement,    // 配置を、やめる
     Save,
-    Load
+    Load,
+    SetVolume           // arg = MenuVolumeChannel、value = 新しい音量(0〜100)。オプションのスライダー・数字入力・±ボタン
 };
 
 struct MenuCommand
 {
     MenuCommandType type = MenuCommandType::None;
     int arg = 0;
+    int value = 0;      // SetVolume の新しい音量
+};
+
+// オプションで調整する音量の種類。
+enum class MenuVolumeChannel
+{
+    Master,     // 全体
+    Bgm,        // 曲
+    Se,         // 効果音
+    Count
+};
+
+// オプションタブの1つの音量(スライダー+数字)。
+struct MenuSlider
+{
+    std::string label;          // 「全体」「BGM」「効果音」
+    int channel = 0;            // MenuVolumeChannel
+    int value = 100;            // 今の音量(0〜100)
 };
 
 // 建築タブの1つの項目(建物・道路の種類・引き方)。
@@ -55,6 +74,7 @@ struct MenuModel
     std::vector<MenuInfoLine> info;
     std::string activeToolLabel;    // 配置中のものの名前(「住宅」)。空なら、配置中ではない
     std::string statusText;         // システムタブに出す、直前のセーブ/ロードの結果
+    std::vector<MenuSlider> sliders; // オプションタブの音量(全体・BGM・効果音)
 };
 
 // マウスの状態と画面の大きさ。座標は、描画先(ゲームビュー)の左上からのピクセル。
@@ -69,6 +89,12 @@ struct MenuInput
     bool down = false;              // 左ボタンを押している間
     bool enabled = true;            // メニューを使える状態か(Playingの時だけtrue。falseなら、閉じて何も出さない)
     bool blockedByOtherUI = false;  // デバッグGUI(ImGui)の上にカーソルがある(反応しない)
+
+    // 数字の入力(オプションの数字欄)。このフレームに押された数字キー(0〜9。テンキーも)を、押した順に並べた文字列。
+    std::string typedDigits;
+    bool keyBackspace = false;      // このフレームにBackspaceが押された
+    bool keyEnter = false;          // 同 Enter(入力の確定)
+    bool keyEscape = false;         // 同 Esc(入力のやめる)
 };
 
 struct MenuResult
@@ -76,6 +102,7 @@ struct MenuResult
     bool mouseOverUI = false;       // カーソルがメニューの上にあるか(開いている間は、画面全体)
     bool consumedClick = false;     // このフレームのクリックをメニューが受け取ったか
     MenuCommand command;            // 押された命令(無ければNone)
+    bool tabChanged = false;        // このフレームに、左のタブ(建築・情報・研究・システム)が切り替わったか(効果音を鳴らすのに使う)
 };
 
 class GameMenu
@@ -87,6 +114,7 @@ public:
         Info,
         Research,
         System,
+        Option,
         Count
     };
 
@@ -95,7 +123,9 @@ public:
         Toggle,     // 右下の「メニュー」/「戻る」
         Tab,        // 左のリストの項目
         Item,       // 中身の項目(建物・道路・セーブなど)
-        Cancel      // 「やめる」(配置中のしるしの横)
+        Cancel,     // 「やめる」(配置中のしるしの横)
+        Slider,     // オプションの音量のスライダー(つかんで動かす)。channel / sliderValue を使う
+        NumberField // オプションの音量の数字欄(押すと、数字キーで入力できる)。channel を使う
     };
 
     // 1つのボタンの配置結果。
@@ -111,6 +141,9 @@ public:
         bool affordable = true;
         bool enabled = true;
         bool centerLabel = false;       // trueなら、文字を中央に(「メニュー」「戻る」)
+        bool noIcon = false;            // trueなら、アイコンを出さない(「-5」「+5」・数字欄)
+        int channel = -1;               // Slider / NumberField / ±ボタンの対象(MenuVolumeChannel)
+        float sliderValue = 0.0f;       // Sliderのつまみの位置(0〜1)
         MenuCommand command;
         bool closesMenu = false;        // 押したら、メニューを閉じるか
     };
@@ -156,9 +189,17 @@ public:
 
     bool IsOpen() const { return m_open; }
     void Open() { m_open = true; }
-    void Close() { m_open = false; }
+    void Close();
     Tab GetTab() const { return m_tab; }
-    void SetTab(Tab tab) { m_tab = tab; }
+    void SetTab(Tab tab);
+
+    // 数字欄に、数字を入力している最中か(入力中は、Esc・右クリックでメニューを閉じず、入力をやめるだけにする)。
+    bool IsEditingNumber() const { return m_editChannel >= 0; }
+    // スライダーをつかんでいる最中か。
+    bool IsDraggingSlider() const { return m_dragChannel >= 0; }
+
+    // スライダーのつまみの位置(trackの左右からtrack.h/2内側が両端)から、音量(0〜100)を求める。
+    static int VolumeFromSliderX(const UIRect& track, float mouseX);
 
     const Layout& GetLayout() const { return m_layout; }
 
@@ -167,8 +208,14 @@ private:
     int FindButtonAt(float x, float y) const;
     UIButtonState StateOf(const Button& button, int index) const;
 
+    // 入力中・つかみ中の状態をやめる(閉じる・タブを替える時)。
+    void ResetInteraction();
+
     bool m_open = false;
     Tab m_tab = Tab::Build;
+    int m_dragChannel = -1;         // つかんでいるスライダー(-1=なし)
+    int m_editChannel = -1;         // 数字を入力中の数字欄(-1=なし)
+    std::string m_editText;         // 入力中の数字(最大3桁)
     Layout m_layout;
     int m_hover = -1;       // 前回のUpdateで、カーソルの下にあったボタン
     bool m_down = false;    // 前回のUpdateで、左ボタンを押していたか

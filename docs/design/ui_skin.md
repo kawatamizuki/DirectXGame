@@ -23,7 +23,8 @@
 ```
 DrawPanel(ui, rect, UIPanelStyle, scale)     箱: Bar / Window / Chip / Tag / TagWarning / Frame / Overlay
 DrawButton(ui, rect, UIButtonState, scale)   ボタンの背景: Normal / Hover / Pressed / Selected / Disabled
-DrawIcon(ui, UIIcon, cx, cy, size, state)    アイコン: Sun, Moon, Coin, Build, Info, House, RoadNarrow ...
+DrawSlider(ui, track, value01, state, scale) スライダー(音量): みぞ・塗り・つまみ。つまみの両端は、trackの左右からtrack.h/2内側(入力側の値の計算と同じ決まり)
+DrawIcon(ui, UIIcon, cx, cy, size, state)    アイコン: Sun, Moon, Coin, Build, Info, Option(スピーカー), House, RoadNarrow ...
 GetTextStyle(UITextRole)                     文字の書式: Normal / Sub / Heading / Warning / Disabled / Outlined ...
 ```
 

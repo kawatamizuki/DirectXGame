@@ -1,4 +1,5 @@
 ﻿#include "ProceduralUISkin.h"
+#include <algorithm>
 #include <cmath>
 
 namespace
@@ -96,6 +97,40 @@ void ProceduralUISkin::DrawButton(UIRenderer& ui, const UIRect& rect, UIButtonSt
     }
     ui.FillRoundedRect(rect, radius, top, bottom);
     ui.StrokeRoundedRect(rect, radius, T.buttonBorderThickness * scale, T.buttonBorder);
+}
+
+void ProceduralUISkin::DrawSlider(UIRenderer& ui, const UIRect& track, float value01, UIButtonState state, float scale)
+{
+    const UITheme& T = m_theme;
+    const float t = value01 < 0.0f ? 0.0f : (value01 > 1.0f ? 1.0f : value01);
+
+    // つまみの動く範囲(両端は、track.h/2 だけ内側。GameMenuの値の計算と同じ決まり)。
+    const float inset = track.h * 0.5f;
+    const float startX = track.x + inset;
+    const float endX = track.Right() - inset;
+    const float knobX = startX + (endX - startX) * t;
+    const float cy = track.y + track.h * 0.5f;
+
+    // みぞ(うすい色)と、つまみまでの塗り(選択色)。
+    const float grooveH = (std::max)(6.0f * scale, track.h * 0.28f);
+    const UIRect groove{ startX - grooveH * 0.5f, cy - grooveH * 0.5f, (endX - startX) + grooveH, grooveH };
+    const float radius = grooveH * 0.5f;
+    ui.FillRoundedRect(groove, radius, T.chipFill, T.chipFill);
+    ui.StrokeRoundedRect(groove, radius, T.chipBorderThickness * scale, T.chipBorder);
+    if (knobX > startX)
+    {
+        const UIRect filled{ groove.x, groove.y, (knobX - groove.x) + grooveH * 0.5f, grooveH };
+        ui.FillRoundedRect(filled, radius, T.buttonSelectedTop, T.buttonSelectedBottom);
+        ui.StrokeRoundedRect(filled, radius, T.chipBorderThickness * scale, T.chipBorder);
+    }
+
+    // つまみ(円)。つかんでいる間は少し大きく、カーソルが上なら明るく。
+    const bool grabbed = (state == UIButtonState::Pressed);
+    const float knobRadius = track.h * (grabbed ? 0.46f : 0.40f);
+    UIColor fill = (state == UIButtonState::Hover || grabbed) ? T.buttonHoverTop : T.buttonNormalTop;
+    ui.FillCircle(knobX + 1.0f * scale, cy + 2.0f * scale, knobRadius, T.panelShadow);
+    ui.FillCircle(knobX, cy, knobRadius, T.buttonBorder);
+    ui.FillCircle(knobX, cy, knobRadius - T.buttonBorderThickness * scale, fill);
 }
 
 UITextStyle ProceduralUISkin::GetTextStyle(UITextRole role) const
@@ -239,6 +274,18 @@ void ProceduralUISkin::DrawMonoIcon(UIRenderer& ui, UIIcon icon, float cx, float
         }
         ui.FillCircle(cx, cy, h * 0.66f, color);
         ui.FillCircle(cx, cy, h * 0.26f, paper);
+        break;
+    }
+    case UIIcon::Option:
+    {
+        // スピーカー: 四角い本体+ろうと形の口+音の波。
+        ui.FillRect(UIRect{ cx - h * 0.85f, cy - h * 0.30f, h * 0.55f, h * 0.60f }, color);
+        ui.FillTriangle(cx - h * 0.30f, cy - h * 0.30f, cx + h * 0.20f, cy - h * 0.80f, cx + h * 0.20f, cy + h * 0.80f, color);
+        ui.FillTriangle(cx - h * 0.30f, cy - h * 0.30f, cx + h * 0.20f, cy + h * 0.80f, cx - h * 0.30f, cy + h * 0.30f, color);
+        ui.DrawLine(cx + h * 0.50f, cy - h * 0.35f, cx + h * 0.62f, cy, lineWidth, color);
+        ui.DrawLine(cx + h * 0.62f, cy, cx + h * 0.50f, cy + h * 0.35f, lineWidth, color);
+        ui.DrawLine(cx + h * 0.78f, cy - h * 0.60f, cx + h * 0.95f, cy, lineWidth, color);
+        ui.DrawLine(cx + h * 0.95f, cy, cx + h * 0.78f, cy + h * 0.60f, lineWidth, color);
         break;
     }
     case UIIcon::Save:

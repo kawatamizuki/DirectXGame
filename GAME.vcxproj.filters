@@ -34,6 +34,12 @@
     <Filter Include="ヘッダー ファイル\imgui\backends">
       <UniqueIdentifier>{593fb001-50ae-4a95-a674-708458721c26}</UniqueIdentifier>
     </Filter>
+    <Filter Include="ソース ファイル\Audio">
+      <UniqueIdentifier>{38377a87-2d2e-4fe1-8031-e0c9bf90b121}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ヘッダー ファイル\Audio">
+      <UniqueIdentifier>{4984c54f-b976-42cd-aa2a-18fbcbb41269}</UniqueIdentifier>
+    </Filter>
     <Filter Include="ソース ファイル\Scenario">
       <UniqueIdentifier>{7c3d9a41-2e58-4b6f-a1d7-3f9e5c2b8d03}</UniqueIdentifier>
     </Filter>
@@ -198,6 +204,24 @@
     <ClCompile Include="UI\FontAtlas.cpp">
       <Filter>ソース ファイル\UI</Filter>
     </ClCompile>
+    <ClCompile Include="Audio\AudioMixer.cpp">
+      <Filter>ソース ファイル\Audio</Filter>
+    </ClCompile>
+    <ClCompile Include="Audio\MiniaudioBackend.cpp">
+      <Filter>ソース ファイル\Audio</Filter>
+    </ClCompile>
+    <ClCompile Include="Audio\MiniaudioImpl.cpp">
+      <Filter>ソース ファイル\Audio</Filter>
+    </ClCompile>
+    <ClCompile Include="Audio\AudioSettings.cpp">
+      <Filter>ソース ファイル\Audio</Filter>
+    </ClCompile>
+    <ClCompile Include="Audio\AudioSystem.cpp">
+      <Filter>ソース ファイル\Audio</Filter>
+    </ClCompile>
+    <ClCompile Include="Audio\SoundTable.cpp">
+      <Filter>ソース ファイル\Audio</Filter>
+    </ClCompile>
     <ClCompile Include="UI\TitleMenu.cpp">
       <Filter>ソース ファイル\UI</Filter>
     </ClCompile>
@@ -247,6 +271,9 @@
       <Filter>ソース ファイル\DebugTools</Filter>
     </ClCompile>
     <ClCompile Include="DebugTools\AssetBrowser.cpp">
+      <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\AudioPanel.cpp">
       <Filter>ソース ファイル\DebugTools</Filter>
     </ClCompile>
     <ClCompile Include="DebugTools\AssetViewer.cpp">
@@ -488,6 +515,27 @@
     <ClInclude Include="UI\FontAtlas.h">
       <Filter>ヘッダー ファイル\UI</Filter>
     </ClInclude>
+    <ClInclude Include="Audio\AudioMixer.h">
+      <Filter>ヘッダー ファイル\Audio</Filter>
+    </ClInclude>
+    <ClInclude Include="Audio\AudioSettings.h">
+      <Filter>ヘッダー ファイル\Audio</Filter>
+    </ClInclude>
+    <ClInclude Include="Audio\AudioSystem.h">
+      <Filter>ヘッダー ファイル\Audio</Filter>
+    </ClInclude>
+    <ClInclude Include="Audio\AudioTypes.h">
+      <Filter>ヘッダー ファイル\Audio</Filter>
+    </ClInclude>
+    <ClInclude Include="Audio\IAudioBackend.h">
+      <Filter>ヘッダー ファイル\Audio</Filter>
+    </ClInclude>
+    <ClInclude Include="Audio\MiniaudioBackend.h">
+      <Filter>ヘッダー ファイル\Audio</Filter>
+    </ClInclude>
+    <ClInclude Include="Audio\SoundTable.h">
+      <Filter>ヘッダー ファイル\Audio</Filter>
+    </ClInclude>
     <ClInclude Include="UI\TitleMenu.h">
       <Filter>ヘッダー ファイル\UI</Filter>
     </ClInclude>
@@ -549,6 +597,9 @@
       <Filter>ヘッダー ファイル\DebugTools</Filter>
     </ClInclude>
     <ClInclude Include="DebugTools\AssetCatalog.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\AudioPanel.h">
       <Filter>ヘッダー ファイル\DebugTools</Filter>
     </ClInclude>
     <ClInclude Include="DebugTools\AssetViewer.h">

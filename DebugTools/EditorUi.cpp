@@ -23,6 +23,7 @@ namespace
     constexpr const char* kPanelLog = "Log";
     constexpr const char* kPanelAssets = "Assets";
     constexpr const char* kPanelAssetViewer = "Asset Viewer";
+    constexpr const char* kPanelAudio = "Audio";
     constexpr const char* kPanelShortcuts = "Shortcuts";
 
     // メニューに出す順番と、初めて起動した時に開いているか。
@@ -49,6 +50,7 @@ namespace
         { kPanelLog,            true,  nullptr },
         { kPanelAssets,         false, "F2"    }, // 開くまでは何も処理しない(素材を探すのも、初めて開いた時)
         { kPanelAssetViewer,    false, nullptr, false }, // 普段は閉じていて、何も読み込まない(Assetsからダブルクリック/Vキーで開く)。開いたまま終了しても、次は閉じて始める
+        { kPanelAudio,          false, nullptr }, // 音の一覧と音量の調整。開くまでは何も処理しない
         { kPanelShortcuts,      false, nullptr },
     };
 
@@ -314,6 +316,7 @@ void EditorUi::BuildDefaultLayout(unsigned int dockId, float width, float height
     ImGui::DockBuilderDockWindow(kPanelLog, bottom);
     ImGui::DockBuilderDockWindow(kPanelProfiler, bottom);
     ImGui::DockBuilderDockWindow(kPanelCityStats, bottom);
+    ImGui::DockBuilderDockWindow(kPanelAudio, bottom);
 
     ImGui::DockBuilderFinish(dockId);
 

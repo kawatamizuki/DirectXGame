@@ -78,7 +78,7 @@
       <PreprocessorDefinitions>ENABLE_EDITOR;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>External/DirectXTK;External/ufbx;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI;$(ProjectDir)Scenario;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>External/DirectXTK;External/ufbx;External/miniaudio;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI;$(ProjectDir)Scenario;$(ProjectDir)Audio;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -96,7 +96,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <AdditionalIncludeDirectories>External/DirectXTK;External/ufbx;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI;$(ProjectDir)Scenario</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>External/DirectXTK;External/ufbx;External/miniaudio;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI;$(ProjectDir)Scenario;$(ProjectDir)Audio</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -111,7 +111,7 @@
       <PreprocessorDefinitions>ENABLE_EDITOR;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>External/DirectXTK;External/ufbx;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI;$(ProjectDir)Scenario;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>External/DirectXTK;External/ufbx;External/miniaudio;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI;$(ProjectDir)Scenario;$(ProjectDir)Audio;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -129,7 +129,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <AdditionalIncludeDirectories>External/DirectXTK;External/ufbx;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI;$(ProjectDir)Scenario</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>External/DirectXTK;External/ufbx;External/miniaudio;$(ProjectDir)imgui;$(ProjectDir)imgui\backends;$(ProjectDir)Core;$(ProjectDir)Graphics;$(ProjectDir)Input;$(ProjectDir)Scene;$(ProjectDir)Editor;$(ProjectDir)Object;$(ProjectDir)DebugTools;$(ProjectDir)Math;$(ProjectDir)Field;$(ProjectDir)Simulation;$(ProjectDir)UI;$(ProjectDir)Scenario;$(ProjectDir)Audio</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -164,6 +164,12 @@
     <ClCompile Include="Graphics\Renderer.cpp" />
     <ClCompile Include="Graphics\DayNightCycle.cpp" />
     <ClCompile Include="UI\FontAtlas.cpp" />
+    <ClCompile Include="Audio\AudioMixer.cpp" />
+    <ClCompile Include="Audio\AudioSettings.cpp" />
+    <ClCompile Include="Audio\MiniaudioBackend.cpp" />
+    <ClCompile Include="Audio\MiniaudioImpl.cpp" />
+    <ClCompile Include="Audio\AudioSystem.cpp" />
+    <ClCompile Include="Audio\SoundTable.cpp" />
     <ClCompile Include="UI\TitleMenu.cpp" />
     <ClCompile Include="UI\GameMenu.cpp" />
     <ClCompile Include="UI\GameUI.cpp" />
@@ -193,6 +199,7 @@
     <ClCompile Include="DebugTools\ModelPreviewRenderer.cpp" />
     <ClCompile Include="DebugTools\AssetBrowser.cpp" />
     <ClCompile Include="DebugTools\AssetViewer.cpp" />
+    <ClCompile Include="DebugTools\AudioPanel.cpp" />
     <ClCompile Include="Core\CityCameraController.cpp" />
     <ClCompile Include="DebugTools\AssetImporter.cpp" />
     <ClCompile Include="Object\ModelCache.cpp" />
@@ -260,6 +267,13 @@
     <ClInclude Include="Graphics\DayNightCycle.h" />
     <ClInclude Include="Graphics\LightingState.h" />
     <ClInclude Include="UI\FontAtlas.h" />
+    <ClInclude Include="Audio\AudioMixer.h" />
+    <ClInclude Include="Audio\AudioSettings.h" />
+    <ClInclude Include="Audio\AudioSystem.h" />
+    <ClInclude Include="Audio\AudioTypes.h" />
+    <ClInclude Include="Audio\IAudioBackend.h" />
+    <ClInclude Include="Audio\MiniaudioBackend.h" />
+    <ClInclude Include="Audio\SoundTable.h" />
     <ClInclude Include="UI\TitleMenu.h" />
     <ClInclude Include="UI\GameMenu.h" />
     <ClInclude Include="UI\GameUI.h" />
@@ -300,6 +314,7 @@
     <ClInclude Include="DebugTools\ModelPreviewRenderer.h" />
     <ClInclude Include="DebugTools\AssetBrowser.h" />
     <ClInclude Include="DebugTools\AssetViewer.h" />
+    <ClInclude Include="DebugTools\AudioPanel.h" />
     <ClInclude Include="Core\CityCameraController.h" />
     <ClInclude Include="DebugTools\AssetImporter.h" />
     <ClInclude Include="Field\PropPlacement.h" />

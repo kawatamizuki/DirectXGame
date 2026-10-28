@@ -17,9 +17,12 @@
 #include "ScenarioManager.h"
 #include "AssetBrowser.h"
 #include "AssetViewer.h"
+#include "AudioPanel.h"
 #include "CityCameraController.h"
 #include "ModelCache.h"
 #include "PropPlacer.h"
+#include "AudioSystem.h"
+#include "AudioSettings.h"
 #include "GameUI.h"
 #include "TitleMenu.h"
 #include "GameObject.h"
@@ -91,6 +94,9 @@ private:
     // メニューが開いている間は、ゲーム内の時間を止める(閉じたら元の倍率へ戻す)。メニューの更新の後に呼ぶ。
     void SyncMenuTimeScale();
 
+    // 音量(オプション)が変わっていたら、Settings/audio.json に保存する。スライダーをつかんでいる間・数字の入力中は待つ。
+    void SaveAudioSettingsIfChanged();
+
     // F5=クイックセーブ、F9=クイックロード。
     void HandleScenarioHotkeys();
 
@@ -148,6 +154,11 @@ private:
     // 実行中に必要になったモデル(飾りPropなど)の置き場と、Assetsからのドラッグで飾りを置く部品。
     ModelCache m_modelCache;
     PropPlacer m_propPlacer;
+
+    // 音(BGM・効果音)の窓口。音が出せない環境でも、無音のまま動く。音の表は Sounds/sounds.json。
+    AudioSystem m_audio;
+    AudioSettings m_savedAudioSettings;     // 最後にファイルへ保存した(または読んだ)音量。変わったら保存し直す
+    AudioPanel m_audioPanel;                // エディタの「Audio」パネル(音の一覧と音量の調整)
 
     // 選んだモデルを一括で読み込んで、並べて見る別ウィンドウ(重い処理はこちら。閉じている間は何も持たない)。
     AssetViewer m_assetViewer;

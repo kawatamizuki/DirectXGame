@@ -1,9 +1,9 @@
-# 素材・ライブラリのライセンスとクレジット
+﻿# 素材・ライブラリのライセンスとクレジット
 
 このプロジェクトが使っている(または使う予定の)外部の素材・ライブラリの出所とライセンスの一覧です。
 **新しい素材やライブラリを入れる時は、入れる前にこのファイルへ追記します**(末尾の「追加する時のチェックリスト」参照)。
 
-最終更新: 2026-10-21
+最終更新: 2026-10-26
 ※ 内容は取得元のページ・同梱のライセンス文書で確認した範囲です。法的な助言ではありません。提出・配布の前に、各ライセンスの原文を確認してください。
 
 ---
@@ -23,6 +23,16 @@
 
 Kenney の素材は、公式サイトの方針として CC0(パブリックドメイン)で配布されており、個人・教育・商用に使えます。
 クレジットは必須ではありませんが、**「Kenney (www.kenney.nl)」** と書くことを推奨されているので、下記「クレジット表記」に入れています。
+
+### 音声(BGM・効果音)
+
+| 場所 | 用途 | 元のファイル名 | 作者・取得元 | ライセンス・利用条件 | 確認状況 |
+|---|---|---|---|---|---|
+| `Sounds/bgm_title.mp3` | タイトル画面のBGM | `青空空港.mp3` | **未記録** | **未記録** | **要確認**: ユーザー(制作者)が用意したファイル。取得元のサイトと利用規約(再配布・動画やGitHubでの公開・クレジット表記の要否)を確認して、ここに記録する |
+| `Sounds/ui_open.mp3` | UIを開く時の効果音 | `決定ボタンを押す32.mp3` | **未記録** | **未記録** | **要確認**: 同上 |
+
+- 確認が済むまで、**音声ファイル(`Sounds/*.mp3`、`*.wav`)は Git に入れない**(`.gitignore`)。3Dモデル(`*.obj`)と同じ扱い。音の表(`Sounds/sounds.json`)は入れる。
+- 規約でクレジット表記が必要な場合は、下の「クレジット表記」に追記する。
 
 ### 取得済み・導入を検討中(まだプロジェクトには入れていない)
 
@@ -51,12 +61,14 @@ Kenney の素材は、公式サイトの方針として CC0(パブリックド�
 | `imgui/imstb_textedit.h` | stb_textedit(Dear ImGui 同梱) | - | パブリックドメイン(MIT とのデュアル) | Sean Barrett | https://github.com/nothings/stb |
 | `External/DirectXTK/` | DirectX Tool Kit の WICTextureLoader11 のみ | - | MIT | Microsoft Corporation | https://github.com/microsoft/DirectXTK |
 | `External/ufbx/` | ufbx(`ufbx.h`、`ufbx.c`、`LICENSE`) | **v0.23.1**(コミット `26a482ae66871d7de36eb722aa060bce95bce274`) | **MIT と Unlicense(パブリックドメイン)のデュアルライセンス。選択: Unlicense**(帰属表示は不要)。念のため `LICENSE` ファイルは同梱している | Samuli Raivio | https://github.com/ufbx/ufbx(2026-10-20 に取得) |
+| `External/miniaudio/` | miniaudio(`miniaudio.h`、`LICENSE.txt`) | **v0.11.25**(2026-03-04 版) | **パブリックドメイン と MIT-0 の選択。選択: パブリックドメイン**(帰属表示は不要)。念のため、ヘッダー末尾のライセンス文を `LICENSE.txt` に抜き出して同梱している | David Reid | https://github.com/mackron/miniaudio(2026-10-26 に取得) |
 
 - `imgui/LICENSE.txt` に Dear ImGui の MIT ライセンス全文を同梱しています(docking 版への差し替えで、公式のタグから一緒に取得)。**配布物に含める時も、このファイルを添えてください。** docking 版は本家に追従する枝で、マルチビューポート(パネルを別のOSウィンドウにする機能)は使っていません。
 - DirectXTK の2ファイルには、先頭に `Copyright (c) Microsoft Corporation. Licensed under the MIT License.` の記載があります。
 
 - ufbx のファイルの SHA-256(改ざん・取り違えの確認用): `ufbx.h` = `f787be52…72895dc`、`ufbx.c` = `4a956c26…bda7e1d`、`LICENSE` = `0dd48eba…f3615391`(先頭8桁と末尾7桁)。
 - ufbx は **ビルドに組み込み済みで、`Graphics/FbxModelLoader` が使っている**(静的モデルのみ。設計は [docs/design/model_loading.md](docs/design/model_loading.md))。動作確認として、SimplePoly City の FBX 99ファイルがすべてエラーなく読めることを確認した。
+- miniaudio のファイルの SHA-256: `miniaudio.h` = `ac7af4de…cc55c89`(先頭8桁と末尾7桁)。ビルドには `Audio/MiniaudioImpl.cpp` だけが取り込む。設計は [docs/design/audio.md](docs/design/audio.md)。
 - 「なぜこのライブラリを選んだか」は [docs/design/external_libraries.md](docs/design/external_libraries.md) にまとめている。
 
 ## 3. フォント
@@ -69,7 +81,8 @@ Kenney の素材は、公式サイトの方針として CC0(パブリックド�
 3D models: Kenney (www.kenney.nl) — CC0
 Low-poly city models: TRiMA29 (SimplePoly City, CGTrader)   ※使う場合
 Building models: Quaternius (quaternius.com) — CC0           ※使う場合
-Libraries: Dear ImGui (MIT), stb (public domain / MIT), DirectX Tool Kit (MIT), ufbx (Unlicense / public domain)
+Libraries: Dear ImGui (MIT), stb (public domain / MIT), DirectX Tool Kit (MIT), ufbx (Unlicense / public domain), miniaudio (public domain)
+Sounds: (出所・規約の確認後に記入)
 ```
 
 ## 追加する時のチェックリスト

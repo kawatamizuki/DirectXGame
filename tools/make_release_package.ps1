@@ -46,6 +46,9 @@ foreach ($name in 'SimpleShader.hlsl', 'DebugLineShader.hlsl', 'UIShader.hlsl', 
 # 初期マップ
 Copy-Required 'Scenarios\tutorial.json'
 
+# 音(音の表と、BGM・効果音のファイル。無くてもゲームは動くが、無音になる)
+foreach ($s in 'Sounds\sounds.json', 'Sounds\bgm_title.mp3', 'Sounds\ui_open.mp3') { Copy-Required $s }
+
 # 使うモデルと、そのテクスチャ(コード側のパスと、同じ相対パスで置く)
 $models = @(
     'CityKitSuburban\Models\OBJ format\building-type-a',
@@ -103,6 +106,7 @@ $readme = @'
   *.hlsl, *.hlsli   描画のシェーダー(消さないでください)
   CityKit* / Models / RoadTiles   建物・住民・地面のモデル(消さないでください)
   Scenarios         最初の街のデータ
+  Sounds            BGM・効果音と、音の一覧(sounds.json)
   THIRD_PARTY_LICENSES.md、各 License.txt   使用した素材・ライブラリのライセンス
 '@
 [IO.File]::WriteAllText((Join-Path $out 'README.txt'), $readme, (New-Object System.Text.UTF8Encoding($true)))

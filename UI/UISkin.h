@@ -52,6 +52,7 @@ enum class UIIcon
     System,
     Save,
     Load,
+    Option,       // オプション(スピーカー)
 
     // 建設の項目
     House,
@@ -86,6 +87,11 @@ public:
 
     // ボタンの背景を描く(文字・アイコンは描かない。呼び出し側が、DrawIcon/DrawStringで重ねる)。
     virtual void DrawButton(UIRenderer& ui, const UIRect& rect, UIButtonState state, float scale) = 0;
+
+    // スライダー(音量など)を描く。trackは、つかめる範囲の四角。value01は、つまみの位置(0〜1)。
+    // つまみの中心は、trackの左右からtrack.h/2だけ内側を両端として動く(入力側の値の計算と合わせるための決まり)。
+    // stateは、Hover=カーソルが上、Pressed=つかんでいる。
+    virtual void DrawSlider(UIRenderer& ui, const UIRect& track, float value01, UIButtonState state, float scale) = 0;
 
     // アイコンを、中心(cx, cy)に、size四方の大きさで描く。stateは、選択中・押せない時に色を変えるため。
     virtual void DrawIcon(UIRenderer& ui, UIIcon icon, float cx, float cy, float size, UIButtonState state) = 0;

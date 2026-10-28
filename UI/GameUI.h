@@ -41,6 +41,12 @@ struct HudInput
     bool down = false;              // 左ボタンを押している間(ボタンの「押している」見た目に使う)
     bool menuEnabled = true;        // ゲーム内メニューを使える状態か(Playingの時だけtrue)
     bool blockedByOtherUI = false;  // デバッグGUI(ImGui)のパネルの上にカーソルがある時はtrue(HUDは反応しない)
+
+    // メニューのオプションの数字欄への入力(MenuInputと同じ意味)。
+    std::string typedDigits;
+    bool keyBackspace = false;
+    bool keyEnter = false;
+    bool keyEscape = false;
 };
 
 // GameUI::Updateの結果。
@@ -50,6 +56,7 @@ struct HudResult
     bool consumedClick = false;                 // このフレームのクリックをHUDが受け取ったか
     MenuCommand menuCommand;                    // ゲーム内メニューで押された命令(無ければNone)
     bool menuOpen = false;                      // ゲーム内メニューが開いているか(開いている間は、ゲーム内の時間を止める)
+    bool menuTabChanged = false;                // このフレームに、メニューのタブが切り替わったか(効果音を鳴らすのに使う)
 };
 
 // ゲームプレイ用の上部HUDバーと、ゲーム内メニュー。配置・入力をまとめて担当する(ImGuiは使わない)。
@@ -121,6 +128,7 @@ public:
     bool IsMenuOpen() const { return m_menu.IsOpen(); }
     void OpenMenu() { m_menu.Open(); }
     void CloseMenu() { m_menu.Close(); }
+    bool IsMenuEditingNumber() const { return m_menu.IsEditingNumber(); } // オプションの数字欄に入力中か(入力中は、Esc・右クリックで閉じない)
     const GameMenu& GetMenu() const { return m_menu; }
 
     // 配置を計算し、マウスの当たり判定とクリック処理を行う。毎フレーム、ワールドへの入力処理より先に呼ぶ。

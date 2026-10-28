@@ -55,6 +55,11 @@ namespace
             { "Asset Viewer", "中/右ドラッグ", "平行移動" },
             { "Asset Viewer", "ホイール",      "ズーム" },
             { "Asset Viewer", "札をクリック",  "モデルの情報を見る" },
+
+            // ---- Audio(音の一覧と音量) ----
+            { "Audio", "Play / Stop",         "試し聴き(音量は全体・種類の設定が効く)" },
+            { "Audio", "音量の欄",           "+/-ボタンか数字の入力、スライダー(Ctrl+クリックで入力)" },
+            { "Audio", "音の表に保存",       "音ごとの音量を Sounds/sounds.json へ書き戻す" },
         };
         return table;
     }
@@ -115,6 +120,7 @@ namespace ShortcutTable
             { "Build",     "Build パネル" },
             { "Assets",    "Assets パネル(素材の一覧)" },
             { "Asset Viewer", "Asset Viewer ウィンドウ(モデルを並べて見る)" },
+            { "Audio", "Audio パネル(音の一覧と音量)" },
         };
         for (const Title& title : titles)
         {
