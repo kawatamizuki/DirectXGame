@@ -315,13 +315,16 @@ std::vector<Vertex> BuildRoadMeshVertices(
             }
             dir = XMVector3Normalize(dir);
 
+            // 解体で切った端(flat)は、延長しない(延長すると、切り取った隙間が、見た目だけ塞がる)。
             if (viaStart)
             {
+                if (segment.flatStart) { continue; }
                 XMVECTOR extended = segStart - dir * deadEndExtension;
                 XMStoreFloat3(&renderStart[idx], extended);
             }
             else
             {
+                if (segment.flatEnd) { continue; }
                 XMVECTOR extended = segEnd + dir * deadEndExtension;
                 XMStoreFloat3(&renderEnd[idx], extended);
             }

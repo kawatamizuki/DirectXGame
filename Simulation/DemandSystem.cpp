@@ -52,13 +52,13 @@ namespace
 
     // buildingの位置から一番近い道路区間上の点を探し、接続情報を組み立てる。
     // 住宅・施設・職場の建物リスト作成時に使う共通処理。
-    BuildingSnapshot MakeBuildingSnapshot(uint32_t id, const XMFLOAT3& position, const std::vector<RoadSegment>& segments, const RoadGraph& graph)
+    BuildingSnapshot MakeBuildingSnapshot(uint32_t id, const XMFLOAT3& position, const std::vector<RoadSegment>& segments, const RoadGraph& graph, float maxRoadDistance = kAdjacentDistance)
     {
         BuildingSnapshot snapshot;
         snapshot.id = id;
         snapshot.position = position;
 
-        std::optional<NearestRoadPoint> nearestRoad = FindNearestPointOnRoad(segments, position, kAdjacentDistance);
+        std::optional<NearestRoadPoint> nearestRoad = FindNearestPointOnRoad(segments, position, maxRoadDistance);
         if (!nearestRoad.has_value())
         {
             return snapshot; // hasRoadConnection == falseのまま
@@ -155,6 +155,7 @@ namespace
         case ResidentAgentState::Visiting:      return "Visiting";
         case ResidentAgentState::ReturningHome: return "ReturningHome";
         case ResidentAgentState::Homeless:      return "Homeless";
+        case ResidentAgentState::Stranded:      return "Stranded";
         // 停止中の仕事の状態。保存はしない(家にいる扱いで保存する)。
         case ResidentAgentState::Commuting:
         case ResidentAgentState::AtWork:
@@ -170,6 +171,7 @@ namespace
         if (key == "Visiting")      { return ResidentAgentState::Visiting; }
         if (key == "ReturningHome") { return ResidentAgentState::ReturningHome; }
         if (key == "Homeless")      { return ResidentAgentState::Homeless; }
+        if (key == "Stranded")      { return ResidentAgentState::Stranded; }
         return ResidentAgentState::AtHome;
     }
 
@@ -251,16 +253,19 @@ void DemandSystem::Save(Json& section, const SaveContext& context) const
             // 施設が無くなった(保存できない)外出は、家にいる住民として保存する(途中の経路を引き継げない)。
             int targetUid = (agent.targetFacilityId != 0) ? context.UidForBuildingObject(agent.targetFacilityId) : -1;
             // 帰宅中は、施設がもう無くても(解体された)、歩いている途中のまま保存する。
-            const bool outing = (agent.state != ResidentAgentState::AtHome) && (agent.state != ResidentAgentState::Homeless)
+            const bool standing = (agent.state == ResidentAgentState::Homeless || agent.state == ResidentAgentState::Stranded); // 立っている(動かない)状態
+            const bool outing = (agent.state != ResidentAgentState::AtHome) && !standing
                 && (targetUid >= 0 || agent.state == ResidentAgentState::ReturningHome);
-            const ResidentAgentState savedState = outing ? agent.state : (orphan ? ResidentAgentState::Homeless : ResidentAgentState::AtHome);
+            const ResidentAgentState savedState = outing ? agent.state
+                : (agent.state == ResidentAgentState::Stranded ? ResidentAgentState::Stranded
+                : (orphan ? ResidentAgentState::Homeless : ResidentAgentState::AtHome));
 
             Json entry = Json::MakeObject();
             entry.Set("home", homeUid);
             entry.Set("state", AgentStateKey(savedState));
             entry.Set("speed", agent.speed);
             // 住居なしとして保存する住民の位置は、元の住宅の位置(住居なしのまま立っている住民は、ずらした今の位置)。
-            const bool savedAtHomePosition = orphan && !outing && agent.state != ResidentAgentState::Homeless;
+            const bool savedAtHomePosition = orphan && !outing && !standing;
             entry.Set("position", Vec3ToJson(savedAtHomePosition ? agent.homePosition : marker->transform.position));
             entry.Set("scale", Vec3ToJson(marker->transform.scale));
             if (orphan)
@@ -278,6 +283,7 @@ void DemandSystem::Save(Json& section, const SaveContext& context) const
             traits.Set("spontaneity", agent.traits.spontaneity);
             entry.Set("traits", std::move(traits));
             entry.Set("stamina", agent.stamina);
+            entry.Set("satisfaction", agent.satisfaction);
             entry.Set("penaltyLevel", agent.penaltyLevel);
             entry.Set("lifeNeed", agent.lifeNeed);
             entry.Set("activityNeed", agent.activityNeed);
@@ -459,6 +465,7 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
             }
         }
         agent.stamina = (std::max)(0.0f, entry.GetFloat("stamina", agent.stamina));
+        agent.satisfaction = std::clamp(entry.GetFloat("satisfaction", m_settings.satisfactionMax), 0.0f, m_settings.satisfactionMax);
         agent.penaltyLevel = std::clamp(entry.GetInt("penaltyLevel", agent.penaltyLevel), 0, (std::max)(0, m_settings.maxPenaltyLevel));
         agent.lifeNeed = std::clamp(entry.GetFloat("lifeNeed", agent.lifeNeed), 0.0f, 100.0f);
         agent.activityNeed = std::clamp(entry.GetFloat("activityNeed", agent.activityNeed), 0.0f, 100.0f);
@@ -491,7 +498,7 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
         {
             agent.state = ResidentAgentState::AtHome; // 家がある住民が「住居なし」と書かれていたら、矛盾なので、家にいる扱いにする
         }
-        if (agent.state != ResidentAgentState::AtHome && agent.state != ResidentAgentState::Homeless)
+        if (agent.state != ResidentAgentState::AtHome && agent.state != ResidentAgentState::Homeless && agent.state != ResidentAgentState::Stranded)
         {
             // 帰宅中は、行き先の施設が解体されていても(targetなし)、歩いている途中のまま復元する。
             if (targetId == 0 && agent.state != ResidentAgentState::ReturningHome)
@@ -555,7 +562,7 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
         {
             agent.state = ResidentAgentState::Homeless; // 家が無いので、家にいる扱いにはできない
         }
-        if (agent.state == ResidentAgentState::AtHome || agent.state == ResidentAgentState::Homeless)
+        if (agent.state == ResidentAgentState::AtHome || agent.state == ResidentAgentState::Homeless || agent.state == ResidentAgentState::Stranded)
         {
             agent.targetFacilityId = 0;
             agent.waypoints.clear();
@@ -575,7 +582,7 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
         transform.scale.y *= context.spaceScale;
         transform.scale.z *= context.spaceScale;
         GameObject& marker = GameObjectFactory::Spawn(objects, m_agentModel, transform, ObjectKind::Agent);
-        marker.visible = IsMoving(agent.state) || agent.state == ResidentAgentState::Homeless;
+        marker.visible = IsMoving(agent.state) || agent.state == ResidentAgentState::Homeless || agent.state == ResidentAgentState::Stranded;
         agent.objectId = marker.id;
 
         m_agents.push_back(agent);
@@ -584,6 +591,7 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
 
 void DemandSystem::Update(float deltaTime, GameContext& context, std::vector<RoadSegment>& segments)
 {
+    m_roads = &segments;
     ProcessClockEvents(context);
     AdvanceAgentTimers(context);
     UpdateAgentMovement(deltaTime, context);
@@ -689,6 +697,11 @@ void DemandSystem::FinishVisit(ResidentAgent& agent, GameContext& context, GameO
     // 帰宅を始める。経路が無い(壊れている)時は、その場で家にいる扱いにする。
     if (agent.waypoints.size() >= 2)
     {
+        // 道路が切り取られていても、歩き抜けないように、今の道路で、帰りの経路を作り直す。帰れなければ、立ち往生。
+        if (!ReplanReturnRoute(agent, context))
+        {
+            return;
+        }
         StartMove(agent, false, obj);
     }
     else if (agent.homeObjectId == 0)
@@ -786,6 +799,229 @@ void DemandSystem::AbortOutingToDemolishedFacility(ResidentAgent& agent, GameCon
     }
 }
 
+bool DemandSystem::ReplanReturnRoute(ResidentAgent& agent, GameContext& context)
+{
+    if (!m_roads || m_roads->empty() || !m_pathfinder || agent.waypoints.size() < 2)
+    {
+        return true; // 道路の情報が無い(テストなど)時は、元の経路のまま
+    }
+
+    // 今の経路(保存してある、行きの経路)の、施設側の端と、道のり。
+    const XMFLOAT3 facilityPosition = agent.waypointsHomeToTarget ? agent.waypoints.back() : agent.waypoints.front();
+    float oldLength = 0.0f;
+    for (size_t i = 0; i + 1 < agent.waypoints.size(); ++i)
+    {
+        const float dx = agent.waypoints[i + 1].x - agent.waypoints[i].x;
+        const float dz = agent.waypoints[i + 1].z - agent.waypoints[i].z;
+        oldLength += std::sqrt(dx * dx + dz * dz);
+    }
+
+    XMFLOAT3 homePosition = agent.homePosition;
+    if (agent.homeObjectId != 0)
+    {
+        const GameObject* home = GameObjectFactory::FindById(*context.objects, agent.homeObjectId);
+        if (home) { homePosition = home->transform.position; }
+    }
+
+    const RoadGraph graph = RoadGraph::BuildFromSegments(*m_roads);
+    PathCache cache;
+    const RouteEndpoint from = ToEndpoint(MakeBuildingSnapshot(0, facilityPosition, *m_roads, graph));
+    const RouteEndpoint to = ToEndpoint(MakeBuildingSnapshot(0, homePosition, *m_roads, graph));
+    const RoutePlan plan = PlanRoute(from, to, *m_roads, graph, *m_pathfinder, cache);
+
+    if (!plan.valid)
+    {
+        // 施設の利用が終わったが、帰れない: ここで、立ち往生する(利用が終わるまでは、立ち往生させない)。
+        // 立つ場所は、施設の位置から、一番近い、残った道路の上(施設の中のままには、しない)。
+        GameObject* marker = GameObjectFactory::FindById(*context.objects, agent.objectId);
+        if (marker) { marker->transform.position = facilityPosition; }
+        BecomeStranded(agent, context, *m_roads);
+        return false;
+    }
+
+    agent.waypoints = plan.waypoints;
+    agent.waypointsHomeToTarget = false;    // この経路は、「施設→自宅」の向き(帰りの向き)に並んでいる
+    agent.segmentIndices = plan.segmentIndices;
+    if (plan.length > oldLength + 1e-3f)
+    {
+        // 元の道のりより長い: 道路が無くなって、迂回して帰ることになった。
+        agent.stamina = (std::max)(0.0f, agent.stamina - RoadLossStaminaCost(plan.length - oldLength, m_settings));
+        ApplyRoadLossPenalty(agent, false, m_settings);
+        agent.lastDecisionNote = "道路が無くなったので、迂回して帰る";
+    }
+    return true;
+}
+
+bool DemandSystem::TryRecoverStranded(ResidentAgent& agent, GameContext& context, const std::vector<RoadSegment>& segments, const RoadGraph& graph, PathCache& cache)
+{
+    if (!m_pathfinder || segments.empty())
+    {
+        return false;
+    }
+    GameObject* obj = GameObjectFactory::FindById(*context.objects, agent.objectId);
+    if (!obj)
+    {
+        return false;
+    }
+
+    XMFLOAT3 homePosition = agent.homePosition;
+    if (agent.homeObjectId != 0)
+    {
+        const GameObject* home = GameObjectFactory::FindById(*context.objects, agent.homeObjectId);
+        if (home) { homePosition = home->transform.position; }
+    }
+
+    // 立ち往生した位置は、道路の上(切り取られた跡から、寄せた位置)だが、念のため、道路までの探索距離を、寄せる範囲ぶん、広げる。
+    const float reach = kAdjacentDistance + WorldScale::FromLegacy(m_settings.strandedRoadSnapRadiusLegacyCells);
+    const RouteEndpoint from = ToEndpoint(MakeBuildingSnapshot(0, obj->transform.position, segments, graph, reach));
+    const RouteEndpoint to = ToEndpoint(MakeBuildingSnapshot(0, homePosition, segments, graph));
+    const RoutePlan plan = PlanRoute(from, to, segments, graph, *m_pathfinder, cache);
+    if (!plan.valid)
+    {
+        return false; // まだ、帰れない(道がつながっていない)
+    }
+
+    // 位置は、今の位置のまま(経路の先頭が、今の位置)。歩いて帰る。
+    agent.waypoints = plan.waypoints;
+    agent.waypointsHomeToTarget = false;        // この経路は、「行き先→自宅」の向き(帰りの向き)に並んでいる
+    agent.currentWaypointIndex = 0;
+    agent.segmentIndices = plan.segmentIndices;
+    agent.state = ResidentAgentState::ReturningHome;
+    agent.targetFacilityId = 0;
+    agent.lastDecisionNote = "道がつながったので、帰り始めた";
+    obj->visible = true;
+    return true;
+}
+
+void DemandSystem::BecomeStranded(ResidentAgent& agent, GameContext& context, const std::vector<RoadSegment>& segments)
+{
+    GameObject* obj = GameObjectFactory::FindById(*context.objects, agent.objectId);
+    agent.state = ResidentAgentState::Stranded;
+    agent.targetFacilityId = 0;
+    agent.waypoints.clear();
+    agent.segmentIndices.clear();
+    agent.currentWaypointIndex = 0;
+    agent.visitHoursLeft = 0.0f;
+    agent.outingStopCount = 0;
+    agent.usedFoodLikeFacilityThisOuting = false;
+    agent.lastDecisionNote = "道路が無くなり、帰れなくなった(立ち往生)";
+    ApplyRoadLossPenalty(agent, true, m_settings);
+
+    if (obj)
+    {
+        // 道路の上で立ち往生する(周りが建物だらけになっても、建物と重ならない)。今の位置が道路の上なら、そのまま。
+        // 切り取られた跡や、施設の中なら、近くの、残った道路の上へ寄せる(寄せる距離の上限は、設定の数マス。遠くへ、ワープはしない)。
+        const float reach = WorldScale::FromLegacy(m_settings.strandedRoadSnapRadiusLegacyCells);
+        const std::optional<NearestRoadPoint> onRoad = FindNearestPointOnRoad(segments, obj->transform.position, reach);
+        if (onRoad.has_value())
+        {
+            obj->transform.position = XMFLOAT3(onRoad->point.x, obj->transform.position.y, onRoad->point.z);
+        }
+        obj->visible = true;
+    }
+}
+void DemandSystem::OnRoadsChanged(const std::vector<RemovedRoadSpan>& removed, const std::vector<RoadSegment>& segments, GameContext& context)
+{
+    // 区間の並びが変わったので、全員の「通る区間の添字」(混雑表示用)は、無効。空にする(混雑は、毎ティック、作り直される)。
+    for (ResidentAgent& agent : m_agents)
+    {
+        agent.segmentIndices.clear();
+    }
+    if (removed.empty() || !context.objects)
+    {
+        return;
+    }
+
+    const RoadGraph graph = RoadGraph::BuildFromSegments(segments);
+    PathCache pathCache;
+
+    // 取り除いた部分を、細い四角にする(住民の経路は、道路の中心線をたどるので、中心線が通るかを調べる)。
+    std::vector<RoadCutWindow> spanWindows;
+    for (const RemovedRoadSpan& span : removed)
+    {
+        const float dx = span.end.x - span.start.x;
+        const float dz = span.end.z - span.start.z;
+        const float length = std::sqrt(dx * dx + dz * dz);
+        if (length < 1e-4f) { continue; }
+        RoadCutWindow window;
+        window.center = XMFLOAT3((span.start.x + span.end.x) * 0.5f, span.start.y, (span.start.z + span.end.z) * 0.5f);
+        window.dirX = dx / length;
+        window.dirZ = dz / length;
+        window.halfLength = length * 0.5f;
+        window.halfWidth = 0.06f;
+        spanWindows.push_back(window);
+    }
+    auto crossesRemoved = [&](const std::vector<XMFLOAT3>& legs)
+    {
+        for (size_t i = 0; i + 1 < legs.size(); ++i)
+        {
+            for (const RoadCutWindow& window : spanWindows)
+            {
+                float a = 0.0f, b = 0.0f;
+                if (ClipLineToWindow(legs[i], legs[i + 1], window, a, b)) { return true; }
+            }
+        }
+        return false;
+    };
+
+    for (ResidentAgent& agent : m_agents)
+    {
+        // 歩いている住民だけが対象。家・住居なし・立ち往生の住民は、道路を使っていない。
+        // 施設の中にいる住民は、そのまま(利用が終わって、帰り始める時に、今の道路で帰りの経路を作り直し、帰れなければ、その時に、立ち往生する。FinishVisit)。
+        if (!IsMoving(agent.state))
+        {
+            continue;
+        }
+        GameObject* obj = GameObjectFactory::FindById(*context.objects, agent.objectId);
+        if (!obj || agent.waypoints.size() < 2)
+        {
+            continue;
+        }
+
+        // これから通る経路(位置の並び。歩く向きに)。歩いている人: 今の位置から、残りの経路。施設の中の人: 施設から自宅までの全部。
+        const XMFLOAT3 startPosition = obj->transform.position;
+        std::vector<XMFLOAT3> legs;
+        legs.push_back(startPosition);
+        for (size_t i = agent.currentWaypointIndex + 1; i < agent.waypoints.size(); ++i)
+        {
+            legs.push_back(agent.waypoints[i]);
+        }
+        if (!crossesRemoved(legs))
+        {
+            continue; // 通る道は、無事
+        }
+
+        // 今の外出をやめて、帰宅を優先する。今の位置の近くの、残った道路から、自宅(家が無ければ、元の家の位置)への経路を探し直す。
+        XMFLOAT3 homePosition = agent.homePosition;
+        if (agent.homeObjectId != 0)
+        {
+            const GameObject* home = GameObjectFactory::FindById(*context.objects, agent.homeObjectId);
+            if (home) { homePosition = home->transform.position; }
+        }
+        const RouteEndpoint from = ToEndpoint(MakeBuildingSnapshot(0, startPosition, segments, graph));
+        const RouteEndpoint to = ToEndpoint(MakeBuildingSnapshot(0, homePosition, segments, graph));
+        const RoutePlan plan = PlanRoute(from, to, segments, graph, *m_pathfinder, pathCache);
+
+        if (!plan.valid)
+        {
+            BecomeStranded(agent, context, segments);
+            continue;
+        }
+
+        // 迂回して帰る。位置は、今の位置のまま(経路の先頭が、今の位置)。
+        agent.waypoints = plan.waypoints;
+        agent.waypointsHomeToTarget = false;        // この経路は、「行き先→自宅」の向き(帰りの向き)に並んでいる
+        agent.currentWaypointIndex = 0;
+        agent.segmentIndices = plan.segmentIndices;
+        agent.state = ResidentAgentState::ReturningHome;
+        agent.targetFacilityId = 0;
+        agent.visitHoursLeft = 0.0f;
+        agent.stamina = (std::max)(0.0f, agent.stamina - RoadLossStaminaCost(plan.length, m_settings));
+        ApplyRoadLossPenalty(agent, false, m_settings);
+        agent.lastDecisionNote = "道路が無くなったので、迂回して帰る";
+    }
+}
+
 void DemandSystem::OnBuildingDemolished(const DemolishedBuilding& building, GameContext& context)
 {
     if (building.type == BuildingType::House)
@@ -815,7 +1051,8 @@ void DemandSystem::OnBuildingDemolished(const DemolishedBuilding& building, Game
         m_ledger.MarkDemolished(building.id);
         for (ResidentAgent& agent : m_agents)
         {
-            if (agent.targetFacilityId == building.id && agent.state != ResidentAgentState::AtHome && agent.state != ResidentAgentState::Homeless)
+            if (agent.targetFacilityId == building.id && agent.state != ResidentAgentState::AtHome
+                && agent.state != ResidentAgentState::Homeless && agent.state != ResidentAgentState::Stranded)
             {
                 AbortOutingToDemolishedFacility(agent, context);
             }
@@ -836,8 +1073,8 @@ void DemandSystem::UpdateAgentMovement(float deltaTime, GameContext& context)
             continue;
         }
 
-        // 住居が無い住民は、元の住宅の位置で、見える状態のまま立っている(動かない・施設を使わない)。
-        if (agent.state == ResidentAgentState::Homeless)
+        // 住居が無い住民・立ち往生している住民は、見える状態のまま立っている(動かない・施設を使わない)。
+        if (agent.state == ResidentAgentState::Homeless || agent.state == ResidentAgentState::Stranded)
         {
             obj->visible = true;
             continue;
@@ -1049,6 +1286,18 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
     }
 
     const BuildingDefinition& houseDef = GetBuildingDefinition(BuildingType::House);
+
+    // 0. 立ち往生している住民のうち、道がつながって帰れるようになった人は、帰り始める。
+    {
+        PathCache recoveryCache;
+        for (ResidentAgent& agent : m_agents)
+        {
+            if (agent.state == ResidentAgentState::Stranded)
+            {
+                TryRecoverStranded(agent, context, segments, graph, recoveryCache);
+            }
+        }
+    }
 
     // 1. 住宅に対して住民が不足していれば生成する(今は1軒に1人。内部パラメータは、住民ごとに種から決める)。
     for (const BuildingSnapshot& house : houses)
@@ -1349,6 +1598,10 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
         {
             m_lastStats.homelessCount++;
         }
+        if (agent.state == ResidentAgentState::Stranded)
+        {
+            m_lastStats.strandedCount++;
+        }
     }
 }
 
@@ -1397,6 +1650,7 @@ std::string DemandSystem::GetAgentDebugSummary(uint32_t objectId) const
         case ResidentAgentState::Visiting:      oss << "Visiting";      break;
         case ResidentAgentState::ReturningHome: oss << "ReturningHome"; break;
         case ResidentAgentState::Homeless:      oss << "Homeless";      break;
+        case ResidentAgentState::Stranded:      oss << "Stranded";      break;
         default:                                oss << "(unused)";      break;
         }
 
@@ -1445,6 +1699,7 @@ ResidentInfo DemandSystem::MakeResidentInfo(const ResidentAgent& agent) const
     info.found = true;
     info.homeObjectId = agent.homeObjectId;
     info.homeless = (agent.homeObjectId == 0);
+    info.satisfaction = agent.satisfaction;
     info.state = agent.state;
     info.targetFacilityId = agent.targetFacilityId;
     info.purpose = agent.purpose;
@@ -1470,6 +1725,19 @@ std::vector<uint32_t> DemandSystem::GetHomelessAgentObjectIds() const
     for (const ResidentAgent& agent : m_agents)
     {
         if (agent.state == ResidentAgentState::Homeless)
+        {
+            ids.push_back(agent.objectId);
+        }
+    }
+    return ids;
+}
+
+std::vector<uint32_t> DemandSystem::GetStrandedAgentObjectIds() const
+{
+    std::vector<uint32_t> ids;
+    for (const ResidentAgent& agent : m_agents)
+    {
+        if (agent.state == ResidentAgentState::Stranded)
         {
             ids.push_back(agent.objectId);
         }

@@ -36,6 +36,14 @@ namespace WorldScale
     // 道路の建設費の「1マス」の長さ。マスを細かくしても、長さあたりの値段が変わらないよう、最初の1マス分で数える。
     constexpr float kRoadPriceCellLength = kLengthUnit;
 
+    // 道路の行き止まり(端)の、見た目・占有の延長。道幅の半分(最初のマス1.0の頃の、半マス)。
+    // 道路は、マスの境目の線の上(マスの細かい格子の交点)から引くので、端は、その点から、道幅の半分だけ先まで伸ばす。
+    // (マスを細かく分割しても変えない。マスの大きさ kCellSize に連動させると、端が短くなり、青マスとずれる)
+    constexpr float kRoadEndExtension = 0.5f * (kLengthUnit / kLegacyCellSize);
+
+    // 道路の両脇に作る青マス(建物の置き場の目印)の厚み(マスの数)。住宅(最初の1マス = 細かい格子で2マス)が収まる厚み。
+    constexpr int kFrontageDepthCells = 2;
+
     // 画面の遠さ(カメラの描画の奥行き。ニア/ファー)。フィールドが大きくなっても、端が欠けないようにする。
     constexpr float kCameraNearPlane = 0.1f;
     constexpr float kCameraFarPlane = 400.0f;

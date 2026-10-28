@@ -17,7 +17,8 @@ enum class MenuCommandType
     SelectBuilding,     // arg = BuildingType(を整数にした値)。建物の配置を始める
     SelectRoad,         // arg = RoadType。道路の配置を始める
     SetRoadDrawMode,    // arg = RoadDrawMode。道路の引き方(直線/自由)を切り替える
-    SelectDemolish,     // 解体ツールを選ぶ(建物をなぞって選び、離すと解体する)
+    SelectDemolish,     // 解体ツールを選ぶ(建物・道路をなぞって選び、離すと解体する)
+    NotifyBlocked,      // 押せない項目(お金が足りない等)が押された。メニューは閉じず、理由を知らせる(ゲーム側が、noticeTextに出す)
     CancelPlacement,    // 配置を、やめる
     Save,
     Load,
@@ -77,6 +78,7 @@ struct MenuModel
     std::string activeToolLabel;    // 配置中のものの名前(「住宅」)。空なら、配置中ではない
     std::string statusText;         // システムタブに出す、直前のセーブ/ロードの結果
     std::vector<MenuSlider> sliders; // オプションタブの音量(全体・BGM・効果音)
+    std::string noticeText;         // 建築タブの下に、警告の色で出す知らせ(「お金が足りないので、選択できません」)。空なら出さない
 };
 
 // マウスの状態と画面の大きさ。座標は、描画先(ゲームビュー)の左上からのピクセル。

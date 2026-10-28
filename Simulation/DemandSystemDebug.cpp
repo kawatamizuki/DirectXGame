@@ -16,6 +16,7 @@ namespace
         case ResidentAgentState::Visiting:      return "Visiting";
         case ResidentAgentState::ReturningHome: return "ReturningHome";
         case ResidentAgentState::Homeless:      return "Homeless";
+        case ResidentAgentState::Stranded:      return "Stranded";
         default:                                return "(unused)";
         }
     }

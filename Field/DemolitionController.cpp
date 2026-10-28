@@ -2,6 +2,8 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <cstdio>
+#include <optional>
 #include "GameContext.h"
 #include "Field.h"
 #include "IOccupancyGrid.h"
@@ -17,6 +19,7 @@
 #include "InputManager.h"
 #include "InputAction.h"
 #include "Collision.h"
+#include "RoadProximity.h"
 #include "EditorGuard.h"
 #include "Debug.h"
 
@@ -69,6 +72,29 @@ namespace
         return true;
     }
 
+    // 道路のスライス(切り取る範囲の四角)を、枠と対角線(×)で描く。
+    void DrawWindowMarker(DebugRenderer& renderer, const RoadCutWindow& window, const XMFLOAT4& color, bool cross)
+    {
+        const float perpX = window.dirZ;
+        const float perpZ = -window.dirX;
+        const float y = 0.06f; // 道路(0.02)・建物の枠(0.05)より、少し上に浮かせる
+        auto corner = [&](float u, float v)
+        {
+            return XMFLOAT3(window.center.x + window.dirX * u + perpX * v, y, window.center.z + window.dirZ * u + perpZ * v);
+        };
+        const XMFLOAT3 c[4] = { corner(-window.halfLength, -window.halfWidth), corner(window.halfLength, -window.halfWidth),
+                                corner(window.halfLength, window.halfWidth), corner(-window.halfLength, window.halfWidth) };
+        for (int i = 0; i < 4; ++i)
+        {
+            renderer.AddLine(c[i], c[(i + 1) % 4], color);
+        }
+        if (cross)
+        {
+            renderer.AddLine(c[0], c[2], color);
+            renderer.AddLine(c[1], c[3], color);
+        }
+    }
+
     // 建物の足元の四角を、赤(オレンジ)の枠と、対角線(×)で描く。×は、「消える」ことを示す。
     void DrawMarker(DebugRenderer& renderer, const GameObject& obj, const XMFLOAT4& color, bool cross)
     {
@@ -117,6 +143,7 @@ void DemolitionController::Cancel()
 {
     m_dragging = false;
     m_selection.Clear();
+    m_roadSlices.clear();
 }
 
 void DemolitionController::Notify(const std::string& text) const
@@ -153,6 +180,65 @@ uint32_t DemolitionController::PickBuildingAt(const POINT& cursor) const
     return hitId;
 }
 
+bool DemolitionController::PickRoadSliceAt(const POINT& cursor, RoadSlice& out) const
+{
+    if (!m_context || !m_context->camera || !m_context->renderer || !m_field || !m_roadSystem)
+    {
+        return false;
+    }
+    const Ray ray = m_context->camera->ScreenPointToRay(cursor, m_context->renderer->GetViewWidth(), m_context->renderer->GetViewHeight());
+    XMFLOAT3 hit;
+    if (!m_field->RaycastGround(ray, hit))
+    {
+        return false;
+    }
+
+    // 道路面の上(中心線から、道幅の半分以内)にある時だけ。
+    const std::vector<RoadSegment>& segments = m_roadSystem->GetSegments();
+    const std::optional<NearestRoadPoint> nearest = FindNearestPointOnRoad(segments, hit, 0.0f, 0.5f);
+    if (!nearest.has_value())
+    {
+        return false;
+    }
+    out.segmentIndex = nearest->segmentIndex;
+    out.window = m_roadSystem->MakeSliceAt(nearest->segmentIndex, nearest->point, out.sliceIndex);
+    return true;
+}
+
+void DemolitionController::AddPickAt(const POINT& cursor)
+{
+    const uint32_t buildingId = PickBuildingAt(cursor);
+    if (buildingId != 0)
+    {
+        m_selection.Add(buildingId);
+        return;
+    }
+    RoadSlice slice;
+    if (PickRoadSliceAt(cursor, slice))
+    {
+        // 同じスライスは、何度なぞっても、1回だけ。
+        for (const RoadSlice& existing : m_roadSlices)
+        {
+            if (existing.segmentIndex == slice.segmentIndex && existing.sliceIndex == slice.sliceIndex)
+            {
+                return;
+            }
+        }
+        m_roadSlices.push_back(slice);
+    }
+}
+
+std::vector<RoadCutWindow> DemolitionController::SelectedWindows() const
+{
+    std::vector<RoadCutWindow> windows;
+    windows.reserve(m_roadSlices.size());
+    for (const RoadSlice& slice : m_roadSlices)
+    {
+        windows.push_back(slice.window);
+    }
+    return windows;
+}
+
 void DemolitionController::AddPicksAlong(const POINT& from, const POINT& to)
 {
     const float dx = static_cast<float>(to.x - from.x);
@@ -163,17 +249,18 @@ void DemolitionController::AddPicksAlong(const POINT& from, const POINT& to)
     {
         const float t = static_cast<float>(i) / static_cast<float>(steps);
         const POINT p{ from.x + static_cast<LONG>(std::lround(dx * t)), from.y + static_cast<LONG>(std::lround(dy * t)) };
-        m_selection.Add(PickBuildingAt(p));
+        AddPickAt(p);
     }
 }
 
 void DemolitionController::Update()
 {
     m_hoverId = 0;
+    m_hasHoverRoad = false;
     if (!m_context || !m_context->input || m_context->placementTool != PlacementTool::Demolish)
     {
         // 解体ツールをやめた(メニューで別の物を選んだなど): 選びかけを残さない。
-        if (m_dragging || !m_selection.Empty()) { Cancel(); }
+        if (m_dragging || !m_selection.Empty() || !m_roadSlices.empty()) { Cancel(); }
         return;
     }
 
@@ -198,21 +285,41 @@ void DemolitionController::Update()
     else if (!overUi && !m_context->inputConsumed)
     {
         m_hoverId = PickBuildingAt(cursor);
+        if (m_hoverId == 0)
+        {
+            m_hasHoverRoad = PickRoadSliceAt(cursor, m_hoverRoad);
+        }
         if (m_context->input->IsActionPressed(InputAction::Decide))
         {
             m_dragging = true;
             m_lastCursor = cursor;
             m_selection.Clear();
-            m_selection.Add(m_hoverId);
+            m_roadSlices.clear();
+            AddPickAt(cursor);
             m_context->inputConsumed = true;
         }
     }
 
-    // カーソルの横の費用タグ: 選んでいる棟数ぶん(選んでいなければ、カーソルの下の1棟ぶん)。
-    const size_t count = m_dragging ? m_selection.Count() : (m_hoverId != 0 ? 1 : 0);
-    if (count > 0)
+    // カーソルの横の費用タグ: 選んでいるもの全部の合計(選んでいなければ、カーソルの下の1つぶん)。
+    int cost = 0;
+    if (m_dragging)
     {
-        const int cost = static_cast<int>(count) * kBuildingDemolitionCost;
+        cost = m_selection.BuildingCost();
+        if (!m_roadSlices.empty())
+        {
+            cost += CalculateRoadDemolitionCost(m_roadSystem->PreviewCut(SelectedWindows()).removed);
+        }
+    }
+    else if (m_hoverId != 0)
+    {
+        cost = kBuildingDemolitionCost;
+    }
+    else if (m_hasHoverRoad)
+    {
+        cost = CalculateRoadDemolitionCost(m_roadSystem->PreviewCut({ m_hoverRoad.window }).removed);
+    }
+    if (cost > 0)
+    {
         m_context->costPreview.visible = true;
         m_context->costPreview.cost = cost;
         m_context->costPreview.cells = 0;
@@ -223,9 +330,9 @@ void DemolitionController::Update()
 void DemolitionController::FinishDrag(bool overUi)
 {
     m_dragging = false;
-    if (overUi || m_selection.Empty())
+    if (overUi || (m_selection.Empty() && m_roadSlices.empty()))
     {
-        m_selection.Clear(); // UIの上で離した: 取り消す(何も払わない・消さない)
+        Cancel(); // UIの上で離した: 取り消す(何も払わない・消さない)
         return;
     }
 
@@ -239,18 +346,22 @@ void DemolitionController::FinishDrag(bool overUi)
             ids.push_back(id);
         }
     }
-    m_selection.Clear();
-    if (ids.empty())
+    // 道路は、今の道路に対して、実際に切れるかを計算し直す(費用は、切り取る長さから決める)。
+    const std::vector<RoadCutWindow> windows = SelectedWindows();
+    const RoadCutResult preview = windows.empty() ? RoadCutResult() : m_roadSystem->PreviewCut(windows);
+    const int roadCost = preview.changed ? CalculateRoadDemolitionCost(preview.removed) : 0;
+    Cancel();
+    if (ids.empty() && !preview.changed)
     {
         return;
     }
 
-    const int cost = static_cast<int>(ids.size()) * kBuildingDemolitionCost;
+    const int buildingCost = static_cast<int>(ids.size()) * kBuildingDemolitionCost;
+    const int cost = buildingCost + roadCost;
     if (m_context->economy && !CanPayDemolition(m_context->economy->GetCash(), cost))
     {
         // 払えない時は、全体を取り消す(一部だけ消さない)。
-        Notify("お金が足りません: " + std::to_string(ids.size()) + "棟の解体に " + std::to_string(cost) +
-               "円かかります(所持金 " + std::to_string(m_context->economy->GetCash()) + "円)");
+        Notify("お金が足りません: 解体に " + std::to_string(cost) + "円かかります(所持金 " + std::to_string(m_context->economy->GetCash()) + "円)");
         return;
     }
     if (m_context->economy && !m_context->economy->Spend(cost))
@@ -259,7 +370,45 @@ void DemolitionController::FinishDrag(bool overUi)
     }
 
     const int demolished = DemolishBuildings(ids);
-    Notify(std::to_string(demolished) + "棟を解体しました(-" + std::to_string(cost) + "円)");
+    const float removedLength = preview.changed ? DemolishRoads(windows) : 0.0f;
+
+    std::string message;
+    if (demolished > 0) { message += std::to_string(demolished) + "棟"; }
+    if (removedLength > 0.0f)
+    {
+        // 取り除いた道路の長さを、マスの数で知らせる(マス1つぶん = スライス1つぶん)。
+        const float cells = removedLength / (m_field ? m_field->GetCellSize() : 1.0f);
+        char text[48];
+        std::snprintf(text, sizeof(text), "道路 %.1fマス", cells);
+        if (!message.empty()) { message += "・"; }
+        message += text;
+    }
+    Notify(message + "を解体しました(-" + std::to_string(cost) + "円)");
+}
+
+float DemolitionController::DemolishRoads(const std::vector<RoadCutWindow>& windows)
+{
+    if (!m_context || !m_roadSystem || windows.empty())
+    {
+        return 0.0f;
+    }
+    const RoadCutResult cut = m_roadSystem->ApplyCut(windows);
+    if (!cut.changed)
+    {
+        return 0.0f;
+    }
+
+    // 占有を、道路と建物から作り直す。住民の、無効になった経路を整える(帰宅・迂回・立ち往生)。
+    RebuildOccupancy();
+    if (m_demandSystem && m_field)
+    {
+        m_demandSystem->OnRoadsChanged(cut.removed, m_roadSystem->GetSegments(), *m_context);
+    }
+    if (m_onWorldChanged)
+    {
+        m_onWorldChanged();
+    }
+    return cut.removedLength;
 }
 
 int DemolitionController::DemolishBuildings(const std::vector<uint32_t>& ids)
@@ -347,6 +496,15 @@ void DemolitionController::Draw()
         return;
     }
     DebugRenderer& renderer = *m_context->debugRenderer;
+
+    for (const RoadSlice& slice : m_roadSlices)
+    {
+        DrawWindowMarker(renderer, slice.window, kSelectedColor, true);
+    }
+    if (m_hasHoverRoad && !m_dragging)
+    {
+        DrawWindowMarker(renderer, m_hoverRoad.window, kHoverColor, false);
+    }
 
     for (uint32_t id : m_selection.Ids())
     {

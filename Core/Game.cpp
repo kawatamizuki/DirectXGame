@@ -629,7 +629,7 @@ HudState Game::BuildHudState() const
     }
     else if (m_context.placementTool == PlacementTool::Demolish)
     {
-        state.hintText = "解体: 建物をクリック/なぞって選び、離すと解体(1棟100円) / Esc・右クリックでやめる";
+        state.hintText = "解体: 建物・道路をクリック/なぞって選び、離すと解体(建物1棟100円・道路は建設費の半額) / Esc・右クリックでやめる";
     }
 
     // 道路に接続できていない建物に、「道路がない！」を出す(建物の少し上)。
@@ -667,6 +667,23 @@ HudState Game::BuildHudState() const
             if (m_camera.WorldToScreen(above, viewW, viewH, screen))
             {
                 state.worldLabels.push_back({ static_cast<float>(screen.x), static_cast<float>(screen.y), "住居がない！" });
+            }
+        }
+
+        // 道路が無くなって帰れない住民の上に、「立ち往生！」を出す。
+        for (uint32_t id : m_demandSystem.GetStrandedAgentObjectIds())
+        {
+            const GameObject* obj = GameObjectFactory::FindById(m_objects, id);
+            if (!obj)
+            {
+                continue;
+            }
+            DirectX::XMFLOAT3 above = obj->transform.position;
+            above.y += WorldScale::FromLegacy(0.7f);
+            POINT screen;
+            if (m_camera.WorldToScreen(above, viewW, viewH, screen))
+            {
+                state.worldLabels.push_back({ static_cast<float>(screen.x), static_cast<float>(screen.y), "立ち往生！" });
             }
         }
     }
@@ -787,10 +804,11 @@ MenuModel Game::BuildMenuModel() const
         MenuItem demolish;
         demolish.icon = UIIcon::Demolish;
         demolish.name = "解体";
-        demolish.detail = std::to_string(kBuildingDemolitionCost) + "円/棟";
-        demolish.affordable = (cash >= kBuildingDemolitionCost);
+        demolish.detail = std::to_string(kBuildingDemolitionCost) + "円/棟・道路半額";
+        demolish.affordable = CanSelectDemolitionTool(cash);
         demolish.selected = demolishTool;
-        demolish.command = { MenuCommandType::SelectDemolish, 0 };
+        // お金が足りない(解体の最小の費用も、持っていない)時は、押しても、ツールに入らず、メニューも閉じない(理由を知らせる)。
+        demolish.command = demolish.affordable ? MenuCommand{ MenuCommandType::SelectDemolish, 0 } : MenuCommand{ MenuCommandType::NotifyBlocked, 0 };
         model.tools.push_back(demolish);
     }
 
@@ -803,6 +821,10 @@ MenuModel Game::BuildMenuModel() const
     if (stats.homelessCount > 0)
     {
         model.info.push_back({ "住居がない住民", std::to_string(stats.homelessCount) + "人" });
+    }
+    if (stats.strandedCount > 0)
+    {
+        model.info.push_back({ "立ち往生の住民", std::to_string(stats.strandedCount) + "人" });
     }
     model.info.push_back({ "住宅 / 施設", std::to_string(stats.houseCount) + " / " + std::to_string(stats.facilityCount) });
     model.info.push_back({ "今週の来客 / 売上", std::to_string(stats.visitsThisWeek) + "人 / " + std::to_string(stats.salesThisWeek) + "円" });
@@ -824,6 +846,10 @@ MenuModel Game::BuildMenuModel() const
     }
 
     model.statusText = m_menuStatus;
+    if (m_noticeSecondsLeft > 0.0f && !m_noticeText.empty())
+    {
+        model.noticeText = m_noticeText; // 押せない項目の理由など(少しの間だけ)
+    }
 
     // オプション: 音量(0〜100)。今のミキサーの値を、そのまま見せる。
     const AudioSettings volumes = AudioSettings::FromMixer(m_audio.Mixer());
@@ -851,7 +877,18 @@ void Game::ApplyMenuCommand(const MenuCommand& command)
         m_roadSystem.CancelPlacement();
         m_context.roadDrawMode = static_cast<RoadDrawMode>(command.arg);
         break;
+    case MenuCommandType::NotifyBlocked:
+        m_noticeText = "お金が足りないので、選択できません";
+        m_noticeSecondsLeft = 4.0f;
+        break;
     case MenuCommandType::SelectDemolish:
+        if (!CanSelectDemolitionTool(m_gameEconomy.GetCash()))
+        {
+            // (メニューの項目は、お金が足りない時は、NotifyBlockedになっているが、念のため、ここでも守る)
+            m_noticeText = "お金が足りないので、選択できません";
+            m_noticeSecondsLeft = 4.0f;
+            break;
+        }
         m_roadSystem.CancelPlacement();
         m_demolition.Cancel();
         m_context.placementTool = PlacementTool::Demolish;
@@ -1522,6 +1559,7 @@ ResidentInfoModel Game::BuildResidentInfoModel() const
     case ResidentAgentState::Visiting:      stateText = facilityName(info.targetFacilityId) + "を利用中"; break;
     case ResidentAgentState::ReturningHome: stateText = info.homeless ? "元の家へ戻る途中(家は解体された)" : "帰宅中"; break;
     case ResidentAgentState::Homeless:      stateText = "住居がない！(行動できない)"; break;
+    case ResidentAgentState::Stranded:      stateText = "立ち往生(道路が無くなって、帰れない)"; break;
     default: break;
     }
     model.subtitle += " / " + stateText;
@@ -1540,6 +1578,9 @@ ResidentInfoModel Game::BuildResidentInfoModel() const
     value("生活の不足が続いた時間", number(info.unmetLifeHours, 1) + " 時間");
     value("アクティビティの不足が続いた時間", number(info.unmetActivityHours, 1) + " 時間");
     value("両方が充足している時間", number(info.satisfiedHours, 1) + " 時間");
+
+    header("満足度");
+    value("満足度", number(info.satisfaction, 0) + " / 100", clamp01(info.satisfaction / 100.0f), -1.0f, info.satisfaction < 50.0f);
 
     header("体力");
     value("体力", number(info.stamina, 0) + " / " + number(info.staminaCap, 0), clamp01(info.stamina / (info.staminaCap > 1.0f ? info.staminaCap : 1.0f)));

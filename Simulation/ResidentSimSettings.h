@@ -42,6 +42,13 @@ struct ResidentSimSettings
     float distanceScaleLegacyCells = 14.0f;     // 距離で重みが約1/e(37%)になる道のり(マス基準)。住民ごとの係数がかかる
     float minimumWeight = 0.001f;               // 重みの下限(到達できる候補を、無条件に0にしない)
 
+    // ---- 満足度・道路が無くなった時の扱い(暫定。後で、救済の方法・ペナルティを見直す) ----
+    float satisfactionMax = 100.0f;                     // 満足度の上限(初期値でもある)
+    float roadLossRerouteSatisfactionPenalty = 5.0f;    // 道路が無くなって、迂回して帰ることになった時に、下がる満足度
+    float roadLossStrandedSatisfactionPenalty = 15.0f;  // 道路が無くなって、立ち往生した時に、下がる満足度
+    float roadLossStaminaCostScale = 1.0f;              // 迂回して帰る時の、体力の消費の倍率(通常の移動の消費 × この値。道のり全体にかかる)
+    float strandedRoadSnapRadiusLegacyCells = 3.0f;     // 立ち往生した時、今の位置が道路の上でなければ、この範囲(マス基準)の、一番近い道路の上へ寄せる
+
     // ---- お金 ----
     float salesShareToFunds = 1.0f;             // 売上のうち、プレイヤーの建設資金に入る割合(今は100%。後で変える。税収ではなく店舗売上からの開発資金分配)
 

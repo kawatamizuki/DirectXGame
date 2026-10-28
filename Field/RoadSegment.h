@@ -25,4 +25,9 @@ struct RoadSegment
     // グリッド角度スナップにより鋭い角度で折れることがあり、ミターすると
     // 逆に隙間が目立つため)。
     RoadDrawMode drawMode = RoadDrawMode::Straight;
+
+    // 解体で切った端か(trueなら、その端は「平ら」に描き、行き止まり用の延長(見た目・占有)をしない)。
+    // 延長をすると、切り取った隙間が、見た目だけ塞がってしまう。通常の道路の建設では、常にfalse。保存される。
+    bool flatStart = false;
+    bool flatEnd = false;
 };

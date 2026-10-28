@@ -257,6 +257,18 @@ GameMenu::Layout GameMenu::ComputeLayout(const MenuInput& input, const MenuModel
             }
         }
 
+        // 知らせ(押せない項目が押された時の理由)。中身の枠の下に、警告の色で出す。
+        if (!model.noticeText.empty())
+        {
+            Text notice;
+            notice.size = UIRoundFontSize(kInfoFont * s);
+            notice.text = model.noticeText;
+            notice.x = L.content.x + pad;
+            notice.y = L.content.Bottom() - pad - notice.size * 1.3f;
+            notice.role = UITextRole::Warning;
+            L.texts.push_back(notice);
+        }
+
         // ツール(解体)。引き方の下に並べる。
         if (toolCount > 0)
         {

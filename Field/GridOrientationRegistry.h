@@ -48,6 +48,10 @@ public:
     // 既存の青マスの上を通った時に、道路の上にマスが残らないようにするために使う。
     void RemoveCellsOverlapping(const OrientedRect& rect, float cellSize);
 
+    // rectと重なる既存のマスのうち、keepRectsのどれにも重ならないものだけを削除する。
+    // 道路を解体した跡の、不要な青マスを消す時に使う(既に建っている建物が使っているマスは、残す)。
+    void RemoveCellsOverlappingExcept(const OrientedRect& rect, const std::vector<OrientedRect>& keepRects, float cellSize);
+
     // 指定したワールドのマスに、登録済みのマスが(面積を持って)触れているか。
     // 触れていれば、元のワールド軸グリッドはそのマスでは使われない扱いにする
     // (Field::DrawGridOverlayが灰色の線を消すのに使う)。
@@ -72,7 +76,15 @@ public:
     // 90度刻みのyawでは必ずワールドセルの角(=既存動作と一致)になり、斜めのyawでも
     // 一貫した規則でグリッドの位相が決まる(GridToWorldCornerがGridToWorldから
     // half-cellを引く関係の、回転版の一般化)。
+    //
+    // 【変更(マスを細分化した後)】道路・建物は、マスの細かい格子の「交点」(cellSizeの整数倍の点)から引く。そのため、anchorPointが、
+    // そのまま、ローカル格子の「角」になる(原点=anchorPoint)。こうすると、道路ごとの格子が、同じ格子の上に乗り(軸に揃った道路は、
+    // ワールドの格子と一致)、最初のマス1.0の頃のセーブ(細分化して読み込む)の格子とも、ぴったり重なる。
+    // 以前(anchorPointがマスの中心だった頃)の「中心を原点にする」版は、ComputeOriginForCellCenterに残してある。
     static DirectX::XMFLOAT3 ComputeChunkOrigin(const DirectX::XMFLOAT3& anchorPoint, float yaw, float cellSize);
+
+    // centerを、ローカルマス(0,0)の「中心」に置く原点を返す(曲線の道の、マス1つ1つの格子に使う)。
+    static DirectX::XMFLOAT3 ComputeOriginForCellCenter(const DirectX::XMFLOAT3& center, float yaw, float cellSize);
 
     // マスを矩形(ワールド座標)に変換する。
     static OrientedRect MakeCellRect(const OrientedCell& cell, float cellSize);
@@ -82,10 +94,7 @@ public:
     // デバッグ専用表示(BuildControllerのチェックボックスでON/OFFする)。
     void DrawDebugOverlay(DebugRenderer& debugRenderer, float cellSize) const;
 
-    // 登録済みのマスのうち、基準角度がワールド軸から外れているもの(斜め道路に揃った
-    // マス)だけ、そのローカル格子に沿った四角形を描く。yaw≈0のマスは何もしない
-    // (ワールド軸に揃っているので、Field::DrawGridOverlayの通常のグリッド線がそのまま
-    // 正しい絵になるため、触らないことで「yaw=0は今まで通り」を保証する)。
+    // 登録済みのマスを全て、そのローカル格子に沿った四角形で描く(yaw=0のマスも描く。+Z向きの道の青マスが、出ないことが無いように)。
     void DrawOrientedGridOverlay(DebugRenderer& debugRenderer, float cellSize, const DirectX::XMFLOAT4& color) const;
 
 private:

@@ -363,6 +363,9 @@
     <ClCompile Include="Field\DemolitionController.cpp">
       <Filter>ソース ファイル\Field</Filter>
     </ClCompile>
+    <ClCompile Include="Field\RoadCutting.cpp">
+      <Filter>ソース ファイル\Field</Filter>
+    </ClCompile>
     <ClCompile Include="Field\CurveRoadPlacementStrategy.cpp">
       <Filter>ソース ファイル\Field</Filter>
     </ClCompile>
@@ -750,6 +753,9 @@
       <Filter>ヘッダー ファイル\Field</Filter>
     </ClInclude>
     <ClInclude Include="Field\DemolitionSelection.h">
+      <Filter>ヘッダー ファイル\Field</Filter>
+    </ClInclude>
+    <ClInclude Include="Field\RoadCutting.h">
       <Filter>ヘッダー ファイル\Field</Filter>
     </ClInclude>
     <ClInclude Include="Field\CurveRoadPlacementStrategy.h">

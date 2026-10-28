@@ -229,6 +229,7 @@
     <ClCompile Include="Field\CurveSmoothing.cpp" />
     <ClCompile Include="Field\FrontageCells.cpp" />
     <ClCompile Include="Field\DemolitionController.cpp" />
+    <ClCompile Include="Field\RoadCutting.cpp" />
     <ClCompile Include="Field\QuadRoadMeshGenerator.cpp" />
     <ClCompile Include="Field\RoadMeshBuilder.cpp" />
     <ClCompile Include="Field\OrientedRectangleOverlap.cpp" />
@@ -361,6 +362,7 @@
     <ClInclude Include="Field\FrontageCells.h" />
     <ClInclude Include="Field\DemolitionController.h" />
     <ClInclude Include="Field\DemolitionSelection.h" />
+    <ClInclude Include="Field\RoadCutting.h" />
     <ClInclude Include="Field\RoadDrawMode.h" />
     <ClInclude Include="Field\IRoadMeshGenerator.h" />
     <ClInclude Include="Field\QuadRoadMeshGenerator.h" />

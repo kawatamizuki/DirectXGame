@@ -78,6 +78,7 @@ void InitializeResident(ResidentAgent& agent, uint32_t seed, const ResidentSimSe
     agent.lifeNeed = Lerp(settings.initialNeedMin, settings.initialNeedMax, HashUnit(seed, 11));
     agent.activityNeed = Lerp(settings.initialNeedMin, settings.initialNeedMax, HashUnit(seed, 12));
     agent.penaltyLevel = 0;
+    agent.satisfaction = settings.satisfactionMax;
     agent.stamina = EffectiveStaminaCap(agent, settings);
     agent.unmetLifeHours = 0.0f;
     agent.unmetActivityHours = 0.0f;
@@ -313,4 +314,16 @@ DirectX::XMFLOAT2 HomelessOffset(int index, float spacing)
     const float radius = spacing * std::sqrt(static_cast<float>(index));
     const float angle = kGoldenAngle * static_cast<float>(index);
     return DirectX::XMFLOAT2(std::cos(angle) * radius, std::sin(angle) * radius);
+}
+
+float RoadLossStaminaCost(float routeLength, const ResidentSimSettings& settings)
+{
+    const float legacyDistance = routeLength / WorldScale::FromLegacy(1.0f);
+    return (std::max)(0.0f, legacyDistance) * settings.staminaPerLegacyCell * (std::max)(0.0f, settings.roadLossStaminaCostScale);
+}
+
+void ApplyRoadLossPenalty(ResidentAgent& agent, bool stranded, const ResidentSimSettings& settings)
+{
+    const float penalty = stranded ? settings.roadLossStrandedSatisfactionPenalty : settings.roadLossRerouteSatisfactionPenalty;
+    agent.satisfaction = (std::max)(0.0f, agent.satisfaction - (std::max)(0.0f, penalty));
 }

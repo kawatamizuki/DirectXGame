@@ -7,6 +7,7 @@
 #include "GridCoord.h"
 #include "Model.h"
 #include "RoadDrawMode.h"
+#include "RoadCutting.h"
 
 struct GameContext;
 class Field;
@@ -55,6 +56,22 @@ public:
     // 建物の解体の後、占有を「道路と建物」から作り直す時に使う(占有は、1つだけを解除できないため)。RestoreSegmentsの中でも使う。
     void ReregisterOccupancy();
 
+    // ---- 道路の部分解体(解体ツールが使う) ----
+    // windows(道路に沿った、長さ×道幅の範囲)の中にある、全ての道路の中心線を切り取った時の結果を返す(何も変えない)。
+    // 費用・プレビュー・住民の経路の確認に使う。
+    RoadCutResult PreviewCut(const std::vector<RoadCutWindow>& windows) const;
+
+    // 実際に切り取る。区間を置き換え、道路ノード・メッシュ(切り口は平ら)・不要になった青マスを作り直す。
+    // 占有(IOccupancyGrid)は、呼び出し側が、道路と建物から作り直す(ReregisterOccupancy)。置きかけの道路は、やめる。
+    // 区間の並び・添字が変わるので、道路区間の添字を持っている物(住民の経路など)は、呼び出し側が整える。
+    RoadCutResult ApplyCut(const std::vector<RoadCutWindow>& windows);
+
+    // segmentIndexの区間の上の、pointを含むスライス(解体の単位)を作る。行き止まりの端の延長(見た目)も、端のスライスに含める。
+    RoadCutWindow MakeSliceAt(size_t segmentIndex, const DirectX::XMFLOAT3& point, int& sliceIndexOut) const;
+
+    // 解体のスライス1つぶんの長さ(マス1つぶん。画面のマス目に揃う)。
+    float GetSliceLength() const;
+
     // 置きかけの道路(直線の1点目・フリーハンドのドラッグ中・確認待ちの曲線)があるか。
     // Escや右クリックで、先に置きかけをやめるか、配置ツール自体をやめるかを決めるのに使う。
     bool HasPendingPlacement() const;
@@ -89,6 +106,9 @@ private:
         const DirectX::XMFLOAT3& point,
         RoadDrawMode mode,
         const DirectX::XMFLOAT3* pendingStart = nullptr) const;
+
+    // 区間の端点から、道路ノードを作り直し、道路メッシュを作り直す(区間の並びが変わった後に使う。占有は別)。
+    void RebuildNodesAndMesh();
 
     // segmentIndexの区間を、start→splitPointとsplitPoint→endの2つに置き換える(タイプ・幅は元のまま引き継ぐ)。
     void SplitSegmentAt(size_t segmentIndex, const DirectX::XMFLOAT3& splitPoint);

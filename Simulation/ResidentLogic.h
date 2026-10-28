@@ -107,6 +107,13 @@ void ProcessResidentWeekEnd(ResidentAgent& agent, const ResidentSimSettings& set
 // 週の始まり(就寝明け)の処理: 体力を、上限まで(回復量の範囲で)回復する。
 void ProcessResidentWeekStart(ResidentAgent& agent, const ResidentSimSettings& settings);
 
+// ---- 道路が無くなった時の扱い(暫定。数値は、ResidentSimSettingsで調整できる) ----
+// 迂回して帰る時の、体力の消費(通常の移動と同じ、道のりあたりの消費 × roadLossStaminaCostScale)。routeLength: 迂回の道のり全体。
+float RoadLossStaminaCost(float routeLength, const ResidentSimSettings& settings);
+
+// 道路が無くなったことによる、満足度の低下(0未満にはならない)。stranded: 立ち往生したか(falseなら、迂回して帰ることになっただけ)。
+void ApplyRoadLossPenalty(ResidentAgent& agent, bool stranded, const ResidentSimSettings& settings);
+
 // 住居が無い住民を、元の住宅の位置に立たせる時の、位置のずらし(同じ位置に何人もいても、重ならないように)。
 // index: その位置に、既にいる住居なしの住民の数(0なら、ずらさない)。spacing: ずらす距離の基準(ワールド単位)。
 // 戻り値は、(x, z)のずれ。渦を巻くように外へ広がる(同じindexなら、いつも同じ値)。

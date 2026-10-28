@@ -43,7 +43,7 @@ namespace
     constexpr float kOrientationAlignDistanceLegacyCells = 2.0f; // 最初のマス(1.0)の何倍か。マスを細かく分けても、探す範囲は変えない
 
     // segmentの道路面を表す向き付き矩形(中心線を道幅で膨らませた帯)を返す。
-    // endExtensionだけ始点・終点側にも延長できる(行き止まりの見た目の延長に合わせる用)。
+    // endExtensionだけ始点・終点側にも延長できる(行き止まりの見た目の延長に合わせる用)。解体で切った端(flat)は、延長しない。
     OrientedRect MakeRoadRect(const RoadSegment& segment, float endExtension)
     {
         XMVECTOR dir = XMLoadFloat3(&segment.end) - XMLoadFloat3(&segment.start);
@@ -68,13 +68,15 @@ namespace
 
         // 始点から、道幅の半分だけローカル-X側へ、延長ぶんだけローカル-Z側へずらした点が最小角。
         float halfWidth = segment.width * 0.5f;
+        const float startExtension = segment.flatStart ? 0.0f : endExtension;
+        const float tailExtension = segment.flatEnd ? 0.0f : endExtension;
         rect.origin = XMFLOAT3(
-            segment.start.x - c * halfWidth - s * endExtension,
+            segment.start.x - c * halfWidth - s * startExtension,
             0.0f,
-            segment.start.z + s * halfWidth - c * endExtension);
+            segment.start.z + s * halfWidth - c * startExtension);
         rect.yaw = yaw;
         rect.width = segment.width;
-        rect.depth = length + endExtension * 2.0f;
+        rect.depth = length + startExtension + tailExtension;
         return rect;
     }
 
@@ -271,11 +273,12 @@ RoadSystem::SnapResult RoadSystem::TryFindSnapPoint(const XMFLOAT3& point, RoadD
     {
         if (!pendingStart)
         {
-            // 1点目(起点)を探している: 最も近いセルの中心にスナップする
-            // (建物もセルの中心に配置されるため、基準点を合わせることで道路と建物の
-            // 位置関係が直感的になる)。
+            // 1点目(起点)を探している: 最も近い、マスの格子の「交点」(マスの1辺の整数倍の点)にスナップする。
+            // 道幅1.0の道は、細かい格子(0.5)の2マスぶんなので、中心線が格子の線の上に来ると、両端がマスの境目にぴったり揃う。
+            // (最初のマス1.0の中心 = この交点の1つなので、従来の「マスの中心から引く」も、そのまま引ける。
+            //  マスの中心(細かい格子の中心)にスナップすると、従来の中心を通れなくなっていた)
             float cellSize = m_field->GetCellSize();
-            result.point = GridToWorld(WorldToGrid(point, cellSize), cellSize);
+            result.point = XMFLOAT3(roundf(point.x / cellSize) * cellSize, 0.0f, roundf(point.z / cellSize) * cellSize);
         }
         else
         {
@@ -360,11 +363,14 @@ void RoadSystem::SplitSegmentAt(size_t segmentIndex, const XMFLOAT3& splitPoint)
 
     RoadSegment original = m_segments[segmentIndex];
 
+    // 分割点は、道路の途中(つながる点)なので、平らな端ではない(解体の切り口の印は、元の外側の端にだけ残す)。
     RoadSegment firstHalf = original;
     firstHalf.end = splitPoint;
+    firstHalf.flatEnd = false;
 
     RoadSegment secondHalf = original;
     secondHalf.start = splitPoint;
+    secondHalf.flatStart = false;
 
     m_segments[segmentIndex] = firstHalf;
     size_t secondHalfIndex = m_segments.size();
@@ -421,7 +427,7 @@ bool RoadSystem::IsSegmentPlaceable(const RoadSegment& segment, const std::vecto
     // ①建物には重ならない。道路面(行き止まりの見た目の延長ぶんも含む)を、建物の実際の
     // 形と厳密に比較する。ぴったり隣接するのはOK。以前はワールドのマス単位の占有と
     // 照合していたため、斜め道路のそばでは実際には空いている場所まで拒否されていた。
-    if (!m_occupancy->IsRectFree(MakeRoadRect(segment, cellSize * 0.5f), IOccupancyGrid::kOccupantBuilding))
+    if (!m_occupancy->IsRectFree(MakeRoadRect(segment, WorldScale::kRoadEndExtension), IOccupancyGrid::kOccupantBuilding))
     {
         return false;
     }
@@ -483,36 +489,25 @@ void RoadSystem::ClaimOrientationNearSegment(const RoadSegment& segment, size_t 
 
     float cellSize = m_field->GetCellSize();
 
-    // このマス群の原点は区間全体で共通(区間自身の始点を基準にする)。
-    // ComputeChunkOriginは始点(道路の中心線上)をローカルマス(0,0)の中心に置く原点を返すため、
-    // この原点で作るローカルグリッドは必ずこの区間の実際の位置に揃い、
-    // ローカルマスの列番号0が道路の中心線を挟んだ列、±mが道路の両脇の列になる。
+    // このマス群の原点は、区間全体で共通(区間自身の始点)。始点は、マスの細かい格子の交点(1点目のスナップ)なので、
+    // 原点=始点で、ローカル格子の線が、道路の中心線の上を通り、軸に揃った道路では、ワールドの格子と一致する。
+    // (最初のマス1.0の頃のセーブを、細分化して読んだ格子とも、同じ線の上に乗る。道路ごとに格子がずれると、近くの道路の青マスが重なって、不揃いになる)
     XMFLOAT3 origin = GridOrientationRegistry::ComputeChunkOrigin(segment.start, yaw, cellSize);
 
-    // 建物が建つ「道路の縁に接する最初の列」の番号m。列0の中心が中心線上にあるので、
-    // 道路の縁は中心線から道幅/2、列mの手前の辺は(m - 0.5)*cellSize。縁以降から始まる
-    // 最小のmを選ぶ(幅1.0以下ならm=1、Large(1.6)ならm=2)。以前は常に±1だったため、
-    // Largeでは道路自身に食い込んだマスが青く表示されてしまっていた。
-    // 道路自身の列(0)は主張しない(建物を置けない場所を「建てられる場所」の目印として
-    // 水色にしないため)。
-    float edgeFromCenterline = segment.width * 0.5f;
-    int sideColumn = static_cast<int>(std::ceil((edgeFromCenterline + cellSize * 0.5f) / cellSize - 0.0001f));
-    if (sideColumn < 1)
-    {
-        sideColumn = 1;
-    }
+    // 列番号m: マスは、ローカルx = [m*cellSize, (m+1)*cellSize]。中心線は、列の境目(x=0)の上にある。
+    // 道路の縁(中心線から道幅/2)に、ぴったり接する最初の列を選ぶ(幅1.0・マス0.5なら、+X側は列1、-X側は列-2)。
+    // 縁より内側(道路自身)の列は、主張しない(建物を置けない場所を、「建てられる場所」の目印として水色にしないため)。
+    // そこから、住宅が収まる厚み(kFrontageDepthCells)だけ、外へ並べる。
+    const float edgeFromCenterline = segment.width * 0.5f;
+    const int towardPositive = (std::max)(0, static_cast<int>(std::ceil(edgeFromCenterline / cellSize - 0.0001f)));
+    const int towardNegative = -towardPositive - 1;
 
-    // 長さ方向のマス番号。始点は列の中心(ローカルz=cellSize/2)にあり、終点はそこからlengthの位置。
-    // 以前はワールドのチャンクへ向けてサンプル点を取っていたため、斜めではサンプル点同士が
-    // 同じワールドチャンクに入って歯抜けになった。ローカルのマス番号を整数で直接全部
-    // 回すので、斜めでも隙間は構造的に生じない。終点がマスの境界にちょうど乗る場合は、
-    // 隣のマスは触れるだけなので含めない(-0.0001f)。
-    int lastRow = static_cast<int>(std::ceil((cellSize * 0.5f + length) / cellSize - 0.0001f)) - 1;
-    if (lastRow < 0)
-    {
-        lastRow = 0;
-    }
-
+    // 長さ方向のマス番号(始点が行の境目)。道路の端の延長ぶん(kRoadEndExtension)も含めて、始点の少し前から終点の少し先まで。
+    // ローカルのマス番号を整数で直接全部回すので、斜めでも隙間は構造的に生じない。
+    // 終点がマスの境界にちょうど乗る場合は、隣のマスは触れるだけなので含めない(-0.0001f)。
+    const int extensionRows = (std::max)(0, static_cast<int>(std::lround(WorldScale::kRoadEndExtension / cellSize)));
+    const int firstRow = -extensionRows;
+    const int lastRow = (std::max)(0, static_cast<int>(std::ceil(length / cellSize - 0.0001f)) - 1) + extensionRows;
     // 他の道路の路面と重なるマスは作らない(交差部分に水色のマスが乗らないように)。
     // 同じ道の隣の区間とも、折れ曲がりの内側では重なる分は作らないのが正しい。
     std::vector<OrientedRect> otherRoadRects;
@@ -527,34 +522,37 @@ void RoadSystem::ClaimOrientationNearSegment(const RoadSegment& segment, size_t 
 
     float overlapTolerance = cellSize * 0.05f;
 
-    for (int row = 0; row <= lastRow; ++row)
+    for (int row = firstRow; row <= lastRow; ++row)
     {
-        for (int side = -1; side <= 1; side += 2)
+        for (int depth = 0; depth < WorldScale::kFrontageDepthCells; ++depth)
         {
-            int column = side * sideColumn;
-
-            GridOrientationRegistry::OrientedCell cell;
-            cell.yaw = yaw;
-            cell.origin = origin;
-            cell.localCellX = column;
-            cell.localCellZ = row;
-            OrientedRect cellRect = GridOrientationRegistry::MakeCellRect(cell, cellSize);
-
-            bool overlapsOtherRoad = false;
-            for (const OrientedRect& roadRect : otherRoadRects)
+            for (int side = -1; side <= 1; side += 2)
             {
-                if (OrientedRectsOverlap(cellRect, roadRect, overlapTolerance))
+                const int column = (side > 0) ? (towardPositive + depth) : (towardNegative - depth);
+
+                GridOrientationRegistry::OrientedCell cell;
+                cell.yaw = yaw;
+                cell.origin = origin;
+                cell.localCellX = column;
+                cell.localCellZ = row;
+                OrientedRect cellRect = GridOrientationRegistry::MakeCellRect(cell, cellSize);
+
+                bool overlapsOtherRoad = false;
+                for (const OrientedRect& roadRect : otherRoadRects)
                 {
-                    overlapsOtherRoad = true;
-                    break;
+                    if (OrientedRectsOverlap(cellRect, roadRect, overlapTolerance))
+                    {
+                        overlapsOtherRoad = true;
+                        break;
+                    }
                 }
-            }
-            if (overlapsOtherRoad)
-            {
-                continue;
-            }
+                if (overlapsOtherRoad)
+                {
+                    continue;
+                }
 
-            m_orientationRegistry->TryClaimCell(cellSize, yaw, origin, column, row);
+                m_orientationRegistry->TryClaimCell(cellSize, yaw, origin, column, row);
+            }
         }
     }
 }
@@ -575,7 +573,7 @@ void RoadSystem::ClaimOrientationAlongChain(const std::vector<RoadSegment>& chai
     }
 
     const float cellSize = m_field->GetCellSize();
-    const std::vector<FrontageCell> cells = BuildFrontageCells(centerline, chain.front().width, cellSize);
+    const std::vector<FrontageCell> cells = BuildFrontageCells(centerline, chain.front().width, cellSize, WorldScale::kFrontageDepthCells);
 
     // 道路の路面(自分の連なりも含む全て)に、はっきり食い込むマスは作らない。
     // カーブの内側では、縁が曲がっている分だけ、わずかに触れることがあるので、少しだけ許す。
@@ -590,7 +588,7 @@ void RoadSystem::ClaimOrientationAlongChain(const std::vector<RoadSegment>& chai
     for (const FrontageCell& frontage : cells)
     {
         // マス(0,0)の中心が、frontage.centerに来る原点。
-        const XMFLOAT3 origin = GridOrientationRegistry::ComputeChunkOrigin(frontage.center, frontage.yaw, cellSize);
+        const XMFLOAT3 origin = GridOrientationRegistry::ComputeOriginForCellCenter(frontage.center, frontage.yaw, cellSize);
 
         GridOrientationRegistry::OrientedCell cell;
         cell.yaw = frontage.yaw;
@@ -712,7 +710,7 @@ bool RoadSystem::CommitSegment(
     // 行き止まりの見た目の延長(RebuildMeshのcellSize/2)と同じだけ延ばした形にする
     // (軸に揃った道路では、延長した先がちょうどマスの境界になる)。
     // 後で区間が分割されても、和集合の形は変わらないので登録は1回で足りる。
-    m_occupancy->OccupyRect(MakeRoadRect(segment, cellSize * 0.5f), IOccupancyGrid::kOccupantRoad);
+    m_occupancy->OccupyRect(MakeRoadRect(segment, WorldScale::kRoadEndExtension), IOccupancyGrid::kOccupantRoad);
 
     // 分割が必要な吸着(始点/終点)より先に、この区間自体をノード登録しておく。
     // 分割対象の区間はまだ分割されていないため、分割点にはまだノードが無い。
@@ -752,7 +750,7 @@ bool RoadSystem::CommitSegment(
     // 半分で途切れて見えてしまう)。
     if (m_meshGenerator && m_context && m_context->renderer && m_field)
     {
-        m_meshGenerator->RebuildMesh(m_context->renderer->GetDevice(), m_segments, m_nodes, m_field->GetCellSize() * 0.5f);
+        m_meshGenerator->RebuildMesh(m_context->renderer->GetDevice(), m_segments, m_nodes, WorldScale::kRoadEndExtension);
     }
 
     return true;
@@ -904,11 +902,13 @@ void RoadSystem::UpdateStraightMode(const XMFLOAT3& /*hitPoint*/, const SnapResu
             // これから引く1点目。既存の道路に吸着していれば、そこから伸ばせることを示すため
             // 常に「置ける」表示にする(実際の判定は2点目確定時にCommitSegmentが行う)。
             // 吸着していなければ、そのマス1つ分が建物・道路のどちらにも重ならないことを見る。
+            // (道幅の四角が、点を中心に、建物・道路のどちらにも重ならないことを見る。点は、格子の交点なので、マス1つぶんではなく、道幅で見る)
+            const float roadWidth = GetRoadTypeDefinition(m_context->roadType).width;
             OrientedRect hoverCellRect;
-            hoverCellRect.origin = GridToWorldCorner(WorldToGrid(effectivePoint, cellSize), cellSize);
+            hoverCellRect.origin = XMFLOAT3(effectivePoint.x - roadWidth * 0.5f, 0.0f, effectivePoint.z - roadWidth * 0.5f);
             hoverCellRect.yaw = 0.0f;
-            hoverCellRect.width = cellSize;
-            hoverCellRect.depth = cellSize;
+            hoverCellRect.width = roadWidth;
+            hoverCellRect.depth = roadWidth;
             m_hoverValid = snap.snapped || m_occupancy->IsRectFree(hoverCellRect);
         }
     }
@@ -1027,11 +1027,13 @@ void RoadSystem::UpdateCurveMode(const XMFLOAT3& hitPoint, const SnapResult& sna
             // これからドラッグを始める点。既存の道路に吸着していれば、そこから伸ばせることを
             // 示すため常に「置ける」表示にする。吸着していなければ、そのマス1つ分が
             // 建物・道路のどちらにも重ならないことを見る。
+            // (道幅の四角が、点を中心に、建物・道路のどちらにも重ならないことを見る。点は、格子の交点なので、マス1つぶんではなく、道幅で見る)
+            const float roadWidth = GetRoadTypeDefinition(m_context->roadType).width;
             OrientedRect hoverCellRect;
-            hoverCellRect.origin = GridToWorldCorner(WorldToGrid(effectivePoint, cellSize), cellSize);
+            hoverCellRect.origin = XMFLOAT3(effectivePoint.x - roadWidth * 0.5f, 0.0f, effectivePoint.z - roadWidth * 0.5f);
             hoverCellRect.yaw = 0.0f;
-            hoverCellRect.width = cellSize;
-            hoverCellRect.depth = cellSize;
+            hoverCellRect.width = roadWidth;
+            hoverCellRect.depth = roadWidth;
             m_hoverValid = snap.snapped || m_occupancy->IsRectFree(hoverCellRect);
         }
     }
@@ -1366,7 +1368,7 @@ void RoadSystem::RebuildCurveGhostMesh()
 
     // 確定後(QuadRoadMeshGenerator側)と同じ行き止まり伸長を適用し、ゴーストと確定結果の
     // 見た目がズレないようにする。
-    float deadEndExtension = m_field ? m_field->GetCellSize() * 0.5f : 0.0f;
+    float deadEndExtension = m_field ? WorldScale::kRoadEndExtension : 0.0f;
     std::vector<Vertex> vertices = BuildRoadMeshVertices(combinedSegments, combinedNodes, color, pendingStartIndex, deadEndExtension);
 
     // vertices.empty()のまま(既にゴーストが空の状態)なら、CreateFromVerticesの
@@ -1526,24 +1528,108 @@ void RoadSystem::RestoreSegments(const std::vector<RoadSegment>& segments)
         segment.debugLoad = 0.0f; // 混雑の表示用。次のティックで再計算される
     }
 
-    for (size_t i = 0; i < m_segments.size(); ++i)
-    {
-        const RoadSegment& segment = m_segments[i];
-
-        // ノード: CommitSegmentと同じく、区間の始点・終点を登録する(分割済みの区間は、分割点で自然に次数が増える)。
-        RegisterSegmentEndpoint(segment.start, i);
-        RegisterSegmentEndpoint(segment.end, i);
-
-    }
+    // ノード(区間の端点から)とメッシュ(最後に1回だけ)。
+    RebuildNodesAndMesh();
 
     // 占有: CommitSegmentと同じ、マス単位の印と、道路面そのものの矩形。
     ReregisterOccupancy();
+}
 
-    // メッシュは区間の数に関わらず最後に1回だけ作る。
-    if (m_meshGenerator && m_context && m_context->renderer && !m_segments.empty())
+void RoadSystem::RebuildNodesAndMesh()
+{
+    m_nodes.clear();
+    m_nodeIndex = RoadNodeIndex();
+    for (size_t i = 0; i < m_segments.size(); ++i)
     {
-        m_meshGenerator->RebuildMesh(m_context->renderer->GetDevice(), m_segments, m_nodes, cellSize * 0.5f);
+        // CommitSegmentと同じく、区間の始点・終点を登録する(分割済みの区間は、分割点で自然に次数が増える)。
+        RegisterSegmentEndpoint(m_segments[i].start, i);
+        RegisterSegmentEndpoint(m_segments[i].end, i);
     }
+
+    if (m_meshGenerator && m_context && m_context->renderer && m_field)
+    {
+        if (m_segments.empty())
+        {
+            m_meshGenerator->Clear();
+        }
+        else
+        {
+            m_meshGenerator->RebuildMesh(m_context->renderer->GetDevice(), m_segments, m_nodes, WorldScale::kRoadEndExtension);
+        }
+    }
+}
+
+RoadCutWindow RoadSystem::MakeSliceAt(size_t segmentIndex, const XMFLOAT3& point, int& sliceIndexOut) const
+{
+    const RoadSegment& segment = m_segments[segmentIndex];
+
+    // 行き止まり(次数1のノード)で、切り口(flat)でない端には、見た目の延長がある。
+    auto extensionAt = [&](const XMFLOAT3& end, bool flat)
+    {
+        if (flat) { return 0.0f; }
+        const int nodeId = m_nodeIndex.FindNode(end, m_nodes);
+        if (nodeId < 0 || m_nodes[nodeId].connectedSegmentIndices.size() != 1) { return 0.0f; }
+        return WorldScale::kRoadEndExtension;
+    };
+    return MakeSliceWindow(segment, point, GetSliceLength(), extensionAt(segment.start, segment.flatStart), extensionAt(segment.end, segment.flatEnd), sliceIndexOut);
+}
+
+float RoadSystem::GetSliceLength() const
+{
+    return m_field ? m_field->GetCellSize() : 1.0f;
+}
+
+RoadCutResult RoadSystem::PreviewCut(const std::vector<RoadCutWindow>& windows) const
+{
+    // 短すぎる端切れの下限: マスの1/4(これより短い残りは、微小な区間・ノードになるので捨てる)。
+    const float minPiece = GetSliceLength() * 0.25f;
+    return CutRoads(m_segments, windows, minPiece);
+}
+
+RoadCutResult RoadSystem::ApplyCut(const std::vector<RoadCutWindow>& windows)
+{
+    RoadCutResult result = PreviewCut(windows);
+    if (!result.changed)
+    {
+        return result;
+    }
+
+    // 置きかけの道路は、区間の添字(分割する区間など)を持っているので、やめる。
+    CancelPlacement();
+
+    m_segments = result.segments;
+    RebuildNodesAndMesh();
+
+    // 切り取った所の、不要になった青マスを消す。建物が使っているマス(既に建っている建物の敷地)は、残す。
+    // 消す範囲は、切り取った範囲を、道の両脇の列(1〜2マス)まで広げた四角。
+    if (m_orientationRegistry && m_field && m_context && m_context->objects)
+    {
+        const float cellSize = m_field->GetCellSize();
+        std::vector<OrientedRect> keepRects;
+        for (const GameObject& obj : *m_context->objects)
+        {
+            if (obj.kind == ObjectKind::Building)
+            {
+                keepRects.push_back(obj.placement.footprintRect);
+            }
+        }
+        for (const RoadCutWindow& window : windows)
+        {
+            const float side = window.halfWidth + cellSize * static_cast<float>(WorldScale::kFrontageDepthCells + 1);
+            const float yaw = std::atan2(window.dirX, window.dirZ);
+            const float c = std::cos(yaw);
+            const float s = std::sin(yaw);
+            OrientedRect rect;
+            rect.yaw = yaw;
+            rect.width = side * 2.0f;
+            rect.depth = window.halfLength * 2.0f;
+            rect.origin = XMFLOAT3(window.center.x - c * side - s * window.halfLength, 0.0f, window.center.z + s * side - c * window.halfLength);
+            m_orientationRegistry->RemoveCellsOverlappingExcept(rect, keepRects, cellSize);
+        }
+    }
+
+    Debug::Info("RoadSystem: 道路を切り取りました(取り除いた長さ " + std::to_string(result.removedLength) + "、区間 " + std::to_string(m_segments.size()) + ")");
+    return result;
 }
 
 void RoadSystem::ReregisterOccupancy()
@@ -1556,7 +1642,7 @@ void RoadSystem::ReregisterOccupancy()
     for (const RoadSegment& segment : m_segments)
     {
         m_occupancy->SetOccupiedRange(SampleCellsForSegmentFootprint(segment, cellSize), true);
-        m_occupancy->OccupyRect(MakeRoadRect(segment, cellSize * 0.5f), IOccupancyGrid::kOccupantRoad);
+        m_occupancy->OccupyRect(MakeRoadRect(segment, WorldScale::kRoadEndExtension), IOccupancyGrid::kOccupantRoad);
     }
 }
 

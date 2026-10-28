@@ -142,13 +142,52 @@ void GridOrientationRegistry::RemoveCellsOverlapping(const OrientedRect& rect, f
     }
 }
 
+void GridOrientationRegistry::RemoveCellsOverlappingExcept(const OrientedRect& rect, const std::vector<OrientedRect>& keepRects, float cellSize)
+{
+    float tolerance = cellSize * kOverlapToleranceRatio;
+
+    size_t before = m_cells.size();
+    for (size_t i = m_cells.size(); i-- > 0;)
+    {
+        const OrientedRect cellRect = MakeCellRect(m_cells[i], cellSize);
+        if (!OrientedRectsOverlap(rect, cellRect, tolerance))
+        {
+            continue;
+        }
+        bool keep = false;
+        for (const OrientedRect& keepRect : keepRects)
+        {
+            if (OrientedRectsOverlap(keepRect, cellRect, tolerance))
+            {
+                keep = true;
+                break;
+            }
+        }
+        if (!keep)
+        {
+            m_cells.erase(m_cells.begin() + static_cast<std::ptrdiff_t>(i));
+        }
+    }
+
+    if (m_cells.size() != before)
+    {
+        RebuildIndex(cellSize);
+    }
+}
+
 bool GridOrientationRegistry::IsWorldCellCovered(const GridCoord& worldCell, float cellSize) const
 {
     (void)cellSize; // 索引が既に「面積を持って触れるワールドのマス」でキー化されている
     return m_worldIndex.find(worldCell) != m_worldIndex.end();
 }
 
-XMFLOAT3 GridOrientationRegistry::ComputeChunkOrigin(const XMFLOAT3& anchorPoint, float yaw, float cellSize)
+XMFLOAT3 GridOrientationRegistry::ComputeChunkOrigin(const XMFLOAT3& anchorPoint, float /*yaw*/, float /*cellSize*/)
+{
+    // anchorPointが、格子の交点(マスの角)。そのまま、原点にする。
+    return anchorPoint;
+}
+
+XMFLOAT3 GridOrientationRegistry::ComputeOriginForCellCenter(const XMFLOAT3& anchorPoint, float yaw, float cellSize)
 {
     // anchorPoint(セル中心であることが多い)からローカル座標で半セルぶん引いた点を
     // 原点にする。yawが90度刻みならhalfCellLocalの2成分が符号だけ入れ替わる形に
@@ -222,21 +261,14 @@ void GridOrientationRegistry::DrawDebugOverlay(DebugRenderer& debugRenderer, flo
 
 void GridOrientationRegistry::DrawOrientedGridOverlay(DebugRenderer& debugRenderer, float cellSize, const XMFLOAT4& color) const
 {
-    // yaw≈0(ワールド軸に揃ったまま)のマスは何も描かない。Field::DrawGridOverlayの
-    // 既存のワールド軸グリッド線が既に正しい絵になっているので、ここで重ねて描く必要が
-    // ない(そのままにしておくことで「yaw=0は今まで通り」を保証する)。
+    // 登録済みの全てのマスを、青い四角で描く(向きがワールド軸と同じ(yaw=0。+Z向きに引いた道など)マスも、描く。
+    // Field::DrawGridOverlayは、マスが触れているワールドのマスの線を引かないので、ここで描かないと、穴になる)。
     //
     // 各マスは登録時に確定したローカルのマス番号から直接4隅を求めるため、同じ(origin,yaw)を
     // 共有するマス同士は必ず隙間なく等間隔に並ぶ(ワールド座標からの近似的な逆算は一切しない)。
-    constexpr float kYawEpsilon = 0.0001f;
-
     for (const OrientedCell& cell : m_cells)
     {
-        if (fabsf(cell.yaw) < kYawEpsilon)
-        {
-            continue;
-        }
-
+        // (以前は、yaw=0(+Z向きに引いた道)のマスを描かなかったが、+Z向きの道だけ、青マスが出ないように見えるため、全部描く)
         XMFLOAT3 corners[4];
         GetCellCorners(MakeCellRect(cell, cellSize), corners);
 

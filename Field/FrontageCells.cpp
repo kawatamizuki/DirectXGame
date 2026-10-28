@@ -152,7 +152,7 @@ namespace
     }
 }
 
-std::vector<FrontageCell> BuildFrontageCells(const std::vector<XMFLOAT3>& centerline, float roadWidth, float cellSize)
+std::vector<FrontageCell> BuildFrontageCells(const std::vector<XMFLOAT3>& centerline, float roadWidth, float cellSize, int depthCells)
 {
     std::vector<FrontageCell> result;
     if (cellSize <= 0.0f) { return result; }
@@ -165,14 +165,16 @@ std::vector<FrontageCell> BuildFrontageCells(const std::vector<XMFLOAT3>& center
     }
     if (pts.size() < 2) { return result; }
 
-    // 道の縁に接する最初の列の番号(幅1.0以下なら1、Large(1.6)なら2)。列0は道そのもの。
-    int sideColumn = static_cast<int>(std::ceil((roadWidth * 0.5f + cellSize * 0.5f) / cellSize - 0.0001f));
-    if (sideColumn < 1) { sideColumn = 1; }
-    const float baseOffset = static_cast<float>(sideColumn) * cellSize;
-
-    for (float side : { 1.0f, -1.0f })
+    // 道の縁にぴったり接する1列目の中心は、中心線から、道幅の半分+マスの半分。2列目以降は、さらにマス1つぶんずつ外へ。
+    // (以前は、マスの中心が中心線の上に来る格子を前提にしていて、道の縁とマスの間に、すき間(マスの半分)が空いていた)
+    const float firstOffset = roadWidth * 0.5f + cellSize * 0.5f;
+    for (int depth = 0; depth < (std::max)(1, depthCells); ++depth)
     {
-        PlaceAlong(BuildOffsetLine(pts, baseOffset, cellSize, side), cellSize, result);
+        const float baseOffset = firstOffset + static_cast<float>(depth) * cellSize;
+        for (float side : { 1.0f, -1.0f })
+        {
+            PlaceAlong(BuildOffsetLine(pts, baseOffset, cellSize, side), cellSize, result);
+        }
     }
     return result;
 }

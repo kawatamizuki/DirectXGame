@@ -8,6 +8,8 @@
 #include "ResidentLogic.h"
 #include "FacilityLedger.h"
 #include "BuildingType.h"
+#include "RoadCutting.h"
+#include "RoutePlanner.h"
 #include "ISaveable.h"
 
 struct GameContext;
@@ -34,6 +36,7 @@ struct DemandStats
     int agentCount = 0;       // 実際にシミュレートしている住民の数
     int unmetDemand = 0;      // 生活またはアクティビティの需要が不足(80未満)の住民の数
     int homelessCount = 0;    // 住んでいた住宅が解体されて、住居が無い住民の数(agentCountに含まれる)
+    int strandedCount = 0;    // 道路が無くなって、帰れなくなった(立ち往生)住民の数(agentCountに含まれる)
 
     // 施設の利用の集計(住民が実際に利用した結果)。
     int visitsThisWeek = 0;
@@ -64,6 +67,7 @@ struct ResidentInfo
     uint32_t homeObjectId = 0;
     ResidentAgentState state = ResidentAgentState::AtHome;
     bool homeless = false;                  // 住居が無い(住宅が解体された)住民か
+    float satisfaction = 100.0f;            // 満足度(今は、道路が無くなった時に下がるだけ)
     uint32_t targetFacilityId = 0;          // 向かっている(利用中の)施設のid(0=なし)
     UsagePurpose purpose = UsagePurpose::TopUp;
     float lifeNeed = 0.0f;
@@ -156,11 +160,23 @@ public:
     // 道路・占有・オブジェクトの削除は、呼び出し側が行う。
     void OnBuildingDemolished(const DemolishedBuilding& building, GameContext& context);
 
+    // 道路が切り取られた(RoadSystem::ApplyCutの後)。住民の、無効になった経路を、安全に整える(暫定の仕様)。
+    //  ・全員の、道路区間の添字(混雑表示用)を、空にする(区間の並びが変わったため)。
+    //  ・歩いている・施設の中の住民のうち、これからの経路が、取り除いた部分(removed)を通る人は、今の外出をやめて、帰宅を優先する。
+    //    今の位置の近くの、残った道路から、自宅(家が無ければ、元の家の位置)への経路を探し直す。
+    //    帰れる: 迂回して帰る(体力を消費し、満足度が下がる)。帰れない: 立ち往生(その場の、道路の上で、動かない。満足度が下がる。道がつながれば、帰り始める)。位置は、ワープさせない。
+    //  ・施設の中にいる住民は、そのまま(利用が終わって、帰り始める時に、帰れなければ、その時に、立ち往生する)。
+    // segments: 切り取った後の道路区間。
+    void OnRoadsChanged(const std::vector<RemovedRoadSpan>& removed, const std::vector<RoadSegment>& segments, GameContext& context);
+
     // 直近の需要の更新(RunDemandTick)で、近くに道路が無かった建物(住宅・施設)のid。「道路がない！」の表示に使う。
     const std::vector<uint32_t>& GetBuildingsWithoutRoad() const { return m_buildingsWithoutRoad; }
 
     // 住居が無い(Homeless)住民の、見た目のオブジェクト(GameObject::id)の一覧。「住居がない！」を、住民の上に出すのに使う。
     std::vector<uint32_t> GetHomelessAgentObjectIds() const;
+
+    // 立ち往生(道路が無くなって帰れない)住民の、見た目のオブジェクト(GameObject::id)の一覧。「立ち往生！」を、住民の上に出すのに使う。
+    std::vector<uint32_t> GetStrandedAgentObjectIds() const;
 
     // 住宅(GameObject::id)に住む住民の、表示用のコピーを返す(いなければ found==false)。
     ResidentInfo GetResidentInfoForHome(uint32_t homeObjectId) const;
@@ -175,6 +191,19 @@ public:
     DemandMemoryStats GetMemoryStats() const;
 
 private:
+    // 施設の利用が終わって、帰り始める前に、今の道路で、施設から自宅への経路を作り直す(道路が切り取られて、行きの経路が使えなくなっていることがあるため)。
+    // 経路が見つかれば、その経路で帰る(元より長ければ、迂回なので、体力を消費し、満足度が下がる)。見つからなければ、立ち往生にして、falseを返す。
+    bool ReplanReturnRoute(ResidentAgent& agent, GameContext& context);
+
+    // 立ち往生している住民が、道がつながって帰れるようになったかを調べ、帰れるなら、帰り始めさせる(RunDemandTickが、毎回呼ぶ)。
+    // 今の位置の近くの道路から、自宅(家が無ければ、元の家の位置)への経路を探す。見つかれば、その経路で歩いて帰る(帰り着けば、家にいる・住居なしになる)。
+    // 帰り始めたらtrue。
+    bool TryRecoverStranded(ResidentAgent& agent, GameContext& context, const std::vector<RoadSegment>& segments, const RoadGraph& graph, PathCache& cache);
+
+    // 住民を、立ち往生にする(道路の上に立たせ、動かない・施設を使わない状態にして、満足度を下げる)。
+    // 今の位置が、道路の上でない(切り取られた跡・施設の中など)時は、近くの、残った道路の上に寄せる(遠くへは、ワープさせない)。
+    void BecomeStranded(ResidentAgent& agent, GameContext& context, const std::vector<RoadSegment>& segments);
+
     // 住民を、住居が無い状態にする(元の住宅の位置に、見える状態で立たせる。同じ位置に何人もいる時は、少しずつずらす)。
     void BecomeHomeless(ResidentAgent& agent, GameContext& context);
 
@@ -230,6 +259,9 @@ private:
 
     // 直近のRunDemandTickで見つかった、道路に接続している建物の接続線一覧(Draw()で使う)。
     std::vector<RoadConnectionLine> m_connectionLines;
+
+    // 今の道路区間(Updateで受け取った物を、借りているだけ。経路の作り直しに使う)。
+    const std::vector<RoadSegment>* m_roads = nullptr;
 
     // 道路に接続できていない建物のid(直近のRunDemandTickの結果。保存しない)。
     std::vector<uint32_t> m_buildingsWithoutRoad;

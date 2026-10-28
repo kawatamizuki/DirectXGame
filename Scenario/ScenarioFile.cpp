@@ -164,6 +164,9 @@ namespace ScenarioFile
             entry.Set("width", road.width);
             entry.Set("type", RoadTypeKey(road.type));
             entry.Set("drawMode", RoadDrawModeKey(road.drawMode));
+            // 解体で切った端(平らに描く)。通常の端は、書かない(古い形式と同じ見た目のまま)。
+            if (road.flatStart) { entry.Set("flatStart", true); }
+            if (road.flatEnd) { entry.Set("flatEnd", true); }
             roads.Push(std::move(entry));
         }
         root.Set("roads", std::move(roads));
@@ -322,6 +325,8 @@ namespace ScenarioFile
                     road.drawMode = RoadDrawMode::Straight;
                 }
                 road.debugLoad = 0.0f;
+                road.flatStart = entry.GetBool("flatStart", false);
+                road.flatEnd = entry.GetBool("flatEnd", false);
                 result.roads.push_back(road);
             }
         }

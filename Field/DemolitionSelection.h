@@ -2,11 +2,20 @@
 #include <cstdint>
 #include <vector>
 #include <algorithm>
+#include "RoadCutting.h"
 
 // ---- 解体の、選択と費用の計算(純粋な部分。画面・ゲームの状態を知らない。単体テストできる) ----
 
 // 建物1棟の解体費(円)。建物の種類にかかわらず、一律。
 constexpr int kBuildingDemolitionCost = 100;
+
+// 解体ツールを選べるか(メニューで「解体」を押した時の確認)。解体に必要な最小の金額(道路の最小の費用)を持っていれば、選べる。
+// 建物の解体(100円)には足りなくても、道路は、短ければ、解体できるので、道路の最小の費用で判断する。0円・マイナスなら、選べない。
+// (選んだ後で、実際の長さの費用が払えない時は、従来どおり、解体を取り消して、理由を出す)
+inline bool CanSelectDemolitionTool(int cash)
+{
+    return cash >= kMinimumRoadDemolitionCost;
+}
 
 // 今の所持金で、cost円を払えるか(足りなければ、解体できない。残金は、負にならない)。
 inline bool CanPayDemolition(int cash, int cost)
