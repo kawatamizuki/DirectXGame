@@ -50,6 +50,12 @@ struct WorldSnapshot
     static constexpr float kLegacyCellSize = WorldScale::kLegacyCellSize;
     float cellSize = kLegacyCellSize;
 
+    // 保存した時の「長さの基準」(WorldScale::kLengthUnit)。道路の座標・幅・建物の位置と大きさ・住民の速さは、この大きさを基準にした値。
+    // マスの細かさ(cellSize)とは別。マスを細かく分割しても、世界の大きさは変わらない。
+    // 0 = 記録が無い(長さの基準を記録する前の古いセーブ)。その頃は、マスと長さの基準が同じ大きさだったので、cellSizeと同じとして扱う(GetLengthUnit)。
+    float lengthUnit = 0.0f;
+    float GetLengthUnit() const { return lengthUnit > 0.0f ? lengthUnit : cellSize; }
+
     std::vector<RoadSegment> roads;                          // debugLoad(混雑の表示用)は保存しない
     std::vector<SnapshotBuilding> buildings;                 // 配列の添字がそのまま建物のuid(他の保存データが建物を指す時に使う)
     std::vector<SnapshotOrientationCell> orientationCells;   // 作られた順(=優先順)
@@ -64,3 +70,9 @@ struct WorldSnapshot
 // 「何マス目か」の整数(マスの番号・マスの数)と、向き(角度)は変わらない。
 // システムごとの状態(state。住民の位置・速さなど)は、各システムが自分でLoadContext::spaceScaleを使って変換する。
 void ScaleWorldSnapshot(WorldSnapshot& snapshot, float factor);
+
+// snapshotの、マス番号・マスの数を、マスをfactor分割した(1マスが縦横factor個に分かれた)格子に変換する。
+// 建物の占有マス(開始番号と幅・奥行きのマス数)はfactor倍、青マスは1つがfactor x factor個に分かれる(優先順は保つ)。
+// 座標・大きさ・向きは変わらない(同じ場所を、細かい格子で数え直すだけ)。factor<=1なら何もしない。
+// 呼ぶ前に、cellSizeはまだ元のままで、呼んだ後にcellSizeをfactorで割る。
+void RefineSnapshotGrid(WorldSnapshot& snapshot, int factor);

@@ -1,4 +1,5 @@
 ﻿#include "RoadMeshBuilder.h"
+#include <algorithm>
 
 using namespace DirectX;
 
@@ -9,6 +10,9 @@ namespace
 
     // 同一点とみなす距離(RoadNodeIndexの吸着誤差と揃えている)。
     constexpr float kSamePointEpsilon = 0.001f;
+
+    // ミターの縁の長さを、半幅の何倍まで伸ばしてよいか(鋭い折れ線で、縁が尖りすぎないようにする上限)。
+    constexpr float kMaxMiterScale = 1.6f;
 
     bool IsNearPoint(const XMFLOAT3& a, const XMFLOAT3& b)
     {
@@ -61,15 +65,15 @@ namespace
 
         XMVECTOR miterDir = sum / sumLength;
 
-        // 以前はcosHalfAngleで割って長さを伸ばし、隙間ができないようにしていたが、
-        // 鋭い角度で交わる継ぎ目(直線モードが斜めに引けるようになり、既存道路と
-        // 鋭角で接続するケースが増えた)では、区間の片端だけ幅が広がり、区間全体が
-        // 広い方から狭い方への「くさび形」に歪んで見える問題があった。
-        // 「道幅は常に一定であるべき」という要求を優先し、ミターは縁の向き(角度に
-        // 合わせる)だけを調整し、長さは常に元の半幅のまま変えないことにする。
-        // (トレードオフ: 非常に鋭い角度の継ぎ目では、わずかな隙間/重なりが
-        // 再び目立つことがあるが、道幅が変わって見えるよりは軽微とみなす。)
-        return miterDir * halfWidth;
+        // 継ぎ目の縁の長さ。2つの区間の縁の向きの平均(miterDir)に、cos(半角)で割った長さを取ると、
+        // 両方の区間の縁と、ぴったり交わる(縁が、途切れず、つながる)。
+        // 以前は、長さを元の半幅のまま変えなかった(鋭い角度で、片端だけ幅が広がって、くさび形に見えたため)。
+        // しかし、長さを変えないと、継ぎ目の外側に隙間(段差)ができ、それを、四角いキャップで隠していたため、自由描きの曲線の縁が
+        // ガタガタに見えた。自由描きの曲線は、継ぎ目の角度が小さい(滑らか)ので、長さを補正しても、くさび形にはならない。
+        // 補正は、kMaxMiterScale倍までにとどめる(急な折れ線で、尖りすぎないように)。
+        const float cosHalfAngle = (std::max)(0.01f, XMVectorGetX(XMVector3Dot(miterDir, dirA)));
+        const float scale = (std::min)(kMaxMiterScale, 1.0f / cosHalfAngle);
+        return miterDir * (halfWidth * scale);
     }
 
     // 1区間ぶんの帯状クアッド(2枚の三角形)をverticesに積み足す。
@@ -211,8 +215,12 @@ std::vector<Vertex> BuildRoadMeshVertices(
 
     // 次数2の素直な連続点(行き止まり・T字路・十字路ではない)だけミターする。
     // nodesが空(プレビュー用途)ならこのループは何もしない。
-    for (const RoadNode& node : nodes)
+    // ミターした継ぎ目は、両方の区間が同じ縁の点を共有して、隙間なくつながるので、キャップ(四角い埋め草)を敷かない
+    // (キャップは、軸に平行な四角なので、曲線の縁から、角のように飛び出して、ガタガタに見えた)。
+    std::vector<bool> mitered(nodes.size(), false);
+    for (size_t nodeIndex = 0; nodeIndex < nodes.size(); ++nodeIndex)
     {
+        const RoadNode& node = nodes[nodeIndex];
         if (node.connectedSegmentIndices.size() != 2)
         {
             continue;
@@ -261,6 +269,7 @@ std::vector<Vertex> BuildRoadMeshVertices(
 
         if (bViaEnd) { endPerp[idxB] = miter; }
         else { startPerp[idxB] = miter; }
+        mitered[nodeIndex] = true;
     }
 
     // 行き止まり(次数1のノード)の見た目だけを、区間自身の方向にdeadEndExtensionぶん伸ばす。
@@ -332,9 +341,10 @@ std::vector<Vertex> BuildRoadMeshVertices(
 
     // 継ぎ目・T字路・交差点の隙間キャップは、新規に出力する区間が関わるノードにだけ
     // 敷けばよい(それ以外は既に確定済みメッシュ側で敷き済みのため)。
-    for (const RoadNode& node : nodes)
+    for (size_t nodeIndex = 0; nodeIndex < nodes.size(); ++nodeIndex)
     {
-        if (node.connectedSegmentIndices.size() < 2)
+        const RoadNode& node = nodes[nodeIndex];
+        if (node.connectedSegmentIndices.size() < 2 || mitered[nodeIndex])
         {
             continue;
         }

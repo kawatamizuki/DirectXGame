@@ -50,3 +50,11 @@
 
 **変更**: `Field/RoadSegment.h`, `Field/RoadSystem.h/.cpp`, `Field/BuildController.cpp`, `Core/GameContext.h`,
 `Simulation/DemandSystem.h/.cpp`, `Core/Game.cpp`, `GAME.vcxproj`, `GAME.vcxproj.filters`
+
+## 追補: 自由描き(Curve)の道路をなめらかにする
+自由描きの道路が、手ぶれでガタガタに見えたので、描いた点列を整えてから道路にするようにした。
+
+- **仕様**: ストロークの点列を、ガウス平滑化(sigma = 0.8マス相当)したうえで、弧の長さで等間隔(0.8マス相当)に取り直し、1区間ずつの道路にする。始点・終点は、描いた位置のまま動かさない。ほぼ直線のストロークは、従来どおり1区間の直線。
+- **一元化**: ゴースト表示・有効判定・費用・確定は、全て `RoadSystem::GetEffectiveCurvePendingSegments()` の結果を使うので、見えている線と敷かれる道路は一致する。
+- **継ぎ目**: Curve同士の単純な継ぎ目は、ミターの長さを `1/cos(半角)` で補正(上限1.6倍)し、隣の区間と縁の頂点を共有する。この継ぎ目には、四角いキャップを敷かない(キャップの角が縁から飛び出して見えていた)。Straight・分岐・端の継ぎ目は、従来どおりキャップ。
+- **ファイル**: `Field/CurveSmoothing.{h,cpp}`(新規。平滑化+等間隔化の純粋な関数)、`Field/RoadSystem.cpp`、`Field/RoadMeshBuilder.cpp`。解説は `docs/study/freehand_road_smoothing.md`。

@@ -123,7 +123,8 @@ private:
         RoadSegment segment,
         bool startRequiresSplit, size_t startSplitIndex,
         bool endConnects, bool endRequiresSplit, size_t endSplitIndex,
-        const std::vector<DirectX::XMFLOAT3>& chainConnectionPoints = {});
+        const std::vector<DirectX::XMFLOAT3>& chainConnectionPoints = {},
+        bool claimOrientation = true);
 
     // 直線モードの2点目が決まった時の確定処理: 払えるかを確認 → CommitSegment → 置けた時だけ建設費を払う。
     // 払えない・置けない時はfalse(何も変わらない)。
@@ -147,6 +148,12 @@ private:
     // 既に他の道路/建物のマスがある場所と、他の道路の路面にかかる場所には登録しない
     // (先着優先)。ownSegmentIndexはm_segments内のこの区間の番号(自分自身の路面は除外するため)。
     void ClaimOrientationNearSegment(const RoadSegment& segment, size_t ownSegmentIndex) const;
+
+    // 自由描き(Curve)で確定した、連なった区間chainの両脇に、青マスをまとめて登録する。
+    // 区間ごとに別々の格子を作ると、短い区間の連なりでは向きの違うマスが重なり・抜けるので、
+    // 連なり全体の中心線に沿って、1つ1つのマスを、その場所の道の向きに揃えて詰めて並べる(FrontageCells)。
+    // 他の道路の路面にかかるマスと、既にあるマスと重なるマスは登録しない(先着優先)。
+    void ClaimOrientationAlongChain(const std::vector<RoadSegment>& chain) const;
 
     // 近くの建物(GameContext::objectsのObjectKind::Building)の向きを、
     // kOrientationAlignDistance以内で探す。見つかればそのyaw(rotation.y)を返す。

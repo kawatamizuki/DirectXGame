@@ -1,5 +1,6 @@
 ﻿#include "ScenarioManager.h"
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -54,7 +55,8 @@ void ScenarioManager::SetFormat(const ISnapshotFormat* format)
 void ScenarioManager::CaptureSnapshot(WorldSnapshot& snapshot) const
 {
     snapshot = WorldSnapshot();
-    snapshot.cellSize = m_field ? m_field->GetCellSize() : WorldSnapshot::kLegacyCellSize; // 保存した時のマスの大きさ(読み込みで変換するため)
+    snapshot.cellSize = m_field ? m_field->GetCellSize() : WorldSnapshot::kLegacyCellSize; // 保存した時のマスの大きさ(読み込みで格子を変換するため)
+    snapshot.lengthUnit = WorldScale::kLengthUnit;                                          // 保存した時の長さの基準(読み込みで座標・大きさを変換するため)
     if (!m_context || !m_roadSystem || !m_orientationRegistry)
     {
         return;
@@ -165,17 +167,32 @@ bool ScenarioManager::ApplySnapshot(const WorldSnapshot& snapshot, std::string& 
         return false;
     }
 
-    // 保存した時の1マスの大きさが今と違えば(マスを大きくした後に、古いセーブを読む時など)、
-    // 場所・大きさに関する値を、今の大きさに合わせて変換した写しを使う。
-    const float spaceScale = (snapshot.cellSize > 0.0f) ? (m_field->GetCellSize() / snapshot.cellSize) : 1.0f;
-    if (spaceScale != 1.0f)
+    // 長さの基準が今と違えば、場所・大きさに関する値を、今の基準に合わせて変換した写しを使う。
+    // マスの細かさ(格子)が今と違えば(マスを細かく分割した後に、古いセーブを読む時など)、マス番号・マスの数も、今の格子に数え直す。
+    const float savedUnit = snapshot.GetLengthUnit();
+    const float spaceScale = (savedUnit > 0.0f) ? (WorldScale::kLengthUnit / savedUnit) : 1.0f;
+
+    // 保存した時のマスの大きさを、今の長さの基準で表した値。今のマスの、何倍か(整数でなければ、格子を正確に変換できない)。
+    const float savedCellNow = snapshot.cellSize * spaceScale;
+    const float gridRatio = savedCellNow / m_field->GetCellSize();
+    const int refineFactor = static_cast<int>(std::lround(gridRatio));
+    if (!(savedCellNow > 0.0f) || refineFactor < 1 || std::fabs(gridRatio - static_cast<float>(refineFactor)) > 0.001f)
     {
-        WorldSnapshot scaled = snapshot;
-        ScaleWorldSnapshot(scaled, spaceScale);
-        scaled.cellSize = m_field->GetCellSize();
-        Debug::Info("ScenarioManager: マスの大きさが保存した時(" + std::to_string(snapshot.cellSize) + ")と違うため、" +
-                    std::to_string(spaceScale) + " 倍に変換して読み込みます");
-        return ApplySnapshotImpl(scaled, spaceScale, message);
+        message = "保存した時のマスの大きさ(" + std::to_string(snapshot.cellSize) + ")を、今のマス(" +
+                  std::to_string(m_field->GetCellSize()) + ")の格子へ変換できません(整数倍ではありません)";
+        return false;
+    }
+
+    if (spaceScale != 1.0f || refineFactor != 1)
+    {
+        WorldSnapshot converted = snapshot;
+        ScaleWorldSnapshot(converted, spaceScale);
+        RefineSnapshotGrid(converted, refineFactor);
+        converted.cellSize = m_field->GetCellSize();
+        converted.lengthUnit = WorldScale::kLengthUnit;
+        Debug::Info("ScenarioManager: 保存した時と、長さの基準(" + std::to_string(spaceScale) + " 倍)・マスの細かさ(" +
+                    std::to_string(refineFactor) + " 分割)が違うため、変換して読み込みます");
+        return ApplySnapshotImpl(converted, spaceScale, message);
     }
     return ApplySnapshotImpl(snapshot, 1.0f, message);
 }

@@ -51,3 +51,40 @@ void ScaleWorldSnapshot(WorldSnapshot& snapshot, float factor)
 
     snapshot.cellSize *= factor;
 }
+
+void RefineSnapshotGrid(WorldSnapshot& snapshot, int factor)
+{
+    if (factor <= 1)
+    {
+        return;
+    }
+
+    for (SnapshotBuilding& building : snapshot.buildings)
+    {
+        BuildingPlacement& placement = building.placement;
+        placement.localCellX *= factor;
+        placement.localCellZ *= factor;
+        placement.localWidthCells *= factor;
+        placement.localDepthCells *= factor;
+    }
+
+    // 1つの青マスは、同じ場所を覆うfactor x factor個の小さいマスになる。元の並び(優先順)の位置に、まとめて入れる。
+    std::vector<SnapshotOrientationCell> refined;
+    refined.reserve(snapshot.orientationCells.size() * static_cast<size_t>(factor) * static_cast<size_t>(factor));
+    for (const SnapshotOrientationCell& cell : snapshot.orientationCells)
+    {
+        for (int dz = 0; dz < factor; ++dz)
+        {
+            for (int dx = 0; dx < factor; ++dx)
+            {
+                SnapshotOrientationCell small = cell;
+                small.cellX = cell.cellX * factor + dx;
+                small.cellZ = cell.cellZ * factor + dz;
+                refined.push_back(small);
+            }
+        }
+    }
+    snapshot.orientationCells = std::move(refined);
+
+    snapshot.cellSize /= static_cast<float>(factor);
+}

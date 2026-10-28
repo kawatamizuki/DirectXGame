@@ -218,7 +218,7 @@ bool Game::Initialize(HWND hwnd)
         camera.defaultDistance = WorldScale::kCameraDefaultDistance;
         camera.minDistance = WorldScale::kCameraMinDistance;
         camera.maxDistance = WorldScale::kCameraMaxDistanceFieldRatio * m_field.GetWorldWidth();
-        camera.boundsMargin = 2.0f * m_field.GetCellSize(); // 最初は2.0(マス1.0の時の2マス分)
+        camera.boundsMargin = WorldScale::FromLegacy(2.0f); // 最初は2.0(マス1.0の時の2マス分)
         m_cityCamera.SetSettings(camera);
     }
 
@@ -495,7 +495,7 @@ void Game::UpdateTitle()
             m_titleFocus = DirectX::XMFLOAT3((minX + maxX) * 0.5f, 0.0f, (minZ + maxZ) * 0.5f);
             const float halfX = (maxX - minX) * 0.5f;
             const float halfZ = (maxZ - minZ) * 0.5f;
-            m_titleRadius = std::sqrt(halfX * halfX + halfZ * halfZ) + m_field.GetCellSize();
+            m_titleRadius = std::sqrt(halfX * halfX + halfZ * halfZ) + WorldScale::FromLegacy(1.0f);
         }
         else
         {

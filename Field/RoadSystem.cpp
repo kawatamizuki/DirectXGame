@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <sstream>
 #include "RoadSystem.h"
+#include "CurveSmoothing.h"
+#include "FrontageCells.h"
+#include "WorldScale.h"
 #include "EditorGuard.h"
 #include "GameContext.h"
 #include "Field.h"
@@ -37,7 +40,7 @@ namespace
 
     // 道路⇔建物の向き合わせ(GridOrientationRegistryの主張、近くの建物角度の検索)で
     // 「近く」とみなす距離(マスの何倍か。調整可能)。マスの大きさが変わっても、同じ比率を保つ。
-    constexpr float kOrientationAlignDistanceInCells = 2.0f;
+    constexpr float kOrientationAlignDistanceLegacyCells = 2.0f; // 最初のマス(1.0)の何倍か。マスを細かく分けても、探す範囲は変えない
 
     // segmentの道路面を表す向き付き矩形(中心線を道幅で膨らませた帯)を返す。
     // endExtensionだけ始点・終点側にも延長できる(行き止まりの見た目の延長に合わせる用)。
@@ -115,6 +118,10 @@ namespace
     // 集まり(多角形)に単純化されてカクついて見えてしまうため、ここでは「全体として
     // 直線とみなせるかどうか」を一括判定するだけに留め、そうでなければ点は一切
     // 動かさない(平滑化された滑らかな形をそのまま保つ)。
+    // 自由描きの曲線を、均して、取り直す時の値(マス基準。マスの大きさに連動する)。
+    constexpr float kCurveSmoothingSigmaLegacyCells = 0.8f;   // 均す強さ(大きいほど滑らか。曲がり角は丸くなる)
+    constexpr float kCurveSegmentSpacingLegacyCells = 0.8f;   // 取り直した点の間隔(1区間の長さ)
+
     bool IsPathNearlyStraight(const std::vector<XMFLOAT3>& points, float epsilon)
     {
         for (size_t i = 1; i + 1 < points.size(); ++i)
@@ -552,6 +559,62 @@ void RoadSystem::ClaimOrientationNearSegment(const RoadSegment& segment, size_t 
     }
 }
 
+void RoadSystem::ClaimOrientationAlongChain(const std::vector<RoadSegment>& chain) const
+{
+    if (!m_orientationRegistry || !m_field || chain.empty())
+    {
+        return;
+    }
+
+    std::vector<XMFLOAT3> centerline;
+    centerline.reserve(chain.size() + 1);
+    centerline.push_back(chain.front().start);
+    for (const RoadSegment& segment : chain)
+    {
+        centerline.push_back(segment.end);
+    }
+
+    const float cellSize = m_field->GetCellSize();
+    const std::vector<FrontageCell> cells = BuildFrontageCells(centerline, chain.front().width, cellSize);
+
+    // 道路の路面(自分の連なりも含む全て)に、はっきり食い込むマスは作らない。
+    // カーブの内側では、縁が曲がっている分だけ、わずかに触れることがあるので、少しだけ許す。
+    std::vector<OrientedRect> roadRects;
+    roadRects.reserve(m_segments.size());
+    for (const RoadSegment& segment : m_segments)
+    {
+        roadRects.push_back(MakeRoadRect(segment, 0.0f));
+    }
+    const float overlapTolerance = cellSize * 0.08f;
+
+    for (const FrontageCell& frontage : cells)
+    {
+        // マス(0,0)の中心が、frontage.centerに来る原点。
+        const XMFLOAT3 origin = GridOrientationRegistry::ComputeChunkOrigin(frontage.center, frontage.yaw, cellSize);
+
+        GridOrientationRegistry::OrientedCell cell;
+        cell.yaw = frontage.yaw;
+        cell.origin = origin;
+        const OrientedRect cellRect = GridOrientationRegistry::MakeCellRect(cell, cellSize);
+
+        bool overlapsRoad = false;
+        for (const OrientedRect& roadRect : roadRects)
+        {
+            if (OrientedRectsOverlap(cellRect, roadRect, overlapTolerance))
+            {
+                overlapsRoad = true;
+                break;
+            }
+        }
+        if (overlapsRoad)
+        {
+            continue;
+        }
+
+        m_orientationRegistry->TryClaimCell(cellSize, frontage.yaw, origin, 0, 0);
+    }
+}
+
 std::optional<float> RoadSystem::FindNearbyBuildingYaw(const XMFLOAT3& point) const
 {
     if (!m_context || !m_context->objects)
@@ -560,7 +623,7 @@ std::optional<float> RoadSystem::FindNearbyBuildingYaw(const XMFLOAT3& point) co
     }
 
     XMVECTOR pointVec = XMLoadFloat3(&point);
-    const float alignDistance = kOrientationAlignDistanceInCells * (m_field ? m_field->GetCellSize() : 1.0f);
+    const float alignDistance = WorldScale::FromLegacy(kOrientationAlignDistanceLegacyCells);
     float bestDistSq = alignDistance * alignDistance;
     bool found = false;
     float bestYaw = 0.0f;
@@ -624,7 +687,8 @@ bool RoadSystem::CommitSegment(
     RoadSegment segment,
     bool startRequiresSplit, size_t startSplitIndex,
     bool endConnects, bool endRequiresSplit, size_t endSplitIndex,
-    const std::vector<XMFLOAT3>& chainConnectionPoints)
+    const std::vector<XMFLOAT3>& chainConnectionPoints,
+    bool claimOrientation)
 {
     float cellSize = m_field->GetCellSize();
 
@@ -667,7 +731,10 @@ bool RoadSystem::CommitSegment(
     {
         m_orientationRegistry->RemoveCellsOverlapping(MakeRoadRect(segment, 0.0f), cellSize);
     }
-    ClaimOrientationNearSegment(segment, newIndex);
+    if (claimOrientation)
+    {
+        ClaimOrientationNearSegment(segment, newIndex);
+    }
 
     // 既知の制約: 始点・終点が同じ区間の途中に吸着した場合は正しく分割されない(v1の割り切り)。
     if (startRequiresSplit)
@@ -822,14 +889,14 @@ void RoadSystem::UpdateStraightMode(const XMFLOAT3& /*hitPoint*/, const SnapResu
                 pendingStartForHover, m_pendingStartRequiresSplit, effectivePoint, snap.snapped);
 
             float hoverLength = SegmentLength(hoverSegment);
-            int hoverCost = CalculateRoadCost(hoverLength, cellSize, m_context->roadType);
+            int hoverCost = CalculateRoadCost(hoverLength, WorldScale::kRoadPriceCellLength, m_context->roadType);
             straightAffordable = CanAffordCost(hoverCost);
 
             m_hoverValid = IsSegmentPlaceable(hoverSegment, connectionPoints) && straightAffordable;
 
             m_context->costPreview.visible = true;
             m_context->costPreview.cost = hoverCost;
-            m_context->costPreview.cells = CalculateRoadCells(hoverLength, cellSize);
+            m_context->costPreview.cells = CalculateRoadCells(hoverLength, WorldScale::kRoadPriceCellLength);
             m_context->costPreview.affordable = straightAffordable;
         }
         else
@@ -903,7 +970,7 @@ bool RoadSystem::CommitStraightSegment(
     bool endConnects, bool endRequiresSplit, size_t endSplitIndex)
 {
     // 払えない時は置かない(UpdateStraightModeは事前にも確認しているが、ここでも守る)。
-    int cost = CalculateRoadCost(SegmentLength(segment), m_field->GetCellSize(), segment.type);
+    int cost = CalculateRoadCost(SegmentLength(segment), WorldScale::kRoadPriceCellLength, segment.type);
     if (!CanAffordCost(cost))
     {
         return false;
@@ -1111,8 +1178,28 @@ std::vector<RoadSegment> RoadSystem::GetEffectiveCurvePendingSegments() const
     constexpr float kStraightnessEpsilon = 0.12f;
     if (!IsPathNearlyStraight(points, kStraightnessEpsilon))
     {
-        // 実際に曲げている場合は何もせず、平滑化済みの滑らかな形をそのまま返す。
-        return m_curvePendingSegments;
+        // 実際に曲げている場合は、点列を、滑らかに均して、等間隔に取り直す(CurveSmoothing)。
+        // ドラッグ中の点は、手ぶれで細かく揺れ、間隔もバラバラで、そのまま区間にすると、道路の縁がガタガタに見える。
+        // 始点・終点は動かさない(既存の道路への吸着・接続の位置が、ずれないように)。
+        // ゴースト(ドラッグ中の表示)・有効判定・費用・確定が、全て、この関数を通るので、見えている形が、そのまま確定される。
+        CurveSmoothingOptions options;
+        options.sigma = WorldScale::FromLegacy(kCurveSmoothingSigmaLegacyCells);
+        options.spacing = WorldScale::FromLegacy(kCurveSegmentSpacingLegacyCells);
+        const std::vector<XMFLOAT3> smoothed = SmoothAndResample(points, options);
+        if (smoothed.size() < 2)
+        {
+            return m_curvePendingSegments;
+        }
+        std::vector<RoadSegment> result;
+        result.reserve(smoothed.size() - 1);
+        for (size_t i = 0; i + 1 < smoothed.size(); ++i)
+        {
+            RoadSegment segment = m_curvePendingSegments.front(); // 種類・幅・描き方は、最初の区間と同じ
+            segment.start = smoothed[i];
+            segment.end = smoothed[i + 1];
+            result.push_back(segment);
+        }
+        return result;
     }
 
     RoadSegment straight = m_curvePendingSegments.front();
@@ -1137,7 +1224,7 @@ int RoadSystem::GetPendingCurveCost() const
     {
         return 0;
     }
-    return CalculateRoadCost(GetPendingCurveLength(), m_field->GetCellSize(), m_curvePendingSegments.front().type);
+    return CalculateRoadCost(GetPendingCurveLength(), WorldScale::kRoadPriceCellLength, m_curvePendingSegments.front().type);
 }
 
 bool RoadSystem::CanAffordCost(int amount) const
@@ -1158,12 +1245,10 @@ void RoadSystem::PublishPendingCurveCostPreview()
     }
 
     float length = GetPendingCurveLength();
-    float cellSize = m_field->GetCellSize();
-
     CostPreview& preview = m_context->costPreview;
     preview.visible = true;
-    preview.cells = CalculateRoadCells(length, cellSize);
-    preview.cost = CalculateRoadCost(length, cellSize, m_curvePendingSegments.front().type);
+    preview.cells = CalculateRoadCells(length, WorldScale::kRoadPriceCellLength);
+    preview.cost = CalculateRoadCost(length, WorldScale::kRoadPriceCellLength, m_curvePendingSegments.front().type);
     preview.affordable = CanAffordCost(preview.cost);
 }
 
@@ -1335,6 +1420,7 @@ void RoadSystem::ConfirmPendingCurve()
 
     // 実際に置けた区間の長さの合計。建設費は区間ごとではなく、道1本の全長からまとめて1回だけ払う。
     float committedLength = 0.0f;
+    size_t committedCount = 0;
     RoadType committedType = effectiveSegments.front().type;
 
     for (size_t i = 0; i < effectiveSegments.size(); ++i)
@@ -1353,7 +1439,8 @@ void RoadSystem::ConfirmPendingCurve()
             effectiveSegments[i],
             startRequiresSplit, startSplitIndex,
             endConnects, endRequiresSplit, endSplitIndex,
-            chainConnectionPoints);
+            chainConnectionPoints,
+            false); // 青マスは、連なり全体で、最後にまとめて登録する(区間ごとだと、向きの違うマスが重なる)
 
         if (!committed)
         {
@@ -1364,13 +1451,20 @@ void RoadSystem::ConfirmPendingCurve()
         }
 
         committedLength += SegmentLength(effectiveSegments[i]);
+        ++committedCount;
+    }
+
+    if (committedCount > 0)
+    {
+        effectiveSegments.resize(committedCount);
+        ClaimOrientationAlongChain(effectiveSegments);
     }
 
     // 置けた分の全長に対して払う(通常は全区間。万一途中で止まった時は、置けた分だけ)。
     // 事前に全長ぶんを払えることを確認済みなので、置けた分はそれ以下で必ず払える。
     if (m_context && m_context->economy && m_field)
     {
-        int cost = CalculateRoadCost(committedLength, m_field->GetCellSize(), committedType);
+        int cost = CalculateRoadCost(committedLength, WorldScale::kRoadPriceCellLength, committedType);
         if (!m_context->economy->Spend(cost))
         {
             Debug::Log("RoadSystem: カーブの建設費を払えませんでした(事前の確認と食い違い)");

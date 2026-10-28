@@ -1,4 +1,11 @@
 ﻿#include "BuildingType.h"
+#include "WorldScale.h"
+
+namespace
+{
+    // 敷地の大きさ(下の表)は「最初の1マスを単位」に書いてある。マスを細かく分割した分だけ、マス数に直す(建物の大きさは変わらない)。
+    constexpr int kS = WorldScale::kSubdivision;
+}
 
 const BuildingDefinition& GetBuildingDefinition(BuildingType type)
 {
@@ -8,7 +15,7 @@ const BuildingDefinition& GetBuildingDefinition(BuildingType type)
     {
         "House",
         "CityKitSuburban/Models/OBJ format/building-type-a.obj",
-        1, 1, // footprintWidthCells, footprintDepthCells
+        1 * kS, 1 * kS, // footprintWidthCells, footprintDepthCells
         1,  // populationRepresented
         1,  // representativeAgentCount
         0,  // capacity
@@ -20,7 +27,7 @@ const BuildingDefinition& GetBuildingDefinition(BuildingType type)
     {
         "Office",
         "CityKitCommercial/Models/OBJ format/building-a.obj",
-        1, 1,
+        1 * kS, 1 * kS,
         0,
         0,
         5,  // capacity(停止中)
@@ -33,7 +40,7 @@ const BuildingDefinition& GetBuildingDefinition(BuildingType type)
     {
         "Convenience",
         "CityKitCommercial/Models/OBJ format/building-d.obj",
-        1, 1,
+        1 * kS, 1 * kS,
         0,
         0,
         0,
@@ -45,7 +52,7 @@ const BuildingDefinition& GetBuildingDefinition(BuildingType type)
     {
         "Supermarket",
         "CityKitCommercial/Models/OBJ format/building-e.obj",
-        2, 1,
+        2 * kS, 1 * kS,
         0,
         0,
         0,
@@ -57,7 +64,7 @@ const BuildingDefinition& GetBuildingDefinition(BuildingType type)
     {
         "Cinema",
         "CityKitCommercial/Models/OBJ format/building-i.obj",
-        2, 2,
+        2 * kS, 2 * kS,
         0,
         0,
         0,
@@ -69,7 +76,7 @@ const BuildingDefinition& GetBuildingDefinition(BuildingType type)
     {
         "Cafe",
         "CityKitCommercial/Models/OBJ format/building-j.obj",
-        1, 1,
+        1 * kS, 1 * kS,
         0,
         0,
         0,

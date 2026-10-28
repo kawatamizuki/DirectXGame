@@ -15,6 +15,7 @@
 #include "RoadProximity.h"
 #include "GameEconomy.h"
 #include "GridOrientationRegistry.h"
+#include "WorldScale.h"
 #include "OrientedRectangleOverlap.h"
 #include "EditorSettings.h"
 #include "imgui.h"
@@ -25,7 +26,7 @@ namespace
 {
     // 近くの道路/GridOrientationRegistryを「近い」とみなす距離。RoadSystem.cppの
     // kOrientationAlignDistanceと同じ考え方の値(セルサイズの2倍程度、調整可能)。
-    constexpr float kRoadAlignDistanceInCells = 2.0f; // マスの何倍まで「近く」とみなすか(マスの大きさが変わっても、同じ比率を保つ)
+    constexpr float kRoadAlignDistanceLegacyCells = 2.0f; // 最初のマス(1.0)の何倍まで「近く」とみなすか(マスを細かく分けても、範囲は変えない)
 }
 
 void BuildController::Initialize(
@@ -109,7 +110,7 @@ BuildController::PlacementFrame BuildController::ComputePlacementFrame(const XMF
     if (m_roadSystem)
     {
         std::optional<NearestRoadPoint> nearest =
-            FindNearestPointOnRoad(m_roadSystem->GetSegments(), hitPoint, kRoadAlignDistanceInCells * m_field->GetCellSize());
+            FindNearestPointOnRoad(m_roadSystem->GetSegments(), hitPoint, WorldScale::FromLegacy(kRoadAlignDistanceLegacyCells));
         if (nearest.has_value())
         {
             const RoadSegment& segment = m_roadSystem->GetSegments()[nearest->segmentIndex];
@@ -180,13 +181,18 @@ BuildController::PlacementPreview BuildController::ComputePlacement(const XMFLOA
     XMFLOAT3 localHit;
     XMStoreFloat3(&localHit, localHitVec);
 
-    GridCoord cell = WorldToGrid(localHit, cellSize);
-
     // 90/270度回転時は、グリッド上で占有する幅と奥行きが入れ替わる
     // (モデル自身の縮尺には影響しない。あくまでグリッド上の占有範囲の話)。
     bool footprintSwapped = (m_selectedRotationStep % 2) != 0;
     int effectiveWidthCells = footprintSwapped ? def.footprintDepthCells : def.footprintWidthCells;
     int effectiveDepthCells = footprintSwapped ? def.footprintWidthCells : def.footprintDepthCells;
+
+    // 建物の中心が、カーソルに一番近い位置に来るように、最小角のマスを決める。
+    // 1マスの建物では、カーソルが載っているマスそのもの(floor)になる。2マス幅なら、カーソルに近いマスの線をまたぐ位置になる。
+    // (マスが細かいので、カーソルの載っているマスを角にすると、建物がカーソルから半分ずれて見えてしまう)
+    GridCoord cell;
+    cell.x = static_cast<int>(std::floor(localHit.x / cellSize - static_cast<float>(effectiveWidthCells) * 0.5f + 0.5f));
+    cell.z = static_cast<int>(std::floor(localHit.z / cellSize - static_cast<float>(effectiveDepthCells) * 0.5f + 0.5f));
 
     result.localCell = cell;
     result.localWidthCells = effectiveWidthCells;
@@ -532,13 +538,7 @@ void BuildController::DrawWorldOverlay()
     // footprint(占有セル範囲)全体を枠として描画する(1x1に限らず何マスでも対応)。
     // 基準座標系(placement.frame)がワールド軸と異なる場合、枠自体もその向きに回転させる。
     float cellSize = m_field->GetCellSize();
-    XMVECTOR hitVec = XMLoadFloat3(&m_hoverPoint);
-    XMVECTOR originVec = XMLoadFloat3(&placement.frame.origin);
-    XMVECTOR inverseRotationQuat = XMQuaternionRotationRollPitchYaw(0.0f, -placement.frame.yaw, 0.0f);
-    XMVECTOR localHitVec = XMVector3Rotate(hitVec - originVec, inverseRotationQuat);
-    XMFLOAT3 localHit;
-    XMStoreFloat3(&localHit, localHitVec);
-    GridCoord hoverCell = WorldToGrid(localHit, cellSize);
+    const GridCoord hoverCell = placement.localCell; // 置く位置(最小角のマス)は、ComputePlacementが決めた物をそのまま使う
 
     bool footprintSwapped = (m_selectedRotationStep % 2) != 0;
     const BuildingDefinition& def = GetBuildingDefinition(m_selectedType);

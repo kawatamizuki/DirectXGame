@@ -4,6 +4,7 @@
 #include <cmath>
 #include "GameContext.h"
 #include "Field.h"
+#include "WorldScale.h"
 #include "Model.h"
 #include "ModelCache.h"
 #include "GameObjectFactory.h"
@@ -71,7 +72,7 @@ bool PropPlacer::PlaceAt(const std::string& modelPath, const XMFLOAT3& groundPoi
     }
 
     const float groundHeight = m_field->GetHeightAt(groundPoint.x, groundPoint.z);
-    const Transform transform = ComputePlacement(*model, groundPoint, groundHeight, m_field->GetCellSize());
+    const Transform transform = ComputePlacement(*model, groundPoint, groundHeight, WorldScale::FromLegacy(1.0f));
 
     GameObject& prop = GameObjectFactory::Spawn(*m_context->objects, model, transform, ObjectKind::Prop);
     prop.modelPath = modelPath;
@@ -129,13 +130,13 @@ void PropPlacer::Draw()
     }
 
     const float groundHeight = m_field->GetHeightAt(point.x, point.z);
-    const Transform transform = ComputePlacement(*model, point, groundHeight, m_field->GetCellSize());
+    const Transform transform = ComputePlacement(*model, point, groundHeight, WorldScale::FromLegacy(1.0f));
 
     // 置いた時の見た目を半透明で。
     m_context->renderer->DrawModel(*model, transform, *m_context->camera, 0.5f);
 
     // 1マスの枠(置く大きさの目安)。
-    const float half = m_field->GetCellSize() * 0.5f;
+    const float half = WorldScale::FromLegacy(1.0f) * 0.5f;
     const float y = groundHeight + 0.01f;
     const XMFLOAT4 color(0.2f, 0.9f, 1.0f, 1.0f);
     const XMFLOAT3 p0(point.x - half, y, point.z - half);

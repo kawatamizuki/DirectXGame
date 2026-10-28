@@ -26,6 +26,7 @@ struct BuildingDefinition
     // 占有するグリッドセル数(幅x奥行き)。BuildControllerはモデルの実測サイズを
     // この幅x奥行き(ワールド単位ではfootprintCells*cellSize)にちょうど収まるよう
     // 自動でスケールを計算するため、ここを2x2等に変えるだけで大型建物にも対応できる。
+    // (マスは WorldScale::kSubdivision 分割されているので、表は「最初の1マス」単位で書き、それに kSubdivision をかけた値が入る)
     int footprintWidthCells = 1;
     int footprintDepthCells = 1;
 
