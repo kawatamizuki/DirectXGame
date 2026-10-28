@@ -228,6 +228,9 @@
     <ClCompile Include="UI\TitleMenu.cpp">
       <Filter>ソース ファイル\UI</Filter>
     </ClCompile>
+    <ClCompile Include="UI\ResidentInfoPanel.cpp">
+      <Filter>ソース ファイル\UI</Filter>
+    </ClCompile>
     <ClCompile Include="UI\GameMenu.cpp">
       <Filter>ソース ファイル\UI</Filter>
     </ClCompile>
@@ -258,6 +261,21 @@
     <ClCompile Include="Simulation\DemandSystem.cpp">
       <Filter>ソース ファイル\Simulation</Filter>
     </ClCompile>
+    <ClCompile Include="Simulation\DemandSystemDebug.cpp">
+      <Filter>ソース ファイル\Simulation</Filter>
+    </ClCompile>
+    <ClCompile Include="Simulation\FacilityData.cpp">
+      <Filter>ソース ファイル\Simulation</Filter>
+    </ClCompile>
+    <ClCompile Include="Simulation\FacilityLedger.cpp">
+      <Filter>ソース ファイル\Simulation</Filter>
+    </ClCompile>
+    <ClCompile Include="Simulation\ResidentLogic.cpp">
+      <Filter>ソース ファイル\Simulation</Filter>
+    </ClCompile>
+    <ClCompile Include="Simulation\RoutePlanner.cpp">
+      <Filter>ソース ファイル\Simulation</Filter>
+    </ClCompile>
     <ClCompile Include="Simulation\GameEconomy.cpp">
       <Filter>ソース ファイル\Simulation</Filter>
     </ClCompile>
@@ -281,6 +299,9 @@
     </ClCompile>
     <ClCompile Include="DebugTools\AssetViewer.cpp">
       <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\ClickDragGesture.cpp">
+      <Filter>ソース ファイル\Core</Filter>
     </ClCompile>
     <ClCompile Include="Core\CityCameraController.cpp">
       <Filter>ソース ファイル\Core</Filter>
@@ -545,6 +566,9 @@
     <ClInclude Include="UI\TitleMenu.h">
       <Filter>ヘッダー ファイル\UI</Filter>
     </ClInclude>
+    <ClInclude Include="UI\ResidentInfoPanel.h">
+      <Filter>ヘッダー ファイル\UI</Filter>
+    </ClInclude>
     <ClInclude Include="UI\GameMenu.h">
       <Filter>ヘッダー ファイル\UI</Filter>
     </ClInclude>
@@ -596,6 +620,21 @@
     <ClInclude Include="Simulation\DemandSystem.h">
       <Filter>ヘッダー ファイル\Simulation</Filter>
     </ClInclude>
+    <ClInclude Include="Simulation\FacilityData.h">
+      <Filter>ヘッダー ファイル\Simulation</Filter>
+    </ClInclude>
+    <ClInclude Include="Simulation\FacilityLedger.h">
+      <Filter>ヘッダー ファイル\Simulation</Filter>
+    </ClInclude>
+    <ClInclude Include="Simulation\ResidentLogic.h">
+      <Filter>ヘッダー ファイル\Simulation</Filter>
+    </ClInclude>
+    <ClInclude Include="Simulation\ResidentSimSettings.h">
+      <Filter>ヘッダー ファイル\Simulation</Filter>
+    </ClInclude>
+    <ClInclude Include="Simulation\RoutePlanner.h">
+      <Filter>ヘッダー ファイル\Simulation</Filter>
+    </ClInclude>
     <ClInclude Include="Simulation\GameEconomy.h">
       <Filter>ヘッダー ファイル\Simulation</Filter>
     </ClInclude>
@@ -610,6 +649,9 @@
     </ClInclude>
     <ClInclude Include="DebugTools\AssetViewer.h">
       <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\ClickDragGesture.h">
+      <Filter>ヘッダー ファイル\Core</Filter>
     </ClInclude>
     <ClInclude Include="Core\CityCameraController.h">
       <Filter>ヘッダー ファイル\Core</Filter>

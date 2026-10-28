@@ -133,6 +133,37 @@ void ProceduralUISkin::DrawSlider(UIRenderer& ui, const UIRect& track, float val
     ui.FillCircle(knobX, cy, knobRadius - T.buttonBorderThickness * scale, fill);
 }
 
+void ProceduralUISkin::DrawGauge(UIRenderer& ui, const UIRect& rect, float value01, float marker01, bool warning, float scale)
+{
+    const UITheme& T = m_theme;
+    const float t = value01 < 0.0f ? 0.0f : (value01 > 1.0f ? 1.0f : value01);
+    const float radius = rect.h * 0.5f;
+
+    // 枠(うすい色)と、塗り(選択色。警告の時は、赤)。
+    ui.FillRoundedRect(rect, radius, T.chipFill, T.chipFill);
+    if (t > 0.0f)
+    {
+        const UIRect filled{ rect.x, rect.y, (std::max)(rect.h, rect.w * t), rect.h };
+        if (warning)
+        {
+            const UIColor red = GetTextStyle(UITextRole::Warning).color;
+            ui.FillRoundedRect(filled, radius, red, red);
+        }
+        else
+        {
+            ui.FillRoundedRect(filled, radius, T.buttonSelectedTop, T.buttonSelectedBottom);
+        }
+    }
+    ui.StrokeRoundedRect(rect, radius, T.chipBorderThickness * scale, T.chipBorder);
+
+    // 目印(縦の線)。
+    if (marker01 >= 0.0f && marker01 <= 1.0f)
+    {
+        const float x = rect.x + rect.w * marker01;
+        ui.DrawLine(x, rect.y - 2.0f * scale, x, rect.Bottom() + 2.0f * scale, 2.0f * scale, T.panelBorder);
+    }
+}
+
 UITextStyle ProceduralUISkin::GetTextStyle(UITextRole role) const
 {
     const UITheme& T = m_theme;

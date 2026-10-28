@@ -181,6 +181,13 @@ void CityCameraController::Update(const CityCameraInput& input, Camera& camera)
         m_targetDistance = newDistance;
     }
 
+    // ---- 追跡: 目標の注視点を、追跡する点にする(ズームの後。ズームで、追跡する点から外れないように) ----
+    if (input.followActive)
+    {
+        m_targetFocus.x = input.followX;
+        m_targetFocus.z = input.followZ;
+    }
+
     ClampTargetFocus();
 
     // ---- 4. 目標へ、なめらかに追いつく(1 - exp(-k*dt) は、フレームの長さによらず、同じ速さで近づく) ----

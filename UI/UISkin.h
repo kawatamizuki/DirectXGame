@@ -93,6 +93,10 @@ public:
     // stateは、Hover=カーソルが上、Pressed=つかんでいる。
     virtual void DrawSlider(UIRenderer& ui, const UIRect& track, float value01, UIButtonState state, float scale) = 0;
 
+    // ゲージ(需要・体力など、量を見せる横棒)を描く。rectは棒の全体、value01は塗る量(0〜1)。marker01が0以上なら、その位置に目印(充足のしきい値など)を出す。
+    // warningがtrueなら、警告の色で塗る(需要が不足など)。
+    virtual void DrawGauge(UIRenderer& ui, const UIRect& rect, float value01, float marker01, bool warning, float scale) = 0;
+
     // アイコンを、中心(cx, cy)に、size四方の大きさで描く。stateは、選択中・押せない時に色を変えるため。
     virtual void DrawIcon(UIRenderer& ui, UIIcon icon, float cx, float cy, float size, UIButtonState state) = 0;
 

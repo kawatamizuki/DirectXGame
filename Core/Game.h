@@ -19,6 +19,7 @@
 #include "AssetViewer.h"
 #include "AudioPanel.h"
 #include "CityCameraController.h"
+#include "ClickDragGesture.h"
 #include "ModelCache.h"
 #include "PropPlacer.h"
 #include "AudioSystem.h"
@@ -91,8 +92,17 @@ private:
     // Esc・右クリックの扱い: メニューを閉じる/配置をやめる/メニューを開く。メニューの更新より先に呼ぶ。
     void HandleMenuKeys();
 
-    // メニューが開いている間は、ゲーム内の時間を止める(閉じたら元の倍率へ戻す)。メニューの更新の後に呼ぶ。
+    // メニュー、または「住民の情報」パネルが開いている間は、ゲーム内の時間を止める(閉じたら元の倍率へ戻す)。UIの更新の後に呼ぶ。
     void SyncMenuTimeScale();
+
+    // 建物・住民の選択: 何も置いていない時、
+    //  - 建物を1回クリックで選び、同じ建物をもう1回クリックすると、住宅なら「住民の情報」パネルを開く。
+    //  - 住民を1回クリックで追跡(カメラが追う)を始め、追跡中の住民をもう1回クリックすると、その住民の「住民の情報」パネルを開く。
+    // 何も無い所をクリックすると、選択・追跡を外す。Playingで、ゲーム内のUI・ImGuiの上でないクリックだけを扱う。
+    void UpdateBuildingSelection();
+
+    // 「住民の情報」パネルに出す内容(選択中の住宅に住む住民の内部パラメータ)を集める。
+    ResidentInfoModel BuildResidentInfoModel() const;
 
     // 音量(オプション)が変わっていたら、Settings/audio.json に保存する。スライダーをつかんでいる間・数字の入力中は待つ。
     void SaveAudioSettingsIfChanged();
@@ -175,7 +185,16 @@ private:
     float m_titleTime = 0.0f;          // タイトル画面が始まってからの時間(秒。カメラを回すのに使う)
     DirectX::XMFLOAT3 m_titleFocus = { 0.0f, 0.0f, 0.0f }; // タイトル画面のカメラが見る点(街の中心)
     float m_titleRadius = 10.0f;       // 街の広がり(中心から一番遠い建物・道路の端までの距離)
-    bool m_menuWasOpen = false;        // 前のフレームで、ゲーム内メニューが開いていたか(開閉の瞬間を見つけるため)
+    bool m_menuWasOpen = false;        // 前のフレームで、時間を止めるUI(メニュー・住民の情報パネル)が開いていたか(開閉の瞬間を見つけるため)
+    uint32_t m_selectedBuildingId = 0; // 選んでいる建物のGameObject::id(0=なし)。住民の情報パネルは、この建物の住民を出す
+    uint32_t m_followAgentId = 0;      // 追跡している住民の見た目のGameObject::id(0=なし)。カメラが追い、もう1回クリックすると、住民の情報パネルが開く
+    bool m_showHitBoxes = false;       // クリックの当たり判定(住民は大きめ)の箱を描くか(Debugビルドだけ。Editorメニュー、またはF3。Releaseでは描かない)
+
+    // 左ボタンでの操作: 押して、ほとんど動かさずに離したら「クリック」(建物・住民の選択)。押したまま動かしたら「ドラッグ」(カメラの平行移動)。
+    ClickDragGesture m_leftGesture;    // 左ボタンの、クリックとドラッグの見分け(UIの上で押した時・配置中は、始まらない)
+    bool m_leftDragActive = false;     // 今、左ボタンのドラッグ(カメラの移動)の最中か
+    bool m_leftDragJustStarted = false;// ドラッグが始まったフレームか(つかんだ点を、押した位置にするため。UpdateCityCameraが使う)
+    POINT m_leftPressPos = { 0, 0 };   // 左ボタンを押した位置(ゲームビューの左上が原点)
     float m_scaleBeforeMenu = 1.0f;    // メニューを開く前の、ゲーム内時間の倍率(閉じたら戻す)
     std::string m_menuStatus;          // メニューのシステムタブに出す、直前のセーブ/ロードの結果
 
@@ -211,6 +230,9 @@ private:
     Model m_houseModel;
     Model m_officeModel;
     Model m_shopModel;
+    Model m_supermarketModel;
+    Model m_cinemaModel;
+    Model m_cafeModel;
     BuildController m_buildController;
     StraightRoadPlacementStrategy m_roadPlacementStrategy;
     CurveRoadPlacementStrategy m_curveRoadPlacementStrategy;

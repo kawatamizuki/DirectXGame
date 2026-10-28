@@ -85,9 +85,9 @@ void DebugEditor::AttachEditorUi(EditorUi* editorUi)
     // 「Editor > エディタ機能のON/OFF」に出すスイッチ。ここで持っている表示・操作の切り替えを登録する。
     EditorSettings& settings = m_editorUi->Settings();
     settings.RegisterToggle("bounds_selected", "選択中のBoundsを表示", &m_showSelectedBounds,
-        "選択中のオブジェクトの当たり判定の箱(OBB)を描く(Editingモード)");
+        "選択中のオブジェクトの、モデルの当たり判定の箱(OBB)を描く(EditingでもPlayingでも)");
     settings.RegisterToggle("bounds_all", "全てのBoundsを表示", &m_showAllBounds,
-        "全てのオブジェクトの当たり判定の箱(OBB)を描く(Editingモード)");
+        "全てのオブジェクトの、モデルの当たり判定の箱(OBB)を描く(EditingでもPlayingでも)。クリックの当たり判定は、別のスイッチ");
     settings.RegisterToggle("object_dragging", "ドラッグでオブジェクトを動かす", &m_enableObjectDragging,
         "OFFにすると、オブジェクト本体のドラッグ移動をしない(ギズモは使える)");
 }
@@ -2076,18 +2076,20 @@ void DebugEditor::Draw()
         return;
     }
 
-    // BOX/ギズモの表示はEditingモードの時だけ(Playing中は建物/道路の見た目を邪魔しない)
+    // Boundsの箱(モデルの当たり判定の箱)は、スイッチをONにした時だけ、EditingでもPlayingでも描く(既定はOFFなので、見た目を邪魔しない)。
+    // ※ クリックの当たり判定(住民は大きめ)の表示は、別のスイッチ(Game側。F3)。
+    if (m_showAllBounds)
+    {
+        DrawAllObjectBounds();
+    }
+    else if (m_showSelectedBounds)
+    {
+        DrawSelectedObjectBounds();
+    }
+
+    // ギズモの表示はEditingモードの時だけ(Playing中は建物/道路の見た目を邪魔しない)
     if (m_context->mode == GameMode::Editing)
     {
-        // BOXの当たり判定の表示
-        if (m_showAllBounds)
-        {
-            DrawAllObjectBounds();
-        }
-        else if (m_showSelectedBounds)
-        {
-            DrawSelectedObjectBounds();
-        }
 
         // 軸表示
         switch (m_gizmoMode)

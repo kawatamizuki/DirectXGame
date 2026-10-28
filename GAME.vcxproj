@@ -173,6 +173,7 @@
     <ClCompile Include="Audio\SoundTable.cpp" />
     <ClCompile Include="UI\TitleMenu.cpp" />
     <ClCompile Include="UI\GameMenu.cpp" />
+    <ClCompile Include="UI\ResidentInfoPanel.cpp" />
     <ClCompile Include="UI\GameUI.cpp" />
     <ClCompile Include="UI\ProceduralUISkin.cpp" />
     <ClCompile Include="UI\UIRenderer.cpp" />
@@ -193,6 +194,11 @@
     <ClCompile Include="Simulation\RoadGraph.cpp" />
     <ClCompile Include="Simulation\DijkstraPathfinder.cpp" />
     <ClCompile Include="Simulation\DemandSystem.cpp" />
+    <ClCompile Include="Simulation\DemandSystemDebug.cpp" />
+    <ClCompile Include="Simulation\FacilityData.cpp" />
+    <ClCompile Include="Simulation\FacilityLedger.cpp" />
+    <ClCompile Include="Simulation\ResidentLogic.cpp" />
+    <ClCompile Include="Simulation\RoutePlanner.cpp" />
     <ClCompile Include="Simulation\GameEconomy.cpp" />
     <ClCompile Include="DebugTools\Profiler.cpp" />
     <ClCompile Include="DebugTools\AssetCatalog.cpp" />
@@ -202,6 +208,7 @@
     <ClCompile Include="DebugTools\AssetViewer.cpp" />
     <ClCompile Include="DebugTools\AudioPanel.cpp" />
     <ClCompile Include="Core\CityCameraController.cpp" />
+    <ClCompile Include="Core\ClickDragGesture.cpp" />
     <ClCompile Include="DebugTools\AssetImporter.cpp" />
     <ClCompile Include="Object\ModelCache.cpp" />
     <ClCompile Include="Field\PropPlacer.cpp" />
@@ -278,6 +285,7 @@
     <ClInclude Include="Audio\SoundTable.h" />
     <ClInclude Include="UI\TitleMenu.h" />
     <ClInclude Include="UI\GameMenu.h" />
+    <ClInclude Include="UI\ResidentInfoPanel.h" />
     <ClInclude Include="UI\GameUI.h" />
     <ClInclude Include="UI\ProceduralUISkin.h" />
     <ClInclude Include="UI\UILayoutUtil.h" />
@@ -309,6 +317,11 @@
     <ClInclude Include="Simulation\ResidentAgent.h" />
     <ClInclude Include="Simulation\ResidentSchedule.h" />
     <ClInclude Include="Simulation\DemandSystem.h" />
+    <ClInclude Include="Simulation\FacilityData.h" />
+    <ClInclude Include="Simulation\FacilityLedger.h" />
+    <ClInclude Include="Simulation\ResidentLogic.h" />
+    <ClInclude Include="Simulation\RoutePlanner.h" />
+    <ClInclude Include="Simulation\ResidentSimSettings.h" />
     <ClInclude Include="Simulation\GameEconomy.h" />
     <ClInclude Include="DebugTools\Profiler.h" />
     <ClInclude Include="DebugTools\AssetCatalog.h" />
@@ -318,6 +331,7 @@
     <ClInclude Include="DebugTools\AssetViewer.h" />
     <ClInclude Include="DebugTools\AudioPanel.h" />
     <ClInclude Include="Core\CityCameraController.h" />
+    <ClInclude Include="Core\ClickDragGesture.h" />
     <ClInclude Include="DebugTools\AssetImporter.h" />
     <ClInclude Include="Field\PropPlacement.h" />
     <ClInclude Include="Object\ModelCache.h" />

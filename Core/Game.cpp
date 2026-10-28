@@ -7,12 +7,28 @@
 #include "MiniaudioBackend.h"
 #include "AudioSettings.h"
 #include "WorldScale.h"
+#include "Collision.h"
+#include "GameObjectFactory.h"
+#include "EditorGuard.h"
+#include "FacilityData.h"
 #include <algorithm>
+#include <cfloat>
+#include <cstdio>
 #include <cmath>
 #include <filesystem>
 #include "imgui.h"
 #include "imgui_internal.h"
 
+
+namespace
+{
+    // 「1年目 1月 第1週」のような、日付の文字(HUDと、情報タブで使う)。
+    std::string CalendarText(const GameClock& clock)
+    {
+        return std::to_string(clock.GetYear()) + "年目 " + std::to_string(clock.GetMonth()) + "月 第" + std::to_string(clock.GetWeekOfMonth()) + "週"
+            + (clock.IsSleeping() ? " (就寝)" : "");
+    }
+}
 
 Game::Game()
     : m_hwnd(nullptr)
@@ -174,6 +190,22 @@ bool Game::Initialize(HWND hwnd)
         Debug::Error("Game::Initialize failed : Shop model load failed");
         return false;
     }
+    // 施設(スーパー・映画館・カフェ)のモデル。暫定の見た目(BuildingType.cppのパスを差し替えれば、変わる)。
+    if (!m_supermarketModel.LoadFromFile(m_renderer.GetDevice(), GetBuildingDefinition(BuildingType::Supermarket).modelPath))
+    {
+        Debug::Error("Game::Initialize failed : Supermarket model load failed");
+        return false;
+    }
+    if (!m_cinemaModel.LoadFromFile(m_renderer.GetDevice(), GetBuildingDefinition(BuildingType::Cinema).modelPath))
+    {
+        Debug::Error("Game::Initialize failed : Cinema model load failed");
+        return false;
+    }
+    if (!m_cafeModel.LoadFromFile(m_renderer.GetDevice(), GetBuildingDefinition(BuildingType::Cafe).modelPath))
+    {
+        Debug::Error("Game::Initialize failed : Cafe model load failed");
+        return false;
+    }
 
     m_field.Initialize(WorldScale::kFieldWidthCells, WorldScale::kFieldDepthCells, WorldScale::kCellSize);
     m_propPlacer.Initialize(&m_context, &m_field);
@@ -239,6 +271,9 @@ bool Game::Initialize(HWND hwnd)
         &m_context, &m_field, &m_occupancyGrid,
         &m_roadSystem, &m_orientationRegistry,
         &m_houseModel, &m_officeModel, &m_shopModel);
+    m_buildController.SetModel(BuildingType::Supermarket, &m_supermarketModel);
+    m_buildController.SetModel(BuildingType::Cinema, &m_cinemaModel);
+    m_buildController.SetModel(BuildingType::Cafe, &m_cafeModel);
 
     m_roadSystem.Initialize(
         &m_context, &m_field, &m_occupancyGrid,
@@ -273,6 +308,8 @@ bool Game::Initialize(HWND hwnd)
         "地面のマス目の線を描く(青マスの線も含む)");
     m_editorUi.Settings().RegisterToggle("model_cache", "モデルキャッシュを使う", &m_useModelCache,
         "OFFにすると、これから読むモデルは毎回ローダーで読み直す(保存済みのキャッシュは残る)。起動時の読み込みは、常にキャッシュを使う");
+    m_editorUi.Settings().RegisterToggle("hit_boxes", "クリックの当たり判定を表示(F3)", &m_showHitBoxes,
+        "ゲーム内で、建物・住民をクリックできる範囲の箱を描く(建物=水色、住民=ピンクで、少し大きめ。Playingで見られる)");
     m_editorUi.LoadSettings();
     BakedModelCache::SetEnabled(m_useModelCache);
 #endif
@@ -347,6 +384,7 @@ void Game::Update()
     // 処理する。HUDの上のクリックがワールドへ抜けないよう、mouseOverUI/inputConsumedを先に確定させる。
     // (ImGuiのBeginFrameの後なのは、ImGuiのパネルの上にいるかを今フレームの状態で見るため)
     UpdateGameUI();
+    UpdateBuildingSelection();
 
 #ifdef ENABLE_EDITOR
     // Assetsからモデルをドラッグしている状態を読み取り、ゲームの画面の上で離されたら飾りを置く。
@@ -360,6 +398,12 @@ void Game::Update()
     HandleScenarioHotkeys();
 
 #ifdef ENABLE_EDITOR
+    // F3: クリックの当たり判定(建物・住民)の表示の切り替え(Debugビルド)。
+    if (!ImGui::GetIO().WantTextInput && m_inputManager.IsKeyPressed(VK_F3))
+    {
+        m_showHitBoxes = !m_showHitBoxes;
+    }
+
     // F2: 素材の一覧パネルの開閉(入力欄に文字を入力している間は、ショートカットとして扱わない)。
     if (!ImGui::GetIO().WantTextInput && m_inputManager.IsKeyPressed(VK_F2))
     {
@@ -541,6 +585,7 @@ HudState Game::BuildHudState() const
 {
     HudState state;
     state.dayCount = m_gameClock.GetDayCount();
+    state.calendarText = CalendarText(m_gameClock);
     state.timeOfDayHours = m_gameClock.GetTimeOfDayHours();
     state.cash = m_gameEconomy.GetCash();
     state.stats = m_demandSystem.GetStats();
@@ -551,6 +596,14 @@ HudState Game::BuildHudState() const
     state.cursorX = static_cast<float>(mouse.x);
     state.cursorY = static_cast<float>(mouse.y);
     state.menu = BuildMenuModel();
+    if (m_gameUI.IsResidentPanelOpen())
+    {
+        state.residentInfo = BuildResidentInfoModel();
+    }
+    if (m_followAgentId != 0)
+    {
+        state.hintText = "住民を追跡中: もう一度クリックで情報 / Esc・右クリックで解除";
+    }
     return state;
 }
 
@@ -564,7 +617,10 @@ namespace
         {
         case BuildingType::House:  return "住宅";
         case BuildingType::Office: return "オフィス";
-        case BuildingType::Shop:   return "お店";
+        case BuildingType::Shop:   return "コンビニ";
+        case BuildingType::Supermarket: return "スーパー";
+        case BuildingType::Cinema: return "映画館";
+        case BuildingType::Cafe:   return "カフェ";
         }
         return "?";
     }
@@ -575,7 +631,10 @@ namespace
         {
         case BuildingType::House:  return UIIcon::House;
         case BuildingType::Office: return UIIcon::Office;
-        case BuildingType::Shop:   return UIIcon::Shop;
+        case BuildingType::Shop:
+        case BuildingType::Supermarket:
+        case BuildingType::Cinema:
+        case BuildingType::Cafe:   return UIIcon::Shop; // 施設の専用アイコンは、後で足す
         }
         return UIIcon::House;
     }
@@ -610,7 +669,11 @@ MenuModel Game::BuildMenuModel() const
     const bool buildingTool = (m_context.placementTool == PlacementTool::Building);
     const bool roadTool = (m_context.placementTool == PlacementTool::Road);
 
-    const BuildingType buildingTypes[] = { BuildingType::House, BuildingType::Office, BuildingType::Shop };
+    const BuildingType buildingTypes[] =
+    {
+        BuildingType::House, BuildingType::Office, BuildingType::Shop,
+        BuildingType::Supermarket, BuildingType::Cinema, BuildingType::Cafe
+    };
     for (BuildingType type : buildingTypes)
     {
         const BuildingDefinition& def = GetBuildingDefinition(type);
@@ -654,12 +717,14 @@ MenuModel Game::BuildMenuModel() const
 
     // 情報タブ。
     const DemandStats& stats = m_demandSystem.GetStats();
-    model.info.push_back({ "日数", std::to_string(m_gameClock.GetDayCount()) + "日目" });
+    model.info.push_back({ "日付", CalendarText(m_gameClock) });
     model.info.push_back({ "所持金", std::to_string(cash) + "円" });
     model.info.push_back({ "人口", std::to_string(stats.populationTotal) + "人" });
-    model.info.push_back({ "住民(代表)", std::to_string(stats.agentCount) + "人" });
-    model.info.push_back({ "雇用", std::to_string(stats.jobsFilled) + " / " + std::to_string(stats.jobCapacityTotal) });
-    model.info.push_back({ "住宅 / 職場", std::to_string(stats.houseCount) + " / " + std::to_string(stats.officeCount) });
+    model.info.push_back({ "住民", std::to_string(stats.agentCount) + "人(需要が不足: " + std::to_string(stats.unmetDemand) + "人)" });
+    model.info.push_back({ "住宅 / 施設", std::to_string(stats.houseCount) + " / " + std::to_string(stats.facilityCount) });
+    model.info.push_back({ "今週の来客 / 売上", std::to_string(stats.visitsThisWeek) + "人 / " + std::to_string(stats.salesThisWeek) + "円" });
+    model.info.push_back({ "先週の来客 / 売上", std::to_string(stats.visitsLastWeek) + "人 / " + std::to_string(stats.salesLastWeek) + "円" });
+    model.info.push_back({ "今月の来客 / 売上", std::to_string(stats.visitsThisMonth) + "人 / " + std::to_string(stats.salesThisMonth) + "円" });
 
     // 配置中のしるし(閉じている間、左下に出す)。
     if (buildingTool)
@@ -777,12 +842,34 @@ void Game::HandleMenuKeys()
     const bool escape = m_inputManager.IsKeyPressed(VK_ESCAPE);
     const bool cancel = escape || (m_inputManager.IsActionPressed(InputAction::Cancel) && !overImGui);
 
+    // 「住民の情報」パネルが開いている: Esc・右クリックで、パネルだけを閉じる(メニューは開かない)。
+    if (m_gameUI.IsResidentPanelOpen())
+    {
+        if (cancel)
+        {
+            m_gameUI.CloseResidentPanel();
+            m_context.inputConsumed = true;
+        }
+        return;
+    }
+
     if (m_gameUI.IsMenuOpen())
     {
         // 開いている: 「戻る」と同じ。
         if (cancel)
         {
             m_gameUI.CloseMenu();
+            m_context.inputConsumed = true;
+        }
+        return;
+    }
+
+    // 住民を追跡している間: Esc・右クリックで、追跡だけをやめる(メニューは開かない)。
+    if (m_followAgentId != 0 && m_context.placementTool == PlacementTool::None)
+    {
+        if (cancel)
+        {
+            m_followAgentId = 0;
             m_context.inputConsumed = true;
         }
         return;
@@ -808,7 +895,7 @@ void Game::HandleMenuKeys()
 
 void Game::SyncMenuTimeScale()
 {
-    const bool open = m_gameUI.IsMenuOpen();
+    const bool open = m_gameUI.IsMenuOpen() || m_gameUI.IsResidentPanelOpen();
     if (open && !m_menuWasOpen)
     {
         // 開いた: 時間を止め、置きかけの道路はやめる(メニューを閉じた後に、中途半端な状態を残さない)。
@@ -899,6 +986,9 @@ void Game::UpdateCityCamera()
         // ゲームシーンが始まった: フィールドの中心を、見下ろす最初の見え方にする(タイトル画面の水平なカメラのままにしない)。
         m_cityCamera.SetBounds(m_field.GetWorldWidth() * 0.5f, m_field.GetWorldDepth() * 0.5f);
         m_cityCamera.Reset(m_camera);
+
+        // ゲームを始める: 時計を、最初の朝(第1週)に戻す(タイトル画面の間にも時計は動いていて、週が進んでしまうため)。
+        m_gameClock.ResetToDefault();
     }
     else if (playing && !m_wasPlayingInGame)
     {
@@ -931,6 +1021,9 @@ void Game::UpdateCityCamera()
                             static_cast<float>(mouse.x) < viewWidth && static_cast<float>(mouse.y) < viewHeight;
     const bool cursorValid = insideView && !overUI;
 
+    // 左ボタンのドラッグ(UpdateBuildingSelectionが、押したまま動かした時に、始める): つかんでいる間、地面をつかんで動かす。
+    const bool leftDragging = m_leftDragActive && m_inputManager.IsKeyDown(VK_LBUTTON);
+
     // 中ボタン: ゲームビューの上で押した時に、つかみ始める。押している間は続け、離したら終わる。
     if (m_inputManager.IsActionDown(InputAction::CameraDrag))
     {
@@ -955,14 +1048,37 @@ void Game::UpdateCityCamera()
         input.fast = m_inputManager.IsActionDown(InputAction::CameraFast);
     }
     input.wheelNotches = cursorValid ? wheel : 0.0f; // UIの上のホイールは、ズームにしない
-    input.dragging = m_cameraDragging;
+    input.dragging = m_cameraDragging || leftDragging;
     input.cursorValid = cursorValid;
     input.cursorX = static_cast<float>(mouse.x);
     input.cursorY = static_cast<float>(mouse.y);
     input.prevCursorX = static_cast<float>(m_prevCameraCursor.x);
     input.prevCursorY = static_cast<float>(m_prevCameraCursor.y);
+    if (m_leftDragJustStarted)
+    {
+        // ドラッグの始まり: つかむ点を、押した位置にする(動き始めるまでの、数ピクセルも、カメラに反映する)。
+        input.prevCursorX = static_cast<float>(m_leftPressPos.x);
+        input.prevCursorY = static_cast<float>(m_leftPressPos.y);
+    }
     input.viewWidth = viewWidth;
     input.viewHeight = viewHeight;
+
+    // 住民の追跡: 追う点を渡す。キーでの移動・ドラッグをしたら(自分で動かしたい合図)、追跡をやめる。
+    if (m_followAgentId != 0)
+    {
+        const GameObject* target = GameObjectFactory::FindById(m_objects, m_followAgentId);
+        const bool userMoved = (input.panX != 0.0f) || (input.panZ != 0.0f) || m_cameraDragging || leftDragging;
+        if (!target || userMoved)
+        {
+            m_followAgentId = 0;
+        }
+        else
+        {
+            input.followActive = true;
+            input.followX = target->transform.position.x;
+            input.followZ = target->transform.position.z;
+        }
+    }
 
     m_cityCamera.Update(input, m_camera);
     m_prevCameraCursor = mouse;
@@ -1054,14 +1170,324 @@ bool Game::IsFolderUsedByProps(const std::string& folder) const
     return false;
 }
 
+namespace
+{
+    // 住民(Agent)のクリックの当たり判定を、モデルの箱より、この長さ(マス基準)だけ、全ての方向に大きくする(住民は小さいため)。
+    constexpr float kAgentPickMarginLegacyCells = 0.12f;
+
+    // クリックの当たり判定に使う、物の箱(モデルのローカル座標)。建物は、モデルの箱そのまま。住民だけ、少し大きくする。
+    // ローカルの箱は、物の拡大(scale)を掛けて、ワールドの大きさになるので、ワールドで「余白の長さ」になるよう、拡大で割って足す。
+    // 選択・追跡のしるし(線だけ。当たり判定の箱ではない)。
+    // 足元の輪: 中心center、半径radius(地面のすぐ上)。
+    void AddGroundRing(DebugRenderer& renderer, const DirectX::XMFLOAT3& center, float radius, const DirectX::XMFLOAT4& color)
+    {
+        constexpr int kSegments = 24;
+        constexpr float kTwoPi = 6.28318530718f;
+        const float y = 0.03f;
+        DirectX::XMFLOAT3 previous{ center.x + radius, y, center.z };
+        for (int i = 1; i <= kSegments; ++i)
+        {
+            const float angle = kTwoPi * static_cast<float>(i) / static_cast<float>(kSegments);
+            const DirectX::XMFLOAT3 current{ center.x + std::cos(angle) * radius, y, center.z + std::sin(angle) * radius };
+            renderer.AddLine(previous, current, color);
+            previous = current;
+        }
+    }
+
+    // 足元の四角: 物の箱(モデルの箱を、位置・向き・拡大で動かした、8つの角)を、地面に落とした、外側の四角。marginだけ外へ広げる。
+    void AddGroundOutline(DebugRenderer& renderer, const GameObject& obj, float margin, const DirectX::XMFLOAT4& color)
+    {
+        const DirectX::XMFLOAT3 mn = obj.model->GetBoundsMin();
+        const DirectX::XMFLOAT3 mx = obj.model->GetBoundsMax();
+        const DirectX::XMMATRIX world = obj.transform.GetWorldMatrix();
+        float minX = FLT_MAX, maxX = -FLT_MAX, minZ = FLT_MAX, maxZ = -FLT_MAX;
+        for (int i = 0; i < 8; ++i)
+        {
+            const DirectX::XMFLOAT3 corner{ (i & 1) ? mx.x : mn.x, (i & 2) ? mx.y : mn.y, (i & 4) ? mx.z : mn.z };
+            DirectX::XMFLOAT3 p;
+            DirectX::XMStoreFloat3(&p, DirectX::XMVector3Transform(DirectX::XMLoadFloat3(&corner), world));
+            minX = (std::min)(minX, p.x); maxX = (std::max)(maxX, p.x);
+            minZ = (std::min)(minZ, p.z); maxZ = (std::max)(maxZ, p.z);
+        }
+        const float y = 0.03f;
+        const DirectX::XMFLOAT3 a{ minX - margin, y, minZ - margin }, b{ maxX + margin, y, minZ - margin };
+        const DirectX::XMFLOAT3 c{ maxX + margin, y, maxZ + margin }, d{ minX - margin, y, maxZ + margin };
+        renderer.AddLine(a, b, color);
+        renderer.AddLine(b, c, color);
+        renderer.AddLine(c, d, color);
+        renderer.AddLine(d, a, color);
+    }
+
+    void PickBounds(const GameObject& obj, DirectX::XMFLOAT3& outMin, DirectX::XMFLOAT3& outMax)
+    {
+        outMin = obj.model->GetBoundsMin();
+        outMax = obj.model->GetBoundsMax();
+        if (obj.kind != ObjectKind::Agent)
+        {
+            return;
+        }
+        const float margin = WorldScale::FromLegacy(kAgentPickMarginLegacyCells);
+        const DirectX::XMFLOAT3& s = obj.transform.scale;
+        const float mx = margin / (std::max)(std::fabs(s.x), 1e-4f);
+        const float my = margin / (std::max)(std::fabs(s.y), 1e-4f);
+        const float mz = margin / (std::max)(std::fabs(s.z), 1e-4f);
+        outMin = { outMin.x - mx, outMin.y - my, outMin.z - mz };
+        outMax = { outMax.x + mx, outMax.y + my, outMax.z + mz };
+    }
+}
+
+void Game::UpdateBuildingSelection()
+{
+    // Playingのゲームシーンだけ。
+    if (!IsInGameScene() || m_context.mode != GameMode::Playing)
+    {
+        m_selectedBuildingId = 0;
+        m_followAgentId = 0;
+        m_leftGesture.Reset(); m_leftDragActive = m_leftDragJustStarted = false;
+        return;
+    }
+    // 建物・道路を置く操作を始めたら、選択も追跡も外す。左ボタンは、配置の道具のもの(自由描きのドラッグなど)なので、カメラは動かさない。
+    if (m_context.placementTool != PlacementTool::None)
+    {
+        m_selectedBuildingId = 0;
+        m_followAgentId = 0;
+        m_leftGesture.Reset(); m_leftDragActive = m_leftDragJustStarted = false;
+        return;
+    }
+    // メニュー・パネルが開いている間は、選択を触らない。
+    if (m_gameUI.IsMenuOpen() || m_gameUI.IsResidentPanelOpen())
+    {
+        m_leftGesture.Reset(); m_leftDragActive = m_leftDragJustStarted = false;
+        return;
+    }
+    // 選んでいた建物・追跡していた住民が、無くなっていたら(ロードなど)、外す。
+    if (m_selectedBuildingId != 0 && !GameObjectFactory::FindById(m_objects, m_selectedBuildingId))
+    {
+        m_selectedBuildingId = 0;
+    }
+    if (m_followAgentId != 0 && !GameObjectFactory::FindById(m_objects, m_followAgentId))
+    {
+        m_followAgentId = 0;
+    }
+
+    // ---- 左ボタン: クリックか、ドラッグか ----
+    // 世界の上(HUD・メニュー・ImGuiのパネルの上ではない所)で押した時に、始まる。押したまま、少し(6ピクセル)以上動かしたら、
+    // ドラッグ(カメラの平行移動。UpdateCityCameraが動かす)。動かさずに離したら、クリック(下で、建物・住民を探す)。
+    const POINT cursor = m_inputManager.GetMousePosition(); // ゲームビューの左上が原点
+    const bool canStart = !m_context.inputConsumed && !m_context.mouseOverUI && !IsMouseOverEditorUi();
+    const ClickDragGesture::Result gesture = m_leftGesture.Update(
+        m_inputManager.IsKeyPressed(VK_LBUTTON), canStart, m_inputManager.IsKeyDown(VK_LBUTTON),
+        static_cast<float>(cursor.x), static_cast<float>(cursor.y));
+    m_leftPressPos = POINT{ static_cast<LONG>(gesture.pressX), static_cast<LONG>(gesture.pressY) };
+    m_leftDragJustStarted = gesture.dragStarted;
+    m_leftDragActive = gesture.dragging;
+    if (gesture.dragging)
+    {
+        m_context.inputConsumed = true; // ドラッグ中は、他の操作へ抜けない
+    }
+    if (!gesture.clicked)
+    {
+        return; // 押している最中・ドラッグ中・何も無い時は、クリックの判定をしない
+    }
+    // ---- クリック(押した位置で判定) ----
+    // カーソルの下の物を探す。住民は小さいので、(少し大きくした箱で)先に探す。見えている住民と、追跡中の住民(建物の中にいても)が対象。
+    const POINT mouse = m_leftPressPos;
+    const Ray ray = m_camera.ScreenPointToRay(mouse, m_renderer.GetViewWidth(), m_renderer.GetViewHeight());
+
+    uint32_t agentHitId = 0;
+    float agentNearest = FLT_MAX;
+    uint32_t buildingHitId = 0;
+    BuildingType buildingHitType = BuildingType::House;
+    float buildingNearest = FLT_MAX;
+    for (const GameObject& obj : m_objects)
+    {
+        if (!obj.model)
+        {
+            continue;
+        }
+        const bool isAgent = (obj.kind == ObjectKind::Agent);
+        if (!isAgent && obj.kind != ObjectKind::Building)
+        {
+            continue;
+        }
+        if (isAgent && !obj.visible && obj.id != m_followAgentId)
+        {
+            continue; // 建物の中にいる住民は、追跡中でない限り、クリックの対象にしない(建物のクリックを邪魔しないため)
+        }
+        DirectX::XMFLOAT3 boundsMin, boundsMax;
+        PickBounds(obj, boundsMin, boundsMax);
+        float distance = 0.0f;
+        if (!IntersectRayOBB(ray, obj.transform, boundsMin, boundsMax, distance))
+        {
+            continue;
+        }
+        if (isAgent)
+        {
+            if (distance < agentNearest) { agentNearest = distance; agentHitId = obj.id; }
+        }
+        else if (distance < buildingNearest)
+        {
+            buildingNearest = distance;
+            buildingHitId = obj.id;
+            buildingHitType = obj.buildingType;
+        }
+    }
+
+    // ---- 住民をクリック ----
+    if (agentHitId != 0)
+    {
+        m_context.inputConsumed = true;
+        if (agentHitId == m_followAgentId)
+        {
+            // 追跡中の住民を、もう1回クリック: 住民の情報を出す(開いている間は、時間が止まる)。
+            m_gameUI.OpenResidentPanel();
+        }
+        else
+        {
+            // 追跡を始める(カメラが住民を追う)。選んでいた建物は、外す。
+            m_followAgentId = agentHitId;
+            m_selectedBuildingId = 0;
+        }
+        return;
+    }
+
+    // ---- 建物をクリック ----
+    if (buildingHitId != 0)
+    {
+        m_context.inputConsumed = true; // 建物のクリックは、ここで受け取る(他の操作へ抜けない)
+        if (buildingHitId == m_selectedBuildingId)
+        {
+            // 同じ建物をもう1回クリック: 住宅なら、住民の情報を出す。
+            if (buildingHitType == BuildingType::House)
+            {
+                m_gameUI.OpenResidentPanel();
+            }
+        }
+        else
+        {
+            m_selectedBuildingId = buildingHitId;
+            m_followAgentId = 0; // 建物を選んだら、追跡はやめる
+        }
+        return;
+    }
+
+    // ---- 何も無い所(地面)をクリック: 選択も追跡も外す ----
+    m_selectedBuildingId = 0;
+    m_followAgentId = 0;
+}
+ResidentInfoModel Game::BuildResidentInfoModel() const
+{
+    ResidentInfoModel model;
+    model.title = "住民の情報";
+
+    // 追跡している住民があれば、その住民。無ければ、選んでいる住宅の住民。
+    const bool byAgent = (m_followAgentId != 0);
+    const ResidentInfo info = byAgent ? m_demandSystem.GetResidentInfoForAgent(m_followAgentId)
+                                      : m_demandSystem.GetResidentInfoForHome(m_selectedBuildingId);
+    model.subtitle = byAgent ? (info.found ? "住民(住宅 #" + std::to_string(info.homeObjectId) + ")" : std::string("住民"))
+                             : "住宅 #" + std::to_string(m_selectedBuildingId);
+    if (!info.found)
+    {
+        model.emptyMessage = byAgent ? "この住民の情報が見つかりません。" : "この住宅には、まだ住民がいません。";
+        return model;
+    }
+
+    auto facilityName = [&](uint32_t id) -> std::string
+    {
+        const GameObject* obj = GameObjectFactory::FindById(m_objects, id);
+        const FacilityDefinition* facility = obj ? FindFacilityDefinition(obj->buildingType) : nullptr;
+        return facility ? facility->name : "?";
+    };
+    auto number = [](float value, int decimals) -> std::string
+    {
+        char text[32];
+        std::snprintf(text, sizeof(text), "%.*f", decimals, value);
+        return text;
+    };
+    auto header = [&](const char* label)
+    {
+        ResidentInfoRow row; row.kind = ResidentInfoRow::Kind::Header; row.label = label; model.rows.push_back(row);
+    };
+    auto value = [&](const char* label, const std::string& text, float gauge = -1.0f, float marker = -1.0f, bool warning = false)
+    {
+        ResidentInfoRow row; row.kind = ResidentInfoRow::Kind::Value; row.label = label; row.value = text;
+        row.gauge = gauge; row.marker = marker; row.warning = warning; model.rows.push_back(row);
+    };
+    auto clamp01 = [](float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); };
+    auto normalized = [&](float v, float lo, float hi) { return clamp01((v - lo) / (hi - lo)); };
+
+    // 今の状態。
+    std::string stateText = "家にいる";
+    switch (info.state)
+    {
+    case ResidentAgentState::GoingOut:      stateText = "外出中(" + facilityName(info.targetFacilityId) + "へ)"; break;
+    case ResidentAgentState::Visiting:      stateText = facilityName(info.targetFacilityId) + "を利用中"; break;
+    case ResidentAgentState::ReturningHome: stateText = "帰宅中"; break;
+    default: break;
+    }
+    model.subtitle += " / " + stateText;
+
+    header("需要(80以上で充足)");
+    const bool lifeUnmet = info.lifeNeed < info.needThreshold;
+    const bool activityUnmet = info.activityNeed < info.needThreshold;
+    value("生活", number(info.lifeNeed, 0) + (lifeUnmet ? "  不足" : "  充足"), clamp01(info.lifeNeed / 100.0f), clamp01(info.needThreshold / 100.0f), lifeUnmet);
+    value("アクティビティ", number(info.activityNeed, 0) + (activityUnmet ? "  不足" : "  充足"), clamp01(info.activityNeed / 100.0f), clamp01(info.needThreshold / 100.0f), activityUnmet);
+    value("生活の不足が続いた時間", number(info.unmetLifeHours, 1) + " 時間");
+    value("アクティビティの不足が続いた時間", number(info.unmetActivityHours, 1) + " 時間");
+    value("両方が充足している時間", number(info.satisfiedHours, 1) + " 時間");
+
+    header("体力");
+    value("体力", number(info.stamina, 0) + " / " + number(info.staminaCap, 0), clamp01(info.stamina / (info.staminaCap > 1.0f ? info.staminaCap : 1.0f)));
+    value("ペナルティの段階", std::to_string(info.penaltyLevel) + " / " + std::to_string(info.maxPenaltyLevel),
+          info.maxPenaltyLevel > 0 ? clamp01(static_cast<float>(info.penaltyLevel) / static_cast<float>(info.maxPenaltyLevel)) : 0.0f, -1.0f, info.penaltyLevel > 0);
+
+    header("特徴(1が標準)");
+    value("品質へのこだわり", number(info.traits.qualityWeight, 2), normalized(info.traits.qualityWeight, 0.6f, 1.5f));
+    value("値段への敏感さ", number(info.traits.priceSensitivity, 2), normalized(info.traits.priceSensitivity, 0.5f, 1.6f));
+    value("遠出のしやすさ", number(info.traits.distanceTolerance, 2), normalized(info.traits.distanceTolerance, 0.7f, 1.5f));
+    value("自発性(用事が無くても出かける)", number(info.traits.spontaneity, 2), normalized(info.traits.spontaneity, 0.5f, 1.6f));
+    value("需要の減りやすさ", number(info.traits.needDecayScale, 2), normalized(info.traits.needDecayScale, 0.8f, 1.25f));
+
+    header("行動の記録");
+    {
+        ResidentInfoRow row; row.kind = ResidentInfoRow::Kind::Note; row.label = "直近の選択";
+        row.value = info.lastDecisionNote.empty() ? "まだありません" : info.lastDecisionNote;
+        model.rows.push_back(row);
+    }
+    int shown = 0;
+    for (const VisitRecord& record : info.history)
+    {
+        if (shown >= 3) { break; }
+        const int hour = static_cast<int>(record.hour);
+        const int minute = static_cast<int>((record.hour - static_cast<float>(hour)) * 60.0f);
+        char when[48];
+        std::snprintf(when, sizeof(when), "第%d週 %02d:%02d", record.weekIndex, hour, minute);
+        value(shown == 0 ? "最近の利用" : "", facilityName(record.facilityObjectId) + "  (" + when + ")");
+        ++shown;
+    }
+    if (shown == 0)
+    {
+        value("最近の利用", "まだありません");
+    }
+    return model;
+}
 void Game::UpdateGameUI()
 {
     if (!IsGameUIVisible())
     {
-        // タイトル画面などでは、メニューを開いたままにしない(止めた時間も戻す)。
+        // タイトル画面などでは、メニュー・住民の情報パネルを開いたままにしない(止めた時間も戻す)。
         m_gameUI.CloseMenu();
+        m_gameUI.CloseResidentPanel();
+        m_selectedBuildingId = 0;
         SyncMenuTimeScale();
         return;
+    }
+
+    // Playing以外(Editingなど)では、住民の情報パネルも出さない。
+    if (m_context.mode != GameMode::Playing)
+    {
+        m_gameUI.CloseResidentPanel();
+        m_selectedBuildingId = 0;
     }
 
     // Esc・右クリック(メニューを閉じる/配置をやめる/メニューを開く)は、メニューの更新より先に処理する。
@@ -1171,6 +1597,49 @@ void Game::Draw()
             m_field.DrawGridOverlay(m_debugRenderer, m_orientationRegistry);
         }
         m_propPlacer.Draw(); // Assetsからのドラッグ中のゴースト
+        // 追跡している住民のしるし(足元の黄色い輪)。建物の中にいても、位置に出す。
+        // (これは、選択・追跡を知らせる、ゲームの表示。当たり判定の箱の表示とは別で、Releaseにも出る)
+        if (m_followAgentId != 0)
+        {
+            if (const GameObject* followed = GameObjectFactory::FindById(m_objects, m_followAgentId))
+            {
+                AddGroundRing(m_debugRenderer, followed->transform.position, WorldScale::FromLegacy(0.45f), { 1.0f, 0.85f, 0.1f, 1.0f });
+            }
+        }
+#ifdef ENABLE_EDITOR
+        // クリックの当たり判定の表示(Debugビルドだけ。Releaseには、この描画のコード自体が入らない)。
+        // 建物=水色、住民=ピンク(少し大きい箱)。選択中・追跡中は、上の黄色。F3・Editorのスイッチで、ON/OFFする。
+        if (m_showHitBoxes)
+        {
+            for (const GameObject& obj : m_objects)
+            {
+                if (!obj.model || (obj.kind != ObjectKind::Building && obj.kind != ObjectKind::Agent))
+                {
+                    continue;
+                }
+                const bool isAgent = (obj.kind == ObjectKind::Agent);
+                if (isAgent && !obj.visible && obj.id != m_followAgentId)
+                {
+                    continue; // クリックの対象になる住民だけ(PickBoundsと同じ条件)
+                }
+                DirectX::XMFLOAT3 boundsMin, boundsMax;
+                PickBounds(obj, boundsMin, boundsMax);
+                const DirectX::XMFLOAT4 color = isAgent ? DirectX::XMFLOAT4{ 1.0f, 0.25f, 1.0f, 1.0f } : DirectX::XMFLOAT4{ 0.2f, 0.9f, 1.0f, 1.0f };
+                m_debugRenderer.AddOBB(boundsMin, boundsMax, obj.transform.GetWorldMatrix(), color);
+            }
+        }
+#endif
+        if (m_selectedBuildingId != 0)
+        {
+            // 選んでいる建物のしるし(足元の黄色い四角)。ゲームの表示で、当たり判定の箱の表示とは別(Releaseにも出る)。
+            if (const GameObject* selected = GameObjectFactory::FindById(m_objects, m_selectedBuildingId))
+            {
+                if (selected->model)
+                {
+                    AddGroundOutline(m_debugRenderer, *selected, WorldScale::FromLegacy(0.08f), { 1.0f, 0.85f, 0.1f, 1.0f });
+                }
+            }
+        }
 #ifdef ENABLE_EDITOR
         m_demandSystem.Draw(m_debugRenderer); // 建物と道路の接続線(デバッグ表示)。エディタが無いビルドでは出さない
 #endif

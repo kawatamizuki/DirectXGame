@@ -98,7 +98,7 @@ void GameUI::ComputeLayout(float screenW, float screenH, const HudState& state)
     float timeWidth = m_ui->MeasureString(layout.timeText, layout.timeTextSize);
 
     // 日数は時刻のすぐ右に、ベースラインを揃えて小さく置く。
-    layout.dayText = "Day " + std::to_string(state.dayCount);
+    layout.dayText = state.calendarText.empty() ? ("Day " + std::to_string(state.dayCount)) : state.calendarText;
     layout.dayTextSize = UIRoundFontSize(kDayFontSize * s);
     layout.dayTextX = textX + timeWidth + 8.0f * s;
     float timeBaseline = layout.timeTextY + m_ui->GetAscent(layout.timeTextSize);
@@ -120,7 +120,7 @@ void GameUI::ComputeLayout(float screenW, float screenH, const HudState& state)
     const ChipSource sources[3] =
     {
         { UIIcon::Population, std::string("人口 ") + FormatWithCommas(state.stats.populationTotal) },
-        { UIIcon::Jobs, std::string("雇用 ") + FormatWithCommas(state.stats.jobsFilled) + "/" + FormatWithCommas(state.stats.jobCapacityTotal) },
+        { UIIcon::Shop, std::string("施設 ") + FormatWithCommas(state.stats.facilityCount) }, // 以前は「雇用」(仕事の概念は停止中)
         { UIIcon::Residents, std::string("住民 ") + FormatWithCommas(state.stats.agentCount) },
     };
 
@@ -200,7 +200,20 @@ HudResult GameUI::Update(const HudInput& input, const HudState& state)
     menuInput.pressed = input.pressed;
     menuInput.down = input.down;
     menuInput.enabled = input.menuEnabled;
-    menuInput.blockedByOtherUI = input.blockedByOtherUI;
+    // 「住民の情報」パネルが開いている間は、パネルが画面全体を受け持つ(メニューのボタンは反応しない)。
+    ResidentPanelInput panelInput;
+    panelInput.screenW = input.screenW;
+    panelInput.screenH = input.screenH;
+    panelInput.topInset = m_layout.bar.Bottom();
+    panelInput.mouseX = input.mouseX;
+    panelInput.mouseY = input.mouseY;
+    panelInput.pressed = input.pressed;
+    panelInput.down = input.down;
+    panelInput.blockedByOtherUI = input.blockedByOtherUI;
+    const ResidentPanelResult panelResult = m_residentPanel.Update(panelInput, state.residentInfo);
+    const bool panelWasOpen = m_residentPanel.IsOpen() || panelResult.closed;
+
+    menuInput.blockedByOtherUI = input.blockedByOtherUI || panelWasOpen;
     menuInput.typedDigits = input.typedDigits;
     menuInput.keyBackspace = input.keyBackspace;
     menuInput.keyEnter = input.keyEnter;
@@ -211,10 +224,11 @@ HudResult GameUI::Update(const HudInput& input, const HudState& state)
     result.menuOpen = m_menu.IsOpen();
 
     bool overBar = !input.blockedByOtherUI && m_layout.bar.Contains(input.mouseX, input.mouseY);
-    result.mouseOverUI = overBar || menuResult.mouseOverUI;
+    result.residentPanelOpen = m_residentPanel.IsOpen();
+    result.mouseOverUI = overBar || menuResult.mouseOverUI || panelResult.mouseOverUI;
 
     // バーの上で押したクリックはHUDが受け取る(ワールドへ抜けない)。バーには、押せるものは無い。
-    if ((overBar && input.pressed) || menuResult.consumedClick)
+    if ((overBar && input.pressed) || menuResult.consumedClick || panelResult.consumedClick)
     {
         result.consumedClick = true;
     }
@@ -369,6 +383,21 @@ void GameUI::Draw(const HudState& state)
 
     // ゲーム内メニュー(右下のボタン、開いた時の一覧)。バーより手前に描く(開いた時の幕は、バーの下から始まる)。
     m_menu.Draw(*m_ui, skin);
+
+    // 「住民の情報」パネル(開いている時だけ。メニューより手前)。
+    m_residentPanel.Draw(*m_ui, skin, state.residentInfo);
+
+    // 操作のヒント(左下の小さな箱)。メニュー・パネルが開いている間は出さない。
+    if (!state.hintText.empty() && !m_menu.IsOpen() && !m_residentPanel.IsOpen())
+    {
+        const float hintFont = UIRoundFontSize(kChipFontSize * s);
+        const float padX = 16.0f * s;
+        const float hintHeight = 40.0f * s;
+        const float hintWidth = m_ui->MeasureString(state.hintText, hintFont) + padX * 2.0f;
+        const UIRect hintRect{ 12.0f * s, L.screenH - 12.0f * s - hintHeight, hintWidth, hintHeight };
+        skin.DrawPanel(*m_ui, hintRect, UIPanelStyle::Chip, s);
+        m_ui->DrawString(hintRect.x + padX, hintRect.y + (hintRect.h - m_ui->GetLineHeight(hintFont)) * 0.5f, state.hintText, hintFont, skin.GetTextStyle(UITextRole::Normal));
+    }
 
     // カーソルの横の建設費タグは、HUDの上にも重なりうるので最後(最前面)に描く。
     DrawCostTag(state);

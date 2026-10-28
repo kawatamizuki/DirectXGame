@@ -1,18 +1,24 @@
 ﻿#include <cfloat>
+#include <cmath>
 #include <algorithm>
+#include <map>
 #include <sstream>
 #include "DemandSystem.h"
 #include "GameContext.h"
 #include "GameClock.h"
+#include "GameEconomy.h"
 #include "GameObjectFactory.h"
 #include "BuildingType.h"
+#include "FacilityData.h"
 #include "RoadGraph.h"
 #include "IPathfinder.h"
 #include "RoadProximity.h"
+#include "RoutePlanner.h"
 #include "DebugRenderer.h"
 #include "Profiler.h"
 #include "WorldScale.h"
-#include "imgui.h"
+#include "ScenarioFile.h"
+#include "Debug.h"
 
 using namespace DirectX;
 
@@ -23,7 +29,7 @@ namespace
     // 道路区間そのものまでの距離(FindNearestPointOnRoad)に対して使う、狭めのしきい値。
     constexpr float kAdjacentDistance = WorldScale::FromLegacy(1.5f); // マス基準(マスが1.0だった頃の1.5)。マスの大きさに連動する
 
-    // Houseの位置とidだけを持つ軽量なコピー。
+    // 建物の位置とidだけを持つ軽量なコピー。
     // GameObject*のまま保持すると、途中でGameObjectFactory::Spawnが
     // *context.objectsを再確保した際にダングリングポインタになるため、
     // 必要な値だけをティック開始時にコピーしておく。
@@ -34,10 +40,18 @@ namespace
         bool hasRoadConnection = false;      // 道路に接続できているか(kAdjacentDistance以内に道路があるか)
         XMFLOAT3 connectionPoint{};          // 接続先の道路上の最近接点(入口/私道の視覚化に使う)
         int nearestNode = -1;                // 経路探索用の最寄りグラフノード(hasRoadConnection==trueの時だけ有効)
+        size_t segmentIndex = 0;             // 接続している道路区間の添字(hasRoadConnection==trueの時だけ有効)
+    };
+
+    // 施設(コンビニなど)1つ分の、建物のコピーと種類。
+    struct FacilitySnapshot
+    {
+        BuildingSnapshot building;
+        BuildingType type = BuildingType::Shop;
     };
 
     // buildingの位置から一番近い道路区間上の点を探し、接続情報を組み立てる。
-    // House/Office両方の建物リスト作成時に使う共通処理。
+    // 住宅・施設・職場の建物リスト作成時に使う共通処理。
     BuildingSnapshot MakeBuildingSnapshot(uint32_t id, const XMFLOAT3& position, const std::vector<RoadSegment>& segments, const RoadGraph& graph)
     {
         BuildingSnapshot snapshot;
@@ -52,6 +66,7 @@ namespace
 
         snapshot.hasRoadConnection = true;
         snapshot.connectionPoint = nearestRoad->point;
+        snapshot.segmentIndex = nearestRoad->segmentIndex;
 
         // 接続先の区間の、position側に近い方の端点をそのまま経路探索用のノードとする(簡略化)。
         const RoadSegment& segment = segments[nearestRoad->segmentIndex];
@@ -64,12 +79,33 @@ namespace
 
         return snapshot;
     }
+
+    // 建物のコピーから、経路を作る時の両端の情報を取り出す。
+    RouteEndpoint ToEndpoint(const BuildingSnapshot& building)
+    {
+        RouteEndpoint endpoint;
+        endpoint.position = building.position;
+        endpoint.connectionPoint = building.connectionPoint;
+        endpoint.segmentIndex = building.segmentIndex;
+        endpoint.hasRoadConnection = building.hasRoadConnection;
+        return endpoint;
+    }
+    // 2つの数から、住民の特徴を決める種を作る(同じ家の同じ番目の住民は、いつも同じ種)。
+    uint32_t MakeResidentSeed(uint32_t globalSeed, uint32_t homeId, uint32_t index)
+    {
+        uint32_t h = globalSeed * 2654435761u;
+        h ^= (homeId + 0x9E3779B9u) * 2246822519u;
+        h ^= (index + 1u) * 3266489917u;
+        h ^= h >> 15;
+        return h;
+    }
 }
 
 void DemandSystem::Initialize(IPathfinder* pathfinder, Model* agentModel)
 {
     m_pathfinder = pathfinder;
     m_agentModel = agentModel;
+    m_random.Seed(m_settings.seed);
 }
 
 void DemandSystem::Reset()
@@ -78,6 +114,10 @@ void DemandSystem::Reset()
     m_tickTimer = 0.0f;
     m_lastStats = DemandStats{};
     m_connectionLines.clear();
+    m_ledger.Clear();
+    m_weeksEnded = 0;
+    m_decisionLog.clear();
+    m_random.Seed(m_settings.seed);
     m_lastRoadGraphNodeCount = 0;
     m_lastRoadGraphEdgeCount = 0;
 }
@@ -110,26 +150,77 @@ namespace
         switch (state)
         {
         case ResidentAgentState::AtHome:        return "AtHome";
-        case ResidentAgentState::Commuting:     return "Commuting";
-        case ResidentAgentState::AtWork:        return "AtWork";
-        case ResidentAgentState::CommutingHome: return "CommutingHome";
+        case ResidentAgentState::GoingOut:      return "GoingOut";
+        case ResidentAgentState::Visiting:      return "Visiting";
+        case ResidentAgentState::ReturningHome: return "ReturningHome";
+        // 停止中の仕事の状態。保存はしない(家にいる扱いで保存する)。
+        case ResidentAgentState::Commuting:
+        case ResidentAgentState::AtWork:
+        case ResidentAgentState::CommutingHome: break;
         }
         return "AtHome";
     }
 
-    bool AgentStateFromKey(const std::string& key, ResidentAgentState& out)
+    // 知らない名前・古いセーブの仕事の状態(Commuting等)は、安全側の「家にいる」にする。
+    ResidentAgentState AgentStateFromKey(const std::string& key)
     {
-        if (key == "AtHome")        { out = ResidentAgentState::AtHome;        return true; }
-        if (key == "Commuting")     { out = ResidentAgentState::Commuting;     return true; }
-        if (key == "AtWork")        { out = ResidentAgentState::AtWork;        return true; }
-        if (key == "CommutingHome") { out = ResidentAgentState::CommutingHome; return true; }
-        return false;
+        if (key == "GoingOut")      { return ResidentAgentState::GoingOut; }
+        if (key == "Visiting")      { return ResidentAgentState::Visiting; }
+        if (key == "ReturningHome") { return ResidentAgentState::ReturningHome; }
+        return ResidentAgentState::AtHome;
+    }
+
+    const char* PurposeKey(UsagePurpose purpose)
+    {
+        switch (purpose)
+        {
+        case UsagePurpose::TopUp:   return "TopUp";
+        case UsagePurpose::BulkBuy: return "BulkBuy";
+        case UsagePurpose::Movie:   return "Movie";
+        case UsagePurpose::Light:   return "Light";
+        case UsagePurpose::Count:   break;
+        }
+        return "TopUp";
+    }
+
+    UsagePurpose PurposeFromKey(const std::string& key)
+    {
+        if (key == "BulkBuy") { return UsagePurpose::BulkBuy; }
+        if (key == "Movie")   { return UsagePurpose::Movie; }
+        if (key == "Light")   { return UsagePurpose::Light; }
+        return UsagePurpose::TopUp;
+    }
+
+    Json TallyToJson(const FacilityTally& tally)
+    {
+        Json json = Json::MakeObject();
+        json.Set("visits", tally.visits);
+        json.Set("sales", tally.sales);
+        return json;
+    }
+
+    FacilityTally TallyFromJson(const Json* json)
+    {
+        FacilityTally tally;
+        if (json && json->IsObject())
+        {
+            tally.visits = (std::max)(0, json->GetInt("visits", 0));
+            tally.sales = (std::max)(0, json->GetInt("sales", 0));
+        }
+        return tally;
+    }
+
+    // 住民が動いている状態(経路を持つ状態)か。
+    bool IsMoving(ResidentAgentState state)
+    {
+        return state == ResidentAgentState::GoingOut || state == ResidentAgentState::ReturningHome;
     }
 }
 
 void DemandSystem::Save(Json& section, const SaveContext& context) const
 {
     section.Set("tickTimer", m_tickTimer);
+    section.Set("weeksEnded", m_weeksEnded);
 
     Json agents = Json::MakeArray();
     if (context.game && context.game->objects)
@@ -146,22 +237,57 @@ void DemandSystem::Save(Json& section, const SaveContext& context) const
                 continue;
             }
 
-            // 職場が見つからない(建物が無くなった等)場合は、職場なしの住民として保存する。
-            int officeUid = agent.hasOffice ? context.UidForBuildingObject(agent.officeObjectId) : -1;
-            bool hasOffice = (officeUid >= 0);
+            // 施設が無くなった(保存できない)外出は、家にいる住民として保存する(途中の経路を引き継げない)。
+            int targetUid = (agent.targetFacilityId != 0) ? context.UidForBuildingObject(agent.targetFacilityId) : -1;
+            const bool outing = (agent.state != ResidentAgentState::AtHome) && targetUid >= 0;
+            const ResidentAgentState savedState = outing ? agent.state : ResidentAgentState::AtHome;
 
             Json entry = Json::MakeObject();
             entry.Set("home", homeUid);
-            entry.Set("office", hasOffice ? officeUid : -1);
-            entry.Set("state", AgentStateKey(hasOffice ? agent.state : ResidentAgentState::AtHome));
+            entry.Set("state", AgentStateKey(savedState));
             entry.Set("speed", agent.speed);
-            entry.Set("scheduleOffsetHours", agent.scheduleOffsetHours);
             entry.Set("position", Vec3ToJson(marker->transform.position));
             entry.Set("scale", Vec3ToJson(marker->transform.scale));
 
-            // 経路は職場がある時だけ意味を持つ。
-            if (hasOffice)
+            // 内部パラメータ。
+            Json traits = Json::MakeObject();
+            traits.Set("staminaCapBase", agent.traits.staminaCapBase);
+            traits.Set("needDecayScale", agent.traits.needDecayScale);
+            traits.Set("qualityWeight", agent.traits.qualityWeight);
+            traits.Set("priceSensitivity", agent.traits.priceSensitivity);
+            traits.Set("distanceTolerance", agent.traits.distanceTolerance);
+            traits.Set("spontaneity", agent.traits.spontaneity);
+            entry.Set("traits", std::move(traits));
+            entry.Set("stamina", agent.stamina);
+            entry.Set("penaltyLevel", agent.penaltyLevel);
+            entry.Set("lifeNeed", agent.lifeNeed);
+            entry.Set("activityNeed", agent.activityNeed);
+            entry.Set("unmetLifeHours", agent.unmetLifeHours);
+            entry.Set("unmetActivityHours", agent.unmetActivityHours);
+            entry.Set("satisfiedHours", agent.satisfiedHours);
+
+            Json history = Json::MakeArray();
+            for (const VisitRecord& record : agent.history)
             {
+                int facilityUid = context.UidForBuildingObject(record.facilityObjectId);
+                if (facilityUid < 0) { continue; }
+                Json item = Json::MakeObject();
+                item.Set("facility", facilityUid);
+                item.Set("week", record.weekIndex);
+                item.Set("hour", record.hour);
+                history.Push(std::move(item));
+            }
+            entry.Set("history", std::move(history));
+
+            // 今の外出。
+            if (outing)
+            {
+                entry.Set("target", targetUid);
+                entry.Set("purpose", PurposeKey(agent.purpose));
+                entry.Set("visitHoursLeft", agent.visitHoursLeft);
+                entry.Set("outingStopCount", agent.outingStopCount);
+                entry.Set("usedFoodLike", agent.usedFoodLikeFacilityThisOuting);
+
                 Json waypoints = Json::MakeArray();
                 for (const XMFLOAT3& waypoint : agent.waypoints)
                 {
@@ -175,11 +301,28 @@ void DemandSystem::Save(Json& section, const SaveContext& context) const
                 entry.Set("waypoints", std::move(waypoints));
                 entry.Set("segmentIndices", std::move(segmentIndices));
                 entry.Set("waypointIndex", static_cast<double>(agent.currentWaypointIndex));
-                entry.Set("waypointsHomeToOffice", agent.waypointsHomeToOffice);
+                entry.Set("waypointsHomeToTarget", agent.waypointsHomeToTarget);
             }
 
             agents.Push(std::move(entry));
         }
+
+        // 施設ごとの集計(来訪者数・売上)。
+        Json facilities = Json::MakeArray();
+        for (const FacilityRecord& record : m_ledger.GetRecords())
+        {
+            int uid = context.UidForBuildingObject(record.objectId);
+            if (uid < 0) { continue; }
+            Json item = Json::MakeObject();
+            item.Set("facility", uid);
+            item.Set("type", ScenarioFile::BuildingTypeKey(record.type));
+            item.Set("thisWeek", TallyToJson(record.thisWeek));
+            item.Set("lastWeek", TallyToJson(record.lastWeek));
+            item.Set("thisMonth", TallyToJson(record.thisMonth));
+            item.Set("total", TallyToJson(record.total));
+            facilities.Push(std::move(item));
+        }
+        section.Set("facilities", std::move(facilities));
     }
     section.Set("agents", std::move(agents));
 }
@@ -199,12 +342,40 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
     {
         m_tickTimer = 0.0f;
     }
+    m_weeksEnded = (std::max)(0, section.GetInt("weeksEnded", 0));
+
+    // 施設ごとの集計。
+    if (const Json* facilities = section.Find("facilities"))
+    {
+        if (facilities->IsArray())
+        {
+            for (size_t i = 0; i < facilities->Size(); ++i)
+            {
+                const Json& item = facilities->At(i);
+                if (!item.IsObject()) { continue; }
+                uint32_t facilityId = context.ObjectIdForBuildingUid(item.GetInt("facility", -1));
+                BuildingType type = BuildingType::Shop;
+                if (facilityId == 0 || !ScenarioFile::BuildingTypeFromKey(item.GetString("type"), type)) { continue; }
+                FacilityRecord record;
+                record.objectId = facilityId;
+                record.type = type;
+                record.thisWeek = TallyFromJson(item.Find("thisWeek"));
+                record.lastWeek = TallyFromJson(item.Find("lastWeek"));
+                record.thisMonth = TallyFromJson(item.Find("thisMonth"));
+                record.total = TallyFromJson(item.Find("total"));
+                m_ledger.SetRecord(record);
+            }
+        }
+    }
 
     const Json* agents = section.Find("agents");
     if (!agents || !agents->IsArray())
     {
         return;
     }
+
+    const int maxPerHome = GetBuildingDefinition(BuildingType::House).representativeAgentCount;
+    std::map<uint32_t, int> perHome; // 家ごとに復元した住民の数(1軒に住む人数の上限を超える分は、復元しない。古いセーブは1軒に6人いた)
 
     for (size_t i = 0; i < agents->Size(); ++i)
     {
@@ -220,75 +391,130 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
         {
             continue;
         }
-        uint32_t officeId = context.ObjectIdForBuildingUid(entry.GetInt("office", -1));
-        bool hasOffice = (officeId != 0);
+        const int indexAtHome = perHome[homeId];
+        if (indexAtHome >= maxPerHome)
+        {
+            continue;
+        }
+        perHome[homeId] = indexAtHome + 1;
 
         ResidentAgent agent;
         agent.homeObjectId = homeId;
-        agent.hasOffice = hasOffice;
-        agent.officeObjectId = officeId;
         // 速さ・位置・大きさ・経路は、保存した時のマスの大きさでの値。今の大きさに合わせる(context.spaceScale)。
         agent.speed = entry.GetFloat("speed", agent.speed / context.spaceScale) * context.spaceScale;
-        agent.scheduleOffsetHours = entry.GetFloat("scheduleOffsetHours", 0.0f);
 
-        // 状態の名前が未知なら、安全側の「家にいる」にする。職場が無い住民は常に家にいる。
-        ResidentAgentState state = ResidentAgentState::AtHome;
-        if (!AgentStateFromKey(entry.GetString("state", "AtHome"), state))
+        // 内部パラメータ。古いセーブ(無い項目)は、種から決めた初期値のまま。
+        InitializeResident(agent, MakeResidentSeed(m_settings.seed, homeId, static_cast<uint32_t>(indexAtHome)), m_settings);
+        if (const Json* traits = entry.Find("traits"))
         {
-            state = ResidentAgentState::AtHome;
+            if (traits->IsObject())
+            {
+                agent.traits.staminaCapBase = traits->GetFloat("staminaCapBase", agent.traits.staminaCapBase);
+                agent.traits.needDecayScale = traits->GetFloat("needDecayScale", agent.traits.needDecayScale);
+                agent.traits.qualityWeight = traits->GetFloat("qualityWeight", agent.traits.qualityWeight);
+                agent.traits.priceSensitivity = traits->GetFloat("priceSensitivity", agent.traits.priceSensitivity);
+                agent.traits.distanceTolerance = traits->GetFloat("distanceTolerance", agent.traits.distanceTolerance);
+                agent.traits.spontaneity = traits->GetFloat("spontaneity", agent.traits.spontaneity);
+            }
         }
-        agent.state = hasOffice ? state : ResidentAgentState::AtHome;
+        agent.stamina = (std::max)(0.0f, entry.GetFloat("stamina", agent.stamina));
+        agent.penaltyLevel = std::clamp(entry.GetInt("penaltyLevel", agent.penaltyLevel), 0, (std::max)(0, m_settings.maxPenaltyLevel));
+        agent.lifeNeed = std::clamp(entry.GetFloat("lifeNeed", agent.lifeNeed), 0.0f, 100.0f);
+        agent.activityNeed = std::clamp(entry.GetFloat("activityNeed", agent.activityNeed), 0.0f, 100.0f);
+        agent.unmetLifeHours = (std::max)(0.0f, entry.GetFloat("unmetLifeHours", 0.0f));
+        agent.unmetActivityHours = (std::max)(0.0f, entry.GetFloat("unmetActivityHours", 0.0f));
+        agent.satisfiedHours = (std::max)(0.0f, entry.GetFloat("satisfiedHours", 0.0f));
 
-        if (hasOffice)
+        if (const Json* history = entry.Find("history"))
         {
-            const Json* waypoints = entry.Find("waypoints");
-            if (waypoints && waypoints->IsArray())
+            if (history->IsArray())
             {
-                for (size_t w = 0; w < waypoints->Size(); ++w)
+                for (size_t h = 0; h < history->Size() && agent.history.size() < ResidentAgent::kMaxHistory; ++h)
                 {
-                    XMFLOAT3 point;
-                    if (JsonToVec3(waypoints->At(w), point))
-                    {
-                        point.x *= context.spaceScale;
-                        point.y *= context.spaceScale;
-                        point.z *= context.spaceScale;
-                        agent.waypoints.push_back(point);
-                    }
+                    const Json& item = history->At(h);
+                    uint32_t facilityId = item.IsObject() ? context.ObjectIdForBuildingUid(item.GetInt("facility", -1)) : 0;
+                    if (facilityId == 0) { continue; }
+                    VisitRecord record;
+                    record.facilityObjectId = facilityId;
+                    record.weekIndex = item.GetInt("week", 0);
+                    record.hour = item.GetFloat("hour", 0.0f);
+                    agent.history.push_back(record);
                 }
             }
-            const Json* segmentIndices = entry.Find("segmentIndices");
-            if (segmentIndices && segmentIndices->IsArray())
-            {
-                for (size_t s = 0; s < segmentIndices->Size(); ++s)
-                {
-                    int index = segmentIndices->At(s).AsInt(-1);
-                    if (index >= 0)
-                    {
-                        agent.segmentIndices.push_back(static_cast<size_t>(index));
-                    }
-                }
-            }
-            agent.waypointsHomeToOffice = entry.GetBool("waypointsHomeToOffice", true);
+        }
 
-            int waypointIndex = entry.GetInt("waypointIndex", 0);
-            if (waypointIndex < 0) { waypointIndex = 0; }
-            agent.currentWaypointIndex = static_cast<size_t>(waypointIndex);
-
-            // 経路が壊れていて通勤できない場合は、家にいる状態に戻す(経路の無い住民が通勤状態にならないように)。
-            if (agent.waypoints.size() < 2)
+        // 今の外出。状態の名前が未知・古いセーブ(通勤)・施設が見つからない・経路が壊れている時は、安全側の「家にいる」にする。
+        agent.state = AgentStateFromKey(entry.GetString("state", "AtHome"));
+        uint32_t targetId = context.ObjectIdForBuildingUid(entry.GetInt("target", -1));
+        if (agent.state != ResidentAgentState::AtHome)
+        {
+            if (targetId == 0)
             {
-                agent.waypoints.clear();
-                agent.segmentIndices.clear();
-                agent.currentWaypointIndex = 0;
                 agent.state = ResidentAgentState::AtHome;
             }
-            else if (agent.currentWaypointIndex >= agent.waypoints.size())
+            else
             {
-                agent.currentWaypointIndex = agent.waypoints.size() - 1;
+                agent.targetFacilityId = targetId;
+                agent.purpose = PurposeFromKey(entry.GetString("purpose", "TopUp"));
+                agent.visitHoursLeft = (std::max)(0.0f, entry.GetFloat("visitHoursLeft", 0.0f));
+                agent.outingStopCount = (std::max)(0, entry.GetInt("outingStopCount", 0));
+                agent.usedFoodLikeFacilityThisOuting = entry.GetBool("usedFoodLike", false);
+
+                if (const Json* waypoints = entry.Find("waypoints"))
+                {
+                    if (waypoints->IsArray())
+                    {
+                        for (size_t w = 0; w < waypoints->Size(); ++w)
+                        {
+                            XMFLOAT3 point;
+                            if (JsonToVec3(waypoints->At(w), point))
+                            {
+                                point.x *= context.spaceScale;
+                                point.y *= context.spaceScale;
+                                point.z *= context.spaceScale;
+                                agent.waypoints.push_back(point);
+                            }
+                        }
+                    }
+                }
+                if (const Json* segmentIndices = entry.Find("segmentIndices"))
+                {
+                    if (segmentIndices->IsArray())
+                    {
+                        for (size_t s = 0; s < segmentIndices->Size(); ++s)
+                        {
+                            int index = segmentIndices->At(s).AsInt(-1);
+                            if (index >= 0)
+                            {
+                                agent.segmentIndices.push_back(static_cast<size_t>(index));
+                            }
+                        }
+                    }
+                }
+                agent.waypointsHomeToTarget = entry.GetBool("waypointsHomeToTarget", true);
+                agent.currentWaypointIndex = static_cast<size_t>((std::max)(0, entry.GetInt("waypointIndex", 0)));
+
+                // 歩いている途中なのに、経路が壊れている時は、家にいる状態に戻す。
+                if (IsMoving(agent.state) && agent.waypoints.size() < 2)
+                {
+                    agent.state = ResidentAgentState::AtHome;
+                }
+                else if (!agent.waypoints.empty() && agent.currentWaypointIndex >= agent.waypoints.size())
+                {
+                    agent.currentWaypointIndex = agent.waypoints.size() - 1;
+                }
             }
         }
+        if (agent.state == ResidentAgentState::AtHome)
+        {
+            agent.targetFacilityId = 0;
+            agent.waypoints.clear();
+            agent.segmentIndices.clear();
+            agent.currentWaypointIndex = 0;
+            agent.visitHoursLeft = 0.0f;
+        }
 
-        // 見た目のオブジェクト(代表住民のマーカー)を作り直す。位置と拡大は保存した値のまま。
+        // 見た目のオブジェクト(住民のマーカー)を作り直す。位置と拡大は保存した値のまま。
         Transform transform;
         JsonToVec3(entry.Find("position") ? *entry.Find("position") : Json(), transform.position);
         JsonToVec3(entry.Find("scale") ? *entry.Find("scale") : Json(), transform.scale);
@@ -299,14 +525,17 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
         transform.scale.y *= context.spaceScale;
         transform.scale.z *= context.spaceScale;
         GameObject& marker = GameObjectFactory::Spawn(objects, m_agentModel, transform, ObjectKind::Agent);
-        marker.visible = (agent.state == ResidentAgentState::Commuting || agent.state == ResidentAgentState::CommutingHome);
+        marker.visible = IsMoving(agent.state);
         agent.objectId = marker.id;
 
         m_agents.push_back(agent);
     }
 }
+
 void DemandSystem::Update(float deltaTime, GameContext& context, std::vector<RoadSegment>& segments)
 {
+    ProcessClockEvents(context);
+    AdvanceAgentTimers(context);
     UpdateAgentMovement(deltaTime, context);
 
     m_tickTimer += deltaTime;
@@ -319,29 +548,109 @@ void DemandSystem::Update(float deltaTime, GameContext& context, std::vector<Roa
     RunDemandTick(context, segments);
 }
 
-void DemandSystem::StartCommute(ResidentAgent& agent, bool toOffice, GameObject* obj) const
+void DemandSystem::ProcessClockEvents(GameContext& context)
 {
-    // 経路(waypoints)は自宅→職場の向きで作られている。進む向きに合わせて必要な時だけ反転する。
-    if (agent.waypointsHomeToOffice != toOffice)
+    if (!context.clock)
+    {
+        return;
+    }
+    m_lastWeekCount = context.clock->GetWeekCount();
+
+    // 週末(就寝に入った): ペナルティの判定 → 需要の自然減少 → 施設の週の集計を区切る。
+    const int weekEnds = context.clock->ConsumeWeekEnds();
+    for (int i = 0; i < weekEnds; ++i)
+    {
+        for (ResidentAgent& agent : m_agents)
+        {
+            ProcessResidentWeekEnd(agent, m_settings);
+        }
+        ++m_weeksEnded;
+        const bool monthEnds = (m_weeksEnded % GameClock::kWeeksPerMonth) == 0;
+        m_ledger.OnWeekEnd(monthEnds);
+    }
+
+    // 週の始まり(起床): 体力の回復。
+    const int weekStarts = context.clock->ConsumeWeekStarts();
+    for (int i = 0; i < weekStarts; ++i)
+    {
+        for (ResidentAgent& agent : m_agents)
+        {
+            ProcessResidentWeekStart(agent, m_settings);
+        }
+    }
+}
+
+void DemandSystem::AdvanceAgentTimers(GameContext& context)
+{
+    if (!context.clock)
+    {
+        return;
+    }
+    const float activeHours = context.clock->GetActiveDeltaHours();
+    if (!(activeHours > 0.0f))
+    {
+        return;
+    }
+    for (ResidentAgent& agent : m_agents)
+    {
+        AdvanceResidentTime(agent, activeHours, m_settings);
+    }
+}
+
+void DemandSystem::StartMove(ResidentAgent& agent, bool toTarget, GameObject* obj) const
+{
+    // 経路(waypoints)は自宅→施設の向きで作られている。進む向きに合わせて必要な時だけ反転する。
+    if (agent.waypointsHomeToTarget != toTarget)
     {
         std::reverse(agent.waypoints.begin(), agent.waypoints.end());
-        agent.waypointsHomeToOffice = toOffice;
+        agent.waypointsHomeToTarget = toTarget;
     }
 
     agent.currentWaypointIndex = 0;
-    agent.state = toOffice ? ResidentAgentState::Commuting : ResidentAgentState::CommutingHome;
+    agent.state = toTarget ? ResidentAgentState::GoingOut : ResidentAgentState::ReturningHome;
 
-    // 出発地点(自宅または職場の位置)から歩き始める。
+    // 出発地点(自宅または施設の位置)から歩き始める。
     if (obj && !agent.waypoints.empty())
     {
         obj->transform.position = agent.waypoints.front();
     }
 }
 
+void DemandSystem::FinishVisit(ResidentAgent& agent, GameContext& context, GameObject* obj)
+{
+    GameObject* facilityObj = GameObjectFactory::FindById(*context.objects, agent.targetFacilityId);
+    const FacilityDefinition* facility = facilityObj ? FindFacilityDefinition(facilityObj->buildingType) : nullptr;
+    if (facilityObj && facility)
+    {
+        const float hour = context.clock ? context.clock->GetTimeOfDayHours() : 12.0f;
+        const int week = context.clock ? context.clock->GetWeekCount() : 1;
+        ApplyFacilityUse(agent, *facility, facilityObj->id, week, hour, m_settings);
+        agent.usedFoodLikeFacilityThisOuting = agent.usedFoodLikeFacilityThisOuting || facility->foodLike;
+
+        // 実際に利用できた時だけ、売上を計上する。売上の一部(今は100%)を、プレイヤーの建設資金へ加える。
+        m_ledger.RecordVisit(facilityObj->id, facilityObj->buildingType, facility->pricePerVisit);
+        if (context.economy)
+        {
+            const int share = static_cast<int>(std::lround(static_cast<float>(facility->pricePerVisit) * m_settings.salesShareToFunds));
+            context.economy->Earn(share);
+        }
+    }
+
+    // 帰宅を始める。経路が無い(壊れている)時は、その場で家にいる扱いにする。
+    if (agent.waypoints.size() >= 2)
+    {
+        StartMove(agent, false, obj);
+    }
+    else
+    {
+        agent.state = ResidentAgentState::AtHome;
+        agent.targetFacilityId = 0;
+    }
+}
+
 void DemandSystem::UpdateAgentMovement(float deltaTime, GameContext& context)
 {
-    // 時計が無い場合(起動順の都合など)は、昼の時刻として扱って出勤中の状態にしておく。
-    float hours = context.clock ? context.clock->GetTimeOfDayHours() : 12.0f;
+    const float activeHours = context.clock ? context.clock->GetActiveDeltaHours() : 0.0f;
 
     for (ResidentAgent& agent : m_agents)
     {
@@ -351,9 +660,9 @@ void DemandSystem::UpdateAgentMovement(float deltaTime, GameContext& context)
             continue;
         }
 
-        // 予定表に従って、出勤・退勤を始める。
-        // 職が決まっている(経路がある)住民だけが対象。夜に新築した家の住民などは、
-        // 次の出勤時刻まで家で待つ。
+#if 0
+        // ---- 仕事(通勤)の概念は一旦停止中。以前の「予定表に従って出勤・退勤を始める」処理を、消さずに残してある ----
+        // (hoursは、context.clock->GetTimeOfDayHours()。職場の割り当ては、RunDemandTickの#if 0のブロックにある)
         if (agent.hasOffice && !agent.waypoints.empty())
         {
             ScheduledActivity activity = m_schedule.ActivityAt(hours, agent.scheduleOffsetHours);
@@ -366,28 +675,61 @@ void DemandSystem::UpdateAgentMovement(float deltaTime, GameContext& context)
                 StartCommute(agent, false, obj);
             }
         }
+#endif
 
-        // House/Officeの中にいる間(AtHome/AtWork)はモデルを表示しない。
-        // 道路を移動中(出勤・帰宅)の時だけ表示する。
-        bool isCommuting =
-            agent.state == ResidentAgentState::Commuting ||
-            agent.state == ResidentAgentState::CommutingHome;
-        obj->visible = isCommuting;
+        // ---- 施設の中にいる間: 時間が経つのを待つ(見た目は出さない) ----
+        if (agent.state == ResidentAgentState::Visiting)
+        {
+            obj->visible = false;
+            agent.visitHoursLeft -= activeHours;
+            if (agent.visitHoursLeft <= 0.0f)
+            {
+                FinishVisit(agent, context, obj);
+            }
+            continue;
+        }
 
-        if (!isCommuting)
+        // 家の中・施設の中にいる間はモデルを表示しない。道路を移動中(外出・帰宅)の時だけ表示する。
+        const bool moving = IsMoving(agent.state);
+        obj->visible = moving;
+        if (!moving)
         {
             continue;
         }
 
-        // 到着した時の状態: 出勤中なら職場、帰宅中なら自宅。
-        ResidentAgentState arrivalState = (agent.state == ResidentAgentState::Commuting)
-            ? ResidentAgentState::AtWork
-            : ResidentAgentState::AtHome;
-
-        if (agent.currentWaypointIndex + 1 >= agent.waypoints.size())
+        // 経路を最後まで歩いた時の処理(到着)。外出なら、施設での利用を始める。帰宅なら、家にいる状態に戻る。
+        auto arrive = [&]()
         {
-            agent.state = arrivalState;
-            obj->visible = false;
+            if (agent.state == ResidentAgentState::GoingOut)
+            {
+                GameObject* facilityObj = GameObjectFactory::FindById(*context.objects, agent.targetFacilityId);
+                const FacilityDefinition* facility = facilityObj ? FindFacilityDefinition(facilityObj->buildingType) : nullptr;
+                if (!facility)
+                {
+                    // 施設が無くなっていた(将来、削除に対応した時のため): 利用せずに帰る。
+                    StartMove(agent, false, obj);
+                    return;
+                }
+                agent.state = ResidentAgentState::Visiting;
+                agent.visitHoursLeft = facility->visitDurationHours;
+                obj->visible = false;
+            }
+            else
+            {
+                agent.state = ResidentAgentState::AtHome;
+                agent.targetFacilityId = 0;
+                agent.waypoints.clear();
+                agent.segmentIndices.clear();
+                agent.currentWaypointIndex = 0;
+                agent.outingStopCount = 0;
+                agent.usedFoodLikeFacilityThisOuting = false;
+                obj->visible = false;
+            }
+        };
+
+        if (agent.waypoints.size() < 2 || agent.currentWaypointIndex + 1 >= agent.waypoints.size())
+        {
+            arrive();
             continue;
         }
 
@@ -424,8 +766,18 @@ void DemandSystem::UpdateAgentMovement(float deltaTime, GameContext& context)
 
         if (agent.currentWaypointIndex + 1 >= agent.waypoints.size())
         {
-            agent.state = arrivalState;
+            arrive();
         }
+    }
+}
+
+void DemandSystem::PushDecisionLog(DecisionLogEntry entry)
+{
+    m_decisionLog.push_back(std::move(entry));
+    const size_t capacity = static_cast<size_t>((std::max)(1, m_settings.decisionLogCapacity));
+    while (m_decisionLog.size() > capacity)
+    {
+        m_decisionLog.erase(m_decisionLog.begin());
     }
 }
 
@@ -440,7 +792,7 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
     m_lastRoadGraphNodeCount = static_cast<int>(graph.GetNodeCount());
     m_lastRoadGraphEdgeCount = static_cast<int>(graph.GetEdgeCount());
 
-    // 混雑表示をリセットしてから、現在通勤中のエージェントの経路で作り直す
+    // 混雑表示をリセットしてから、現在移動中の住民の経路で作り直す
     for (RoadSegment& segment : segments)
     {
         segment.debugLoad = 0.0f;
@@ -449,6 +801,7 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
     // GameObject*ではなくid+座標+接続情報だけをコピーする(Spawnによる再確保でポインタが無効化されるため)。
     std::vector<BuildingSnapshot> houses;
     std::vector<BuildingSnapshot> offices;
+    std::vector<FacilitySnapshot> facilities;
 
     for (const GameObject& obj : *context.objects)
     {
@@ -463,6 +816,13 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
         else if (obj.buildingType == BuildingType::Office)
         {
             offices.push_back(MakeBuildingSnapshot(obj.id, obj.transform.position, segments, graph));
+        }
+        else if (IsFacility(obj.buildingType))
+        {
+            FacilitySnapshot facility;
+            facility.building = MakeBuildingSnapshot(obj.id, obj.transform.position, segments, graph);
+            facility.type = obj.buildingType;
+            facilities.push_back(facility);
         }
     }
 
@@ -482,11 +842,17 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
             m_connectionLines.push_back({ office.position, office.connectionPoint });
         }
     }
+    for (const FacilitySnapshot& facility : facilities)
+    {
+        if (facility.building.hasRoadConnection)
+        {
+            m_connectionLines.push_back({ facility.building.position, facility.building.connectionPoint });
+        }
+    }
 
     const BuildingDefinition& houseDef = GetBuildingDefinition(BuildingType::House);
-    const BuildingDefinition& officeDef = GetBuildingDefinition(BuildingType::Office);
 
-    // 1. 建物の規模に対して代表住民が不足していれば生成する
+    // 1. 住宅に対して住民が不足していれば生成する(今は1軒に1人。内部パラメータは、住民ごとに種から決める)。
     for (const BuildingSnapshot& house : houses)
     {
         int existing = 0;
@@ -510,18 +876,21 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
             markerTransform.scale = { agentScale, agentScale, agentScale };
 
             GameObject& marker = GameObjectFactory::Spawn(*context.objects, m_agentModel, markerTransform, ObjectKind::Agent);
-            marker.visible = false; // 自宅内にいる扱いなので、通勤を始めるまでは表示しない
+            marker.visible = false; // 自宅内にいる扱いなので、外出を始めるまでは表示しない
 
             ResidentAgent agent;
             agent.objectId = marker.id;
             agent.homeObjectId = house.id;
             agent.state = ResidentAgentState::AtHome;
-            agent.scheduleOffsetHours = m_schedule.OffsetForAgent(marker.id);
+            InitializeResident(agent, MakeResidentSeed(m_settings.seed, house.id, static_cast<uint32_t>(existing + i)), m_settings);
             m_agents.push_back(agent);
         }
     }
 
+#if 0
+    // ---- 仕事(通勤)の概念は一旦停止中。以前の「職場の割り当て」を、消さずに残してある ----
     // 2. まだ職の無い代表住民に、経路が繋がっていて空きのある一番近い職場を割り当てる
+    const BuildingDefinition& officeDef = GetBuildingDefinition(BuildingType::Office);
     for (ResidentAgent& agent : m_agents)
     {
         if (agent.state != ResidentAgentState::AtHome || agent.hasOffice)
@@ -540,7 +909,6 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
         }
         if (!home)
         {
-            // 自宅が見つからない(将来削除に対応する時はここで職を失う処理を入れる)
             continue;
         }
         if (!home->hasRoadConnection)
@@ -600,7 +968,7 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
             agent.hasOffice = true;
             agent.officeObjectId = offices[bestOfficeIndex].id;
             agent.currentWaypointIndex = 0;
-            agent.waypointsHomeToOffice = true;
+            agent.waypointsHomeToTarget = true;
 
             agent.waypoints.clear();
             agent.waypoints.push_back(homePos);
@@ -613,12 +981,147 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
             agent.segmentIndices = bestPath->segmentIndices;
         }
     }
+#endif
 
-    // 3. 通勤中(出勤・帰宅どちらも)のエージェント全員の経路をdebugLoadへ反映する(混雑表示用)
+    // 2. 家にいる住民が、外出するかを判定し、するなら、施設を重み付き抽選で選んで、歩き始める。
+    //    - 需要(生活・アクティビティ)のどちらかが不足していれば、その充足を優先して、高めの確率で外出を考える。
+    //    - 足りていても、自発的に、低めの確率で外出する(体力に余裕がある時だけ。住民の「自発性」で、確率が変わる)。
+    //    - 就寝中・遅い時間(lastDepartureHour以降)は、新しく外出しない(帰宅できなくなる外出をしない)。
+    //    - 道路でつながっていない施設・体力が足りない施設は、抽選の対象にしない(利用も売上も発生しない)。
+    const bool canDepart = context.clock
+        && !context.clock->IsSleeping()
+        && context.clock->GetTimeOfDayHours() < m_settings.lastDepartureHour;
+    if (canDepart && !facilities.empty())
+    {
+        PathCache pathCache; // (始点のノード, 終点のノード) → 経路(このティック内の使い回し)
+
+        for (ResidentAgent& agent : m_agents)
+        {
+            if (agent.state != ResidentAgentState::AtHome)
+            {
+                continue;
+            }
+            GameObject* obj = GameObjectFactory::FindById(*context.objects, agent.objectId);
+            const BuildingSnapshot* home = nullptr;
+            for (const BuildingSnapshot& house : houses)
+            {
+                if (house.id == agent.homeObjectId) { home = &house; break; }
+            }
+            if (!obj || !home)
+            {
+                continue;
+            }
+
+            // 外出を考えるか(確率)。
+            const bool unmet = IsLifeNeedUnmet(agent, m_settings) || IsActivityNeedUnmet(agent, m_settings);
+            float chance = 0.0f;
+            if (unmet)
+            {
+                chance = m_settings.needDrivenChancePerTick;
+            }
+            else if (agent.stamina >= m_settings.spontaneousMinStamina)
+            {
+                chance = m_settings.spontaneousChancePerTick * agent.traits.spontaneity;
+            }
+            if (!(m_random.Next01() < chance))
+            {
+                continue;
+            }
+
+            if (!home->hasRoadConnection)
+            {
+                agent.lastDecisionNote = "外出したいが、自宅の近くに道路が無い";
+                continue;
+            }
+
+            // 目的と、候補(今の目的のカテゴリの施設)。
+            const OutingPurposeChoice purpose = ChoosePurpose(agent, m_settings, m_random);
+            std::vector<FacilityCandidate> candidates;
+            std::vector<RoutePlan> plans;
+            for (const FacilitySnapshot& facility : facilities)
+            {
+                const FacilityDefinition* definition = FindFacilityDefinition(facility.type);
+                if (!definition || definition->category != purpose.category)
+                {
+                    continue;
+                }
+                FacilityCandidate candidate;
+                candidate.objectId = facility.building.id;
+                candidate.type = facility.type;
+
+                // 経路(建物 → 道路上の接続点 → 道路に沿って → 接続点 → 建物)。道のりは、歩く距離の全体。
+                RoutePlan plan = PlanRoute(ToEndpoint(*home), ToEndpoint(facility.building), segments, graph, *m_pathfinder, pathCache);
+                if (plan.valid)
+                {
+                    candidate.reachable = true;
+                    candidate.pathLength = plan.length;
+                }
+                candidates.push_back(candidate);
+                plans.push_back(std::move(plan));
+            }
+
+            if (candidates.empty())
+            {
+                agent.lastDecisionNote = std::string("外出したいが、") + FacilityCategoryName(purpose.category) + "の施設が無い";
+                continue;
+            }
+
+            std::vector<CandidateEvaluation> evaluations;
+            const int chosen = ChooseFacility(agent, candidates, purpose, m_settings, m_random, evaluations);
+
+            DecisionLogEntry entry;
+            entry.homeObjectId = agent.homeObjectId;
+            entry.weekCount = context.clock->GetWeekCount();
+            entry.hour = context.clock->GetTimeOfDayHours();
+            entry.needDriven = purpose.needDriven;
+            entry.category = purpose.category;
+            entry.purpose = purpose.purpose;
+            entry.stamina = agent.stamina;
+            entry.lifeNeed = agent.lifeNeed;
+            entry.activityNeed = agent.activityNeed;
+            entry.evaluations = evaluations;
+            entry.chosenIndex = chosen;
+            PushDecisionLog(std::move(entry));
+
+            if (chosen < 0 || !plans[static_cast<size_t>(chosen)].valid)
+            {
+                agent.lastDecisionNote = "外出したいが、行ける施設が無い(道路でつながっていない/体力が足りない)";
+                continue;
+            }
+
+            // 選んだ施設へ、経路(自宅→…→施設)を作って歩き始める。
+            const FacilitySnapshot* target = nullptr;
+            for (const FacilitySnapshot& facility : facilities)
+            {
+                if (facility.building.id == candidates[static_cast<size_t>(chosen)].objectId) { target = &facility; break; }
+            }
+            if (!target)
+            {
+                continue;
+            }
+            const RoutePlan& plan = plans[static_cast<size_t>(chosen)];
+
+            agent.targetFacilityId = target->building.id;
+            agent.purpose = purpose.purpose;
+            agent.outingStopCount = 0;
+            agent.usedFoodLikeFacilityThisOuting = false;
+            agent.waypoints = plan.waypoints;   // 自宅 → 接続点 → 道路 → 接続点 → 施設(斜めに横切らない)
+            agent.segmentIndices = plan.segmentIndices;
+            agent.waypointsHomeToTarget = true;
+            StartMove(agent, true, obj);
+
+            const FacilityDefinition* targetDefinition = FindFacilityDefinition(target->type);
+            std::ostringstream note;
+            note << (purpose.needDriven ? "需要が不足" : "自発的に") << " → " << (targetDefinition ? targetDefinition->name : "?")
+                 << "(" << UsagePurposeName(purpose.purpose) << "、重み " << evaluations[static_cast<size_t>(chosen)].weight << ")";
+            agent.lastDecisionNote = note.str();
+        }
+    }
+
+    // 3. 移動中(外出・帰宅どちらも)の住民全員の経路をdebugLoadへ反映する(混雑表示用)
     for (const ResidentAgent& agent : m_agents)
     {
-        if (agent.state != ResidentAgentState::Commuting &&
-            agent.state != ResidentAgentState::CommutingHome)
+        if (!IsMoving(agent.state))
         {
             continue;
         }
@@ -635,39 +1138,32 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
     m_lastStats = DemandStats{};
     m_lastStats.houseCount = static_cast<int>(houses.size());
     m_lastStats.officeCount = static_cast<int>(offices.size());
+    m_lastStats.facilityCount = static_cast<int>(facilities.size());
     m_lastStats.populationTotal = static_cast<int>(houses.size()) * houseDef.populationRepresented;
     m_lastStats.agentCount = static_cast<int>(m_agents.size());
-    m_lastStats.jobCapacityTotal = static_cast<int>(offices.size()) * officeDef.capacity;
     for (const ResidentAgent& agent : m_agents)
     {
-        if (agent.hasOffice)
-        {
-            m_lastStats.jobsFilled++;
-        }
-        else
+        if (IsLifeNeedUnmet(agent, m_settings) || IsActivityNeedUnmet(agent, m_settings))
         {
             m_lastStats.unmetDemand++;
         }
     }
 }
 
-void DemandSystem::DrawDebugUI(bool* open) const
+DemandStats DemandSystem::GetStats() const
 {
-    if (open && !*open)
-    {
-        return;
-    }
-
-    // Debug/Hierarchy/Inspector/Editor Settings(既存パネル)と重ならない中央上部に配置する
-    ImGui::SetNextWindowPos(ImVec2(310.0f, 200.0f), ImGuiCond_FirstUseEver);
-    ImGui::Begin("City Stats", open);
-    ImGui::Text("Houses: %d", m_lastStats.houseCount);
-    ImGui::Text("Offices: %d", m_lastStats.officeCount);
-    ImGui::Text("Population (represented): %d", m_lastStats.populationTotal);
-    ImGui::Text("Resident agents: %d", m_lastStats.agentCount);
-    ImGui::Text("Jobs filled: %d / %d", m_lastStats.jobsFilled, m_lastStats.jobCapacityTotal);
-    ImGui::Text("Unmet demand: %d", m_lastStats.unmetDemand);
-    ImGui::End();
+    // 建物・住民の数は、直近のRunDemandTickの値。施設の利用の集計は、常に最新の値を返す。
+    DemandStats stats = m_lastStats;
+    const FacilityTally thisWeek = m_ledger.SumThisWeek();
+    const FacilityTally lastWeek = m_ledger.SumLastWeek();
+    const FacilityTally thisMonth = m_ledger.SumThisMonth();
+    stats.visitsThisWeek = thisWeek.visits;
+    stats.salesThisWeek = thisWeek.sales;
+    stats.visitsLastWeek = lastWeek.visits;
+    stats.salesLastWeek = lastWeek.sales;
+    stats.visitsThisMonth = thisMonth.visits;
+    stats.salesThisMonth = thisMonth.sales;
+    return stats;
 }
 
 void DemandSystem::Draw(DebugRenderer& debugRenderer) const
@@ -694,20 +1190,29 @@ std::string DemandSystem::GetAgentDebugSummary(uint32_t objectId) const
         oss << "State: ";
         switch (agent.state)
         {
-        case ResidentAgentState::AtHome:    oss << "AtHome";    break;
-        case ResidentAgentState::Commuting: oss << "Commuting"; break;
-        case ResidentAgentState::AtWork:    oss << "AtWork";    break;
-        case ResidentAgentState::CommutingHome: oss << "CommutingHome"; break;
+        case ResidentAgentState::AtHome:        oss << "AtHome";        break;
+        case ResidentAgentState::GoingOut:      oss << "GoingOut";      break;
+        case ResidentAgentState::Visiting:      oss << "Visiting";      break;
+        case ResidentAgentState::ReturningHome: oss << "ReturningHome"; break;
+        default:                                oss << "(unused)";      break;
         }
 
         oss << "\nHome: #" << agent.homeObjectId;
-        if (agent.hasOffice)
+        if (agent.targetFacilityId != 0)
         {
-            oss << "\nOffice: #" << agent.officeObjectId;
+            oss << "\nTarget: #" << agent.targetFacilityId << " (" << UsagePurposeName(agent.purpose) << ")";
         }
-        else
+        oss.precision(1);
+        oss << std::fixed;
+        oss << "\nLife need: " << agent.lifeNeed << "  Activity need: " << agent.activityNeed;
+        oss << "\nStamina: " << agent.stamina << " / " << EffectiveStaminaCap(agent, m_settings) << "  (penalty " << agent.penaltyLevel << ")";
+        oss << "\nUnmet hours: life " << agent.unmetLifeHours << ", activity " << agent.unmetActivityHours << "  Satisfied: " << agent.satisfiedHours;
+        oss << "\nTraits: quality " << agent.traits.qualityWeight << ", price " << agent.traits.priceSensitivity
+            << ", distance " << agent.traits.distanceTolerance << ", spontaneity " << agent.traits.spontaneity
+            << ", decay " << agent.traits.needDecayScale;
+        if (!agent.lastDecisionNote.empty())
         {
-            oss << "\nOffice: (none)";
+            oss << "\nLast decision: " << agent.lastDecisionNote;
         }
 
         return oss.str();
@@ -729,4 +1234,52 @@ DemandMemoryStats DemandSystem::GetMemoryStats() const
     }
 
     return stats;
+}
+
+ResidentInfo DemandSystem::MakeResidentInfo(const ResidentAgent& agent) const
+{
+    ResidentInfo info;
+    info.found = true;
+    info.homeObjectId = agent.homeObjectId;
+    info.state = agent.state;
+    info.targetFacilityId = agent.targetFacilityId;
+    info.purpose = agent.purpose;
+    info.lifeNeed = agent.lifeNeed;
+    info.activityNeed = agent.activityNeed;
+    info.needThreshold = m_settings.needSatisfiedThreshold;
+    info.stamina = agent.stamina;
+    info.staminaCap = EffectiveStaminaCap(agent, m_settings);
+    info.penaltyLevel = agent.penaltyLevel;
+    info.maxPenaltyLevel = m_settings.maxPenaltyLevel;
+    info.unmetLifeHours = agent.unmetLifeHours;
+    info.unmetActivityHours = agent.unmetActivityHours;
+    info.satisfiedHours = agent.satisfiedHours;
+    info.traits = agent.traits;
+    info.lastDecisionNote = agent.lastDecisionNote;
+    info.history = agent.history;
+    return info;
+}
+
+ResidentInfo DemandSystem::GetResidentInfoForHome(uint32_t homeObjectId) const
+{
+    for (const ResidentAgent& agent : m_agents)
+    {
+        if (agent.homeObjectId == homeObjectId)
+        {
+            return MakeResidentInfo(agent);
+        }
+    }
+    return ResidentInfo();
+}
+
+ResidentInfo DemandSystem::GetResidentInfoForAgent(uint32_t agentObjectId) const
+{
+    for (const ResidentAgent& agent : m_agents)
+    {
+        if (agent.objectId == agentObjectId)
+        {
+            return MakeResidentInfo(agent);
+        }
+    }
+    return ResidentInfo();
 }

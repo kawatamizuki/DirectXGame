@@ -36,6 +36,12 @@ struct CityCameraInput
     float prevCursorY = 0.0f;
     float viewWidth = 1.0f;       // ゲームビューの大きさ(ピクセル)
     float viewHeight = 1.0f;
+
+    // 追跡: trueの間、注視点を、(followX, followZ)(地面の上の点。追跡する住民の位置)へ、なめらかに追わせる。
+    // 距離(ズーム)・向きは、そのまま(ホイールのズームは使える)。キーでの移動・ドラッグは、Game側が、追跡をやめる合図に使う。
+    bool followActive = false;
+    float followX = 0.0f;
+    float followZ = 0.0f;
 };
 
 // 街づくりゲームによくある、見下ろしのカメラ。次の2つの要素で動く。

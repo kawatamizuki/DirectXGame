@@ -38,21 +38,29 @@ void BuildController::Initialize(
     m_occupancy = occupancy;
     m_roadSystem = roadSystem;
     m_orientationRegistry = orientationRegistry;
-    m_houseModel = houseModel;
-    m_officeModel = officeModel;
-    m_shopModel = shopModel;
+    SetModel(BuildingType::House, houseModel);
+    SetModel(BuildingType::Office, officeModel);
+    SetModel(BuildingType::Shop, shopModel);
+}
+
+void BuildController::SetModel(BuildingType type, Model* model)
+{
+    const int index = static_cast<int>(type);
+    if (index >= 0 && index < kBuildingTypeCount)
+    {
+        m_models[index] = model;
+    }
 }
 
 Model* BuildController::GetModelForType(BuildingType type) const
 {
-    switch (type)
+    const int index = static_cast<int>(type);
+    if (index >= 0 && index < kBuildingTypeCount && m_models[index] != nullptr)
     {
-    case BuildingType::House:  return m_houseModel;
-    case BuildingType::Office: return m_officeModel;
-    case BuildingType::Shop:   return m_shopModel;
+        return m_models[index];
     }
 
-    return m_houseModel;
+    return m_models[static_cast<int>(BuildingType::House)];
 }
 
 std::vector<GridCoord> BuildController::GetFootprintCells(const GridCoord& cell, int widthCells, int depthCells) const
@@ -481,6 +489,9 @@ void BuildController::DrawPanel(bool* open)
         ImGui::RadioButton(GetBuildingDefinition(BuildingType::House).name, &selected, static_cast<int>(BuildingType::House));
         ImGui::RadioButton(GetBuildingDefinition(BuildingType::Office).name, &selected, static_cast<int>(BuildingType::Office));
         ImGui::RadioButton(GetBuildingDefinition(BuildingType::Shop).name, &selected, static_cast<int>(BuildingType::Shop));
+        ImGui::RadioButton(GetBuildingDefinition(BuildingType::Supermarket).name, &selected, static_cast<int>(BuildingType::Supermarket));
+        ImGui::RadioButton(GetBuildingDefinition(BuildingType::Cinema).name, &selected, static_cast<int>(BuildingType::Cinema));
+        ImGui::RadioButton(GetBuildingDefinition(BuildingType::Cafe).name, &selected, static_cast<int>(BuildingType::Cafe));
         m_selectedType = static_cast<BuildingType>(selected);
 
         // Rボタン(InputAction::Rotate)と同じRotateSelection()を呼ぶだけの仮ボタン。

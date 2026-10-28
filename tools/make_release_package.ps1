@@ -57,6 +57,9 @@ $models = @(
     'CityKitSuburban\Models\OBJ format\building-type-a',
     'CityKitCommercial\Models\OBJ format\building-a',
     'CityKitCommercial\Models\OBJ format\building-d',
+    'CityKitCommercial\Models\OBJ format\building-e',     # スーパー(暫定の見た目)
+    'CityKitCommercial\Models\OBJ format\building-i',     # 映画館(暫定の見た目)
+    'CityKitCommercial\Models\OBJ format\building-j',     # カフェ(暫定の見た目)
     'Models\character-female-f',
     'RoadTiles\Models\roadTile_163'
 )

@@ -11,6 +11,7 @@ public:
     void DrawPanel(UIRenderer& ui, const UIRect& rect, UIPanelStyle style, float scale) override;
     void DrawButton(UIRenderer& ui, const UIRect& rect, UIButtonState state, float scale) override;
     void DrawSlider(UIRenderer& ui, const UIRect& track, float value01, UIButtonState state, float scale) override;
+    void DrawGauge(UIRenderer& ui, const UIRect& rect, float value01, float marker01, bool warning, float scale) override;
     void DrawIcon(UIRenderer& ui, UIIcon icon, float cx, float cy, float size, UIButtonState state) override;
     UITextStyle GetTextStyle(UITextRole role) const override;
 

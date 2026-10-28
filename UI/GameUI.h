@@ -5,6 +5,7 @@
 #include "UISkin.h"
 #include "ProceduralUISkin.h"
 #include "GameMenu.h"
+#include "ResidentInfoPanel.h"
 #include "DemandSystem.h"
 #include "CostPreview.h"
 
@@ -16,6 +17,7 @@ class DayNightCycle;
 struct HudState
 {
     int dayCount = 1;               // 1から数える日数
+    std::string calendarText;       // 「1年目 1月 第1週」のような日付の文字。空なら、dayCountから「Day N」を出す
     float timeOfDayHours = 8.0f;    // 0〜24の時刻
     int cash = 0;                   // 所持金(円)
     DemandStats stats;              // 人口・雇用などの街の指標
@@ -28,6 +30,12 @@ struct HudState
 
     // ゲーム内メニュー(右下のボタンと、開いた時の項目)に出す内容。
     MenuModel menu;
+
+    // 「住民の情報」パネルに出す内容(開いている間だけ使う)。
+    ResidentInfoModel residentInfo;
+
+    // 画面の左下に出す、操作のヒント(住民を追跡している間など)。空なら出さない。メニュー・パネルが開いている間は出さない。
+    std::string hintText;
 };
 
 // マウスの状態と画面サイズ(毎フレーム、GameUIの外から渡す)。
@@ -57,6 +65,7 @@ struct HudResult
     MenuCommand menuCommand;                    // ゲーム内メニューで押された命令(無ければNone)
     bool menuOpen = false;                      // ゲーム内メニューが開いているか(開いている間は、ゲーム内の時間を止める)
     bool menuTabChanged = false;                // このフレームに、メニューのタブが切り替わったか(効果音を鳴らすのに使う)
+    bool residentPanelOpen = false;             // 「住民の情報」パネルが開いているか(開いている間は、ゲーム内の時間を止める)
 };
 
 // ゲームプレイ用の上部HUDバーと、ゲーム内メニュー。配置・入力をまとめて担当する(ImGuiは使わない)。
@@ -131,6 +140,12 @@ public:
     bool IsMenuEditingNumber() const { return m_menu.IsEditingNumber(); } // オプションの数字欄に入力中か(入力中は、Esc・右クリックで閉じない)
     const GameMenu& GetMenu() const { return m_menu; }
 
+    // 「住民の情報」パネル(住宅を選んで、もう一度クリックすると開く)。開いている間は、ゲーム内の時間が止まる(止める処理はGame側)。
+    bool IsResidentPanelOpen() const { return m_residentPanel.IsOpen(); }
+    void OpenResidentPanel() { m_residentPanel.Open(); }
+    void CloseResidentPanel() { m_residentPanel.Close(); }
+    const ResidentInfoPanel& GetResidentPanel() const { return m_residentPanel; }
+
     // 配置を計算し、マウスの当たり判定とクリック処理を行う。毎フレーム、ワールドへの入力処理より先に呼ぶ。
     HudResult Update(const HudInput& input, const HudState& state);
 
@@ -155,5 +170,6 @@ private:
     ProceduralUISkin m_defaultSkin;     // 標準の見た目(図形)
     IUISkin* m_skin = &m_defaultSkin;   // 今使っている見た目。差し替えはSetSkin
     GameMenu m_menu;
+    ResidentInfoPanel m_residentPanel;
     Layout m_layout;
 };

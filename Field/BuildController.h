@@ -23,6 +23,9 @@ public:
         RoadSystem* roadSystem, GridOrientationRegistry* orientationRegistry,
         Model* houseModel, Model* officeModel, Model* shopModel);
 
+    // 種類ごとの建物モデルを渡す(Initializeで渡す3種以外の、スーパー・映画館・カフェ用)。
+    void SetModel(BuildingType type, Model* model);
+
     void Update();
 
     // 「Build」パネル(openがnullptrでなければ×で閉じられ、*openがfalseの間は出さない)と、
@@ -119,9 +122,7 @@ private:
     GridOrientationRegistry* m_orientationRegistry = nullptr;
 
     // 建物種別ごとのモデル。
-    Model* m_houseModel = nullptr;
-    Model* m_officeModel = nullptr;
-    Model* m_shopModel = nullptr;
+    Model* m_models[kBuildingTypeCount] = {}; // 建物の種類ごとのモデル(BuildingTypeの値が添字)
 
     bool m_hasHoverPoint = false;
     DirectX::XMFLOAT3 m_hoverPoint{}; // 生のカーソル着地点(ワールド座標)

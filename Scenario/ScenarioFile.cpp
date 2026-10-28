@@ -127,6 +127,9 @@ namespace ScenarioFile
         case BuildingType::House:  return "House";
         case BuildingType::Office: return "Office";
         case BuildingType::Shop:   return "Shop";
+        case BuildingType::Supermarket: return "Supermarket";
+        case BuildingType::Cinema: return "Cinema";
+        case BuildingType::Cafe:   return "Cafe";
         }
         return "House";
     }
@@ -136,6 +139,9 @@ namespace ScenarioFile
         if (key == "House")  { out = BuildingType::House;  return true; }
         if (key == "Office") { out = BuildingType::Office; return true; }
         if (key == "Shop")   { out = BuildingType::Shop;   return true; }
+        if (key == "Supermarket") { out = BuildingType::Supermarket; return true; }
+        if (key == "Cinema") { out = BuildingType::Cinema; return true; }
+        if (key == "Cafe")   { out = BuildingType::Cafe;   return true; }
         return false;
     }
 

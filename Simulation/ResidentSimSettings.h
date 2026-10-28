@@ -1,0 +1,50 @@
+#pragma once
+#include <cstdint>
+
+// 住民の外出・施設選び・体力・需要・週のペナルティの、調整用の数値をまとめた設定。
+// 仮の値をコードの中に散らさず、全てここに集める。Editorの「Facilities」パネルで、実行中に変えて試せる。
+// 長さは「マス基準」(マスの大きさが変わっても、同じ比率を保つ。WorldScale::FromLegacy を通して使う)。
+// 時間は「ゲーム内の時間」(1週間 = 朝6時〜夜10時の活動時間 + 就寝)。数値は全て仮で、最終仕様ではない。
+struct ResidentSimSettings
+{
+    // ---- 乱数 ----
+    uint32_t seed = 12345;                      // 乱数の種(同じ種・同じ配置なら、同じ選択が再現される)
+
+    // ---- 需要(生活・アクティビティ。0〜100) ----
+    float needSatisfiedThreshold = 80.0f;       // この値以上なら「充足」とみなす
+    float initialNeedMin = 55.0f;               // 住民が生まれた時の需要の範囲(住民ごとに変える)
+    float initialNeedMax = 100.0f;
+    float weeklyDecayLife = 35.0f;              // 週末に自然に減る量(生活)
+    float weeklyDecayActivity = 30.0f;          // 同(アクティビティ)
+
+    // ---- 外出を決める(RunDemandTickごと。約3秒おきに判定) ----
+    float needDrivenChancePerTick = 0.25f;      // 需要が不足している時に、外出しようとする確率(1判定あたり)
+    float spontaneousChancePerTick = 0.03f;     // 需要が足りていても、自発的に外出する確率(1判定あたり)
+    float spontaneousMinStamina = 50.0f;        // 自発的な外出をするのに必要な体力
+    float lastDepartureHour = 20.0f;            // この時刻より後は、新しく外出しない(帰宅できなくなるのを避ける)
+
+    // ---- 体力 ----
+    float staminaMax = 100.0f;                  // 体力の上限の基準(住民ごとに、この値の周りでばらつく)
+    float staminaPerLegacyCell = 0.8f;          // 移動(片道)1マスあたりの体力の消費。往復分を、出る前に確かめる
+    float staminaHomeRecoveryPerHour = 2.0f;    // 家にいる間の、1ゲーム時間あたりの回復
+    float staminaSleepRecovery = 60.0f;         // 就寝(週の始まり)での回復量(上限まで)
+
+    // ---- 週末のペナルティ(生活・アクティビティ不足は、初期版では同じ体力ペナルティ) ----
+    float unmetGraceHours = 8.0f;               // 不足したまま、この時間(ゲーム内)を超えて改善できなかったら、週末にペナルティ
+    float recoverSatisfiedHours = 10.0f;        // 両方が充足した状態が、この時間以上続いた週は、ペナルティが1段階軽くなる
+    int maxPenaltyLevel = 3;                    // ペナルティの最大の段階
+    float penaltyStaminaCapStep = 10.0f;        // 1段階あたり、体力の上限を下げる量
+
+    // ---- 施設の選び方(重み付き抽選) ----
+    float qualityExponent = 1.0f;               // 品質の効き方(重み = 品質^この値)。住民ごとの係数がかかる
+    float priceReferenceYen = 300.0f;           // 値段の基準(円)。これより高いと重みが下がる
+    float priceStrength = 0.6f;                 // 値段の効き方(大きいほど、高い店を避ける)。住民ごとの係数がかかる
+    float distanceScaleLegacyCells = 14.0f;     // 距離で重みが約1/e(37%)になる道のり(マス基準)。住民ごとの係数がかかる
+    float minimumWeight = 0.001f;               // 重みの下限(到達できる候補を、無条件に0にしない)
+
+    // ---- お金 ----
+    float salesShareToFunds = 1.0f;             // 売上のうち、プレイヤーの建設資金に入る割合(今は100%。後で変える。税収ではなく店舗売上からの開発資金分配)
+
+    // ---- 試作の補助 ----
+    int decisionLogCapacity = 40;               // デバッグ用に残す、施設選びの記録の数
+};
