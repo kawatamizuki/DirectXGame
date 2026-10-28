@@ -14,6 +14,14 @@ class DayNightCycle;
 // 上部HUDに表示する内容(毎フレーム、GameUIの外から渡す)。
 // GameUIはDemandSystemやGameClockを直接は知らず、この値だけを見て描く。
 // これで、ゲームの他の部分が無くてもHUDだけを描いて確認できる。
+// 世界の建物に付ける小さな警告(「道路がない！」など)。位置は、画面のピクセル(ゲームビューの左上が原点)。
+struct HudWorldLabel
+{
+    float x = 0.0f;
+    float y = 0.0f;
+    std::string text;
+};
+
 struct HudState
 {
     int dayCount = 1;               // 1から数える日数
@@ -33,6 +41,9 @@ struct HudState
 
     // 「住民の情報」パネルに出す内容(開いている間だけ使う)。
     ResidentInfoModel residentInfo;
+
+    // 世界の建物に付ける警告(建物の少し上に出す。ゲーム側が、画面の位置に直して渡す)。
+    std::vector<HudWorldLabel> worldLabels;
 
     // 画面の左下に出す、操作のヒント(住民を追跡している間など)。空なら出さない。メニュー・パネルが開いている間は出さない。
     std::string hintText;

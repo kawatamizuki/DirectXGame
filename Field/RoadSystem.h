@@ -51,6 +51,10 @@ public:
     // 青マスは順序に依存するため、ここでは作らない(GridOrientationRegistry::ImportCellsで保存した一覧を戻す)。
     void RestoreSegments(const std::vector<RoadSegment>& segments);
 
+    // 今の道路の区間から、占有(マスの集合と、道路の矩形)を登録し直す。呼ぶ前に、占有を空にしておくこと(IOccupancyGrid::Clear)。
+    // 建物の解体の後、占有を「道路と建物」から作り直す時に使う(占有は、1つだけを解除できないため)。RestoreSegmentsの中でも使う。
+    void ReregisterOccupancy();
+
     // 置きかけの道路(直線の1点目・フリーハンドのドラッグ中・確認待ちの曲線)があるか。
     // Escや右クリックで、先に置きかけをやめるか、配置ツール自体をやめるかを決めるのに使う。
     bool HasPendingPlacement() const;

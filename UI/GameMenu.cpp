@@ -68,7 +68,8 @@ namespace
 
     bool ClosesMenu(const MenuCommand& command)
     {
-        return command.type == MenuCommandType::SelectBuilding || command.type == MenuCommandType::SelectRoad;
+        return command.type == MenuCommandType::SelectBuilding || command.type == MenuCommandType::SelectRoad
+            || command.type == MenuCommandType::SelectDemolish;
     }
 }
 
@@ -213,8 +214,14 @@ GameMenu::Layout GameMenu::ComputeLayout(const MenuInput& input, const MenuModel
         // 左の列=建物、右の列=道路(+引き方)。行の高さは、収まるように縮める。
         const int buildingCount = static_cast<int>(model.buildings.size());
         const int roadCount = static_cast<int>(model.roads.size());
-        const int rows = (std::max)(1, (std::max)(buildingCount, roadCount + 1));
-        float rowHeight = (bodyHeight - headingHeight * 2.0f - gap * static_cast<float>(rows - 1)) / static_cast<float>(rows);
+        const int toolCount = static_cast<int>(model.tools.size());
+        // 右の列は、道路(roadCount行)+引き方(見出し+1行)+ツール(見出し+toolCount行)。左の列は、建物だけ。収まる行の高さを、両方から求めて、小さい方にする。
+        const int rightRows = roadCount + 1 + toolCount;
+        const float rightHeadings = 2.0f + (toolCount > 0 ? 1.0f : 0.0f);
+        const int leftRows = (std::max)(1, buildingCount);
+        const float rowsRight = (bodyHeight - headingHeight * rightHeadings - gap * static_cast<float>((std::max)(1, rightRows) - 1)) / static_cast<float>((std::max)(1, rightRows));
+        const float rowsLeft = (bodyHeight - headingHeight - gap * static_cast<float>(leftRows - 1)) / static_cast<float>(leftRows);
+        float rowHeight = (std::min)(rowsLeft, rowsRight);
         rowHeight = (std::min)(kRowMaxHeight * s, (std::max)(kRowMinHeight * s, rowHeight));
 
         const float columnGap = kColumnGap * s;
@@ -247,6 +254,17 @@ GameMenu::Layout GameMenu::ComputeLayout(const MenuInput& input, const MenuModel
                 Button button = makeItemButton(UIRect{ rightX + (modeWidth + gap) * static_cast<float>(i), modeY + headingHeight, modeWidth, rowHeight }, model.drawModes[i]);
                 button.detail.clear(); // 幅が狭いので、補足は出さない
                 L.buttons.push_back(button);
+            }
+        }
+
+        // ツール(解体)。引き方の下に並べる。
+        if (toolCount > 0)
+        {
+            const float toolY = y + (rowHeight + gap) * static_cast<float>(roadCount) + headingHeight + rowHeight + gap;
+            L.texts.push_back(makeHeading(rightX, toolY, "ツール"));
+            for (int i = 0; i < toolCount; ++i)
+            {
+                L.buttons.push_back(makeItemButton(UIRect{ rightX, toolY + headingHeight + (rowHeight + gap) * static_cast<float>(i), columnWidth, rowHeight }, model.tools[i]));
             }
         }
         break;

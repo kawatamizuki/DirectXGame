@@ -15,6 +15,7 @@ namespace
         case ResidentAgentState::GoingOut:      return "GoingOut";
         case ResidentAgentState::Visiting:      return "Visiting";
         case ResidentAgentState::ReturningHome: return "ReturningHome";
+        case ResidentAgentState::Homeless:      return "Homeless";
         default:                                return "(unused)";
         }
     }
@@ -116,7 +117,8 @@ void DemandSystem::DrawFacilitiesTab()
         for (const FacilityRecord& record : m_ledger.GetRecords())
         {
             ImGui::TableNextRow();
-            ImGui::TableNextColumn(); ImGui::Text("%u", record.objectId);
+            ImGui::TableNextColumn();
+            if (record.demolished) { ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "%u (demolished)", record.objectId); } else { ImGui::Text("%u", record.objectId); }
             ImGui::TableNextColumn(); ImGui::TextUnformatted(FacilityNameOf(record.type));
             ImGui::TableNextColumn(); ImGui::Text("%d", record.thisWeek.visits);
             ImGui::TableNextColumn(); ImGui::Text("%d", record.thisWeek.sales);
@@ -151,7 +153,8 @@ void DemandSystem::DrawResidentsTab()
         for (const ResidentAgent& agent : m_agents)
         {
             ImGui::TableNextRow();
-            ImGui::TableNextColumn(); ImGui::Text("#%u", agent.homeObjectId);
+            ImGui::TableNextColumn();
+            if (agent.homeObjectId == 0) { ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.3f, 1.0f), "(none)"); } else { ImGui::Text("#%u", agent.homeObjectId); }
             ImGui::TableNextColumn(); ImGui::TextUnformatted(StateName(agent.state));
             ImGui::TableNextColumn();
             if (IsLifeNeedUnmet(agent, m_settings)) { ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.3f, 1.0f), "%.0f", agent.lifeNeed); } else { ImGui::Text("%.0f", agent.lifeNeed); }

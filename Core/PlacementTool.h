@@ -7,5 +7,6 @@ enum class PlacementTool
 {
     None,       // 何も配置しない(ゲーム内メニューで建物・道路を選ぶまでの状態。クリックしても何も置かれない)
     Building,
-    Road
+    Road,
+    Demolish    // 解体(建物をクリック・なぞって選び、離すと解体する。DemolitionControllerが処理する)
 };

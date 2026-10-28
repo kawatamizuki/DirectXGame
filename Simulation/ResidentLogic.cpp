@@ -301,3 +301,16 @@ void ProcessResidentWeekStart(ResidentAgent& agent, const ResidentSimSettings& s
     const float cap = EffectiveStaminaCap(agent, settings);
     agent.stamina = (std::min)(cap, agent.stamina + settings.staminaSleepRecovery);
 }
+
+DirectX::XMFLOAT2 HomelessOffset(int index, float spacing)
+{
+    if (index <= 0)
+    {
+        return DirectX::XMFLOAT2(0.0f, 0.0f);
+    }
+    // ひまわりの種の並び(黄金角で回し、半径は平方根で増やす)。隣り合う点の間隔が、ほぼ一定になる。
+    constexpr float kGoldenAngle = 2.39996323f;
+    const float radius = spacing * std::sqrt(static_cast<float>(index));
+    const float angle = kGoldenAngle * static_cast<float>(index);
+    return DirectX::XMFLOAT2(std::cos(angle) * radius, std::sin(angle) * radius);
+}

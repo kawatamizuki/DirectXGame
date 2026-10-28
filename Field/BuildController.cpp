@@ -413,6 +413,25 @@ bool BuildController::PlaceBuilding(const PlacementPreview& placement)
     return true;
 }
 
+void BuildController::ReregisterOccupancy()
+{
+    if (!m_context || !m_context->objects || !m_field || !m_occupancy)
+    {
+        return;
+    }
+    const float cellSize = m_field->GetCellSize();
+    for (const GameObject& obj : *m_context->objects)
+    {
+        if (obj.kind != ObjectKind::Building)
+        {
+            continue;
+        }
+        // SpawnBuildingと同じ登録(実際の形の矩形と、道路描画側の、マス単位の印)。
+        m_occupancy->OccupyRect(obj.placement.footprintRect, IOccupancyGrid::kOccupantBuilding);
+        m_occupancy->SetOccupiedRange(SampleOrientedRectangleCells(obj.placement.footprintRect, cellSize), true);
+    }
+}
+
 bool BuildController::TryPlaceAt(const XMFLOAT3& hitPoint)
 {
     return PlaceBuilding(ComputePlacement(hitPoint));

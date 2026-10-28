@@ -1534,15 +1534,29 @@ void RoadSystem::RestoreSegments(const std::vector<RoadSegment>& segments)
         RegisterSegmentEndpoint(segment.start, i);
         RegisterSegmentEndpoint(segment.end, i);
 
-        // 占有: CommitSegmentと同じ、マス単位の印と、道路面そのものの矩形。
-        m_occupancy->SetOccupiedRange(SampleCellsForSegmentFootprint(segment, cellSize), true);
-        m_occupancy->OccupyRect(MakeRoadRect(segment, cellSize * 0.5f), IOccupancyGrid::kOccupantRoad);
     }
+
+    // 占有: CommitSegmentと同じ、マス単位の印と、道路面そのものの矩形。
+    ReregisterOccupancy();
 
     // メッシュは区間の数に関わらず最後に1回だけ作る。
     if (m_meshGenerator && m_context && m_context->renderer && !m_segments.empty())
     {
         m_meshGenerator->RebuildMesh(m_context->renderer->GetDevice(), m_segments, m_nodes, cellSize * 0.5f);
+    }
+}
+
+void RoadSystem::ReregisterOccupancy()
+{
+    if (!m_field || !m_occupancy)
+    {
+        return;
+    }
+    const float cellSize = m_field->GetCellSize();
+    for (const RoadSegment& segment : m_segments)
+    {
+        m_occupancy->SetOccupiedRange(SampleCellsForSegmentFootprint(segment, cellSize), true);
+        m_occupancy->OccupyRect(MakeRoadRect(segment, cellSize * 0.5f), IOccupancyGrid::kOccupantRoad);
     }
 }
 

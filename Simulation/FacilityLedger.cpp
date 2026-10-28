@@ -58,6 +58,18 @@ FacilityTally FacilityLedger::SumLastWeek() const { return Sum(m_records, [](con
 FacilityTally FacilityLedger::SumThisMonth() const { return Sum(m_records, [](const FacilityRecord& r) -> const FacilityTally& { return r.thisMonth; }); }
 FacilityTally FacilityLedger::SumTotal() const { return Sum(m_records, [](const FacilityRecord& r) -> const FacilityTally& { return r.total; }); }
 
+void FacilityLedger::MarkDemolished(uint32_t objectId)
+{
+    for (FacilityRecord& record : m_records)
+    {
+        if (record.objectId == objectId)
+        {
+            record.demolished = true;
+            return;
+        }
+    }
+}
+
 const FacilityRecord* FacilityLedger::Find(uint32_t objectId) const
 {
     for (const FacilityRecord& record : m_records)

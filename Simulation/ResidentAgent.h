@@ -17,7 +17,11 @@ enum class ResidentAgentState
     // ---- 仕事(通勤)の概念は一旦停止中。古いセーブとの対応のために、値だけ残してある(今は使わない) ----
     Commuting,      // (停止中)職場へ移動中
     AtWork,         // (停止中)職場にいる
-    CommutingHome   // (停止中)職場から帰宅中
+    CommutingHome,  // (停止中)職場から帰宅中
+
+    // 住んでいた住宅が解体された。元の住宅の位置に立って、何もしない(外出も施設の利用もしない)。需要・体力の週の処理は続く。
+    // 新しい住宅への自動の再入居は、まだ無い(今は、住居が無いままになる)。
+    Homeless
 };
 
 // 住民ごとの、内部パラメータ(性格のようなもの)。生成時に、乱数の種から決まり、セーブされる。
@@ -49,7 +53,8 @@ struct VisitRecord
 struct ResidentAgent
 {
     uint32_t objectId = 0;       // 見た目のGameObject(小さいマーカー)のid
-    uint32_t homeObjectId = 0;   // 自宅のGameObjectのid
+    uint32_t homeObjectId = 0;   // 自宅のGameObjectのid。0なら、住んでいた住宅が解体された(下のhomePositionが、元の住宅の位置)
+    DirectX::XMFLOAT3 homePosition{}; // 住宅が解体された時の、元の住宅の位置(homeObjectIdが0の間だけ意味を持つ。保存される)
 
     ResidentAgentState state = ResidentAgentState::AtHome;
 

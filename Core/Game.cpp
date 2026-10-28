@@ -280,6 +280,19 @@ bool Game::Initialize(HWND hwnd)
         &m_roadPlacementStrategy, &m_curveRoadPlacementStrategy, &m_roadMeshGenerator,
         &m_orientationRegistry);
 
+    m_demolition.Initialize(&m_context, &m_field, &m_occupancyGrid, &m_roadSystem, &m_buildController, &m_demandSystem);
+    m_demolition.SetOnWorldChanged([this]()
+    {
+        // 建物が消えた: エディタの選択(添字で持っている)・選んでいた建物・追跡していた住民(消えていれば)を外す。
+        m_debugEditor.ClearSelection();
+        m_selectedBuildingId = 0;
+    });
+    m_demolition.SetOnMessage([this](const std::string& text)
+    {
+        m_noticeText = text;
+        m_noticeSecondsLeft = 4.0f;
+    });
+
     // 代表住民の見た目は、既に読み込んでいるKennyキャラクターモデルを仮で流用する
     if (!m_agentModel.LoadFromFile(m_renderer.GetDevice(), "Models/character-female-f.obj"))
     {
@@ -441,6 +454,12 @@ void Game::Update()
         if (!m_context.inputConsumed)
         {
             m_roadSystem.Update();
+        }
+        m_demolition.Update(); // 解体ツールの間だけ動く(押している間は、自分でinputConsumedを立てる)
+
+        if (m_noticeSecondsLeft > 0.0f)
+        {
+            m_noticeSecondsLeft -= m_timeManager.GetDeltaTime();
         }
 
         // 住民の移動・需要更新は、ゲーム内時間の倍率(停止/倍速)に従って進める。
@@ -604,6 +623,53 @@ HudState Game::BuildHudState() const
     {
         state.hintText = "住民を追跡中: もう一度クリックで情報 / Esc・右クリックで解除";
     }
+    else if (m_noticeSecondsLeft > 0.0f && !m_noticeText.empty())
+    {
+        state.hintText = m_noticeText; // 解体の結果・お金が足りない、など(少しの間だけ)
+    }
+    else if (m_context.placementTool == PlacementTool::Demolish)
+    {
+        state.hintText = "解体: 建物をクリック/なぞって選び、離すと解体(1棟100円) / Esc・右クリックでやめる";
+    }
+
+    // 道路に接続できていない建物に、「道路がない！」を出す(建物の少し上)。
+    if (IsInGameScene())
+    {
+        const UINT viewW = m_renderer.GetViewWidth();
+        const UINT viewH = m_renderer.GetViewHeight();
+        for (uint32_t id : m_demandSystem.GetBuildingsWithoutRoad())
+        {
+            const GameObject* obj = GameObjectFactory::FindById(m_objects, id);
+            if (!obj)
+            {
+                continue;
+            }
+            DirectX::XMFLOAT3 above = obj->transform.position;
+            above.y += WorldScale::FromLegacy(1.0f);
+            POINT screen;
+            if (m_camera.WorldToScreen(above, viewW, viewH, screen))
+            {
+                state.worldLabels.push_back({ static_cast<float>(screen.x), static_cast<float>(screen.y), "道路がない！" });
+            }
+        }
+
+        // 家を失った住民の上に、「住居がない！」を出す(住民は小さいので、建物より少し低く)。
+        for (uint32_t id : m_demandSystem.GetHomelessAgentObjectIds())
+        {
+            const GameObject* obj = GameObjectFactory::FindById(m_objects, id);
+            if (!obj)
+            {
+                continue;
+            }
+            DirectX::XMFLOAT3 above = obj->transform.position;
+            above.y += WorldScale::FromLegacy(0.7f);
+            POINT screen;
+            if (m_camera.WorldToScreen(above, viewW, viewH, screen))
+            {
+                state.worldLabels.push_back({ static_cast<float>(screen.x), static_cast<float>(screen.y), "住居がない！" });
+            }
+        }
+    }
     return state;
 }
 
@@ -668,6 +734,7 @@ MenuModel Game::BuildMenuModel() const
     const int cash = m_gameEconomy.GetCash();
     const bool buildingTool = (m_context.placementTool == PlacementTool::Building);
     const bool roadTool = (m_context.placementTool == PlacementTool::Road);
+    const bool demolishTool = (m_context.placementTool == PlacementTool::Demolish);
 
     const BuildingType buildingTypes[] =
     {
@@ -715,12 +782,28 @@ MenuModel Game::BuildMenuModel() const
     freehand.command = { MenuCommandType::SetRoadDrawMode, static_cast<int>(RoadDrawMode::Curve) };
     model.drawModes.push_back(freehand);
 
+    // ツール(解体)。
+    {
+        MenuItem demolish;
+        demolish.icon = UIIcon::Demolish;
+        demolish.name = "解体";
+        demolish.detail = std::to_string(kBuildingDemolitionCost) + "円/棟";
+        demolish.affordable = (cash >= kBuildingDemolitionCost);
+        demolish.selected = demolishTool;
+        demolish.command = { MenuCommandType::SelectDemolish, 0 };
+        model.tools.push_back(demolish);
+    }
+
     // 情報タブ。
     const DemandStats& stats = m_demandSystem.GetStats();
     model.info.push_back({ "日付", CalendarText(m_gameClock) });
     model.info.push_back({ "所持金", std::to_string(cash) + "円" });
     model.info.push_back({ "人口", std::to_string(stats.populationTotal) + "人" });
     model.info.push_back({ "住民", std::to_string(stats.agentCount) + "人(需要が不足: " + std::to_string(stats.unmetDemand) + "人)" });
+    if (stats.homelessCount > 0)
+    {
+        model.info.push_back({ "住居がない住民", std::to_string(stats.homelessCount) + "人" });
+    }
     model.info.push_back({ "住宅 / 施設", std::to_string(stats.houseCount) + " / " + std::to_string(stats.facilityCount) });
     model.info.push_back({ "今週の来客 / 売上", std::to_string(stats.visitsThisWeek) + "人 / " + std::to_string(stats.salesThisWeek) + "円" });
     model.info.push_back({ "先週の来客 / 売上", std::to_string(stats.visitsLastWeek) + "人 / " + std::to_string(stats.salesLastWeek) + "円" });
@@ -734,6 +817,10 @@ MenuModel Game::BuildMenuModel() const
     else if (roadTool)
     {
         model.activeToolLabel = std::string("道路(") + RoadMenuName(m_context.roadType) + ")";
+    }
+    else if (demolishTool)
+    {
+        model.activeToolLabel = "解体";
     }
 
     model.statusText = m_menuStatus;
@@ -764,8 +851,14 @@ void Game::ApplyMenuCommand(const MenuCommand& command)
         m_roadSystem.CancelPlacement();
         m_context.roadDrawMode = static_cast<RoadDrawMode>(command.arg);
         break;
+    case MenuCommandType::SelectDemolish:
+        m_roadSystem.CancelPlacement();
+        m_demolition.Cancel();
+        m_context.placementTool = PlacementTool::Demolish;
+        break;
     case MenuCommandType::CancelPlacement:
         m_roadSystem.CancelPlacement();
+        m_demolition.Cancel();
         m_context.placementTool = PlacementTool::None;
         break;
     case MenuCommandType::Save:
@@ -878,7 +971,12 @@ void Game::HandleMenuKeys()
     if (m_context.placementTool != PlacementTool::None)
     {
         // 配置中: 置きかけの道路があれば、先にそれをやめる(RoadSystemが同じキーで行う)。何も置きかけでなければ、配置ツール自体をやめる。
-        if (cancel && !m_roadSystem.HasPendingPlacement())
+        if (cancel && m_demolition.HasPending())
+        {
+            m_demolition.Cancel(); // 解体の選びかけがあれば、先にそれだけをやめる
+            m_context.inputConsumed = true;
+        }
+        else if (cancel && !m_roadSystem.HasPendingPlacement())
         {
             m_context.placementTool = PlacementTool::None;
             m_context.inputConsumed = true;
@@ -1384,7 +1482,7 @@ ResidentInfoModel Game::BuildResidentInfoModel() const
     const bool byAgent = (m_followAgentId != 0);
     const ResidentInfo info = byAgent ? m_demandSystem.GetResidentInfoForAgent(m_followAgentId)
                                       : m_demandSystem.GetResidentInfoForHome(m_selectedBuildingId);
-    model.subtitle = byAgent ? (info.found ? "住民(住宅 #" + std::to_string(info.homeObjectId) + ")" : std::string("住民"))
+    model.subtitle = byAgent ? (info.found ? (info.homeless ? std::string("住民(住居がない！)") : "住民(住宅 #" + std::to_string(info.homeObjectId) + ")") : std::string("住民"))
                              : "住宅 #" + std::to_string(m_selectedBuildingId);
     if (!info.found)
     {
@@ -1422,10 +1520,17 @@ ResidentInfoModel Game::BuildResidentInfoModel() const
     {
     case ResidentAgentState::GoingOut:      stateText = "外出中(" + facilityName(info.targetFacilityId) + "へ)"; break;
     case ResidentAgentState::Visiting:      stateText = facilityName(info.targetFacilityId) + "を利用中"; break;
-    case ResidentAgentState::ReturningHome: stateText = "帰宅中"; break;
+    case ResidentAgentState::ReturningHome: stateText = info.homeless ? "元の家へ戻る途中(家は解体された)" : "帰宅中"; break;
+    case ResidentAgentState::Homeless:      stateText = "住居がない！(行動できない)"; break;
     default: break;
     }
     model.subtitle += " / " + stateText;
+    if (info.homeless)
+    {
+        // 家を失った住民: 一番上に、警告の行を出す(データは、そのまま見られる)。
+        ResidentInfoRow row; row.kind = ResidentInfoRow::Kind::Value; row.label = "住まい"; row.value = "住居がない！"; row.warning = true;
+        model.rows.push_back(row);
+    }
 
     header("需要(80以上で充足)");
     const bool lifeUnmet = info.lifeNeed < info.needThreshold;
@@ -1590,7 +1695,7 @@ void Game::Draw()
         const bool showGrid = m_showGridOverlay; // Editorメニューで切り替える
 #else
         // エディタが無いビルド(Release): 格子線は、建物・道路を置こうとしている間だけ出す(置く場所の目安)。
-        const bool showGrid = (m_context.placementTool != PlacementTool::None);
+        const bool showGrid = (m_context.placementTool == PlacementTool::Building || m_context.placementTool == PlacementTool::Road);
 #endif
         if (showGrid)
         {
@@ -1648,6 +1753,7 @@ void Game::Draw()
         {
             m_buildController.Draw(m_editorUi.PanelFlag("Build"));
             m_roadSystem.Draw();
+            m_demolition.Draw();
         }
     }
 

@@ -381,6 +381,25 @@ void GameUI::Draw(const HudState& state)
         m_ui->DrawString(textX, textY, chip.text, chipFontSize, chipStyle);
     }
 
+    // 世界の建物の警告(「道路がない！」)。メニュー・パネルより下(開いた時の幕で、暗くなる)。数が多い時は、手前の分だけ。
+    {
+        constexpr size_t kMaxWorldLabels = 60;
+        const float labelFont = UIRoundFontSize(kChipFontSize * s);
+        const float padX = 8.0f * s;
+        const float padY = 4.0f * s;
+        size_t drawn = 0;
+        for (const HudWorldLabel& label : state.worldLabels)
+        {
+            if (++drawn > kMaxWorldLabels) { break; }
+            const float width = m_ui->MeasureString(label.text, labelFont) + padX * 2.0f;
+            const float height = m_ui->GetLineHeight(labelFont) + padY * 2.0f;
+            const UIRect rect{ label.x - width * 0.5f, label.y - height, width, height };
+            if (rect.y < L.bar.Bottom() || rect.Right() < 0.0f || rect.x > L.screenW || rect.Bottom() > L.screenH) { continue; } // 上部バーの下・画面の中だけ
+            skin.DrawPanel(*m_ui, rect, UIPanelStyle::TagWarning, s);
+            m_ui->DrawString(rect.x + padX, rect.y + padY, label.text, labelFont, skin.GetTextStyle(UITextRole::Warning));
+        }
+    }
+
     // ゲーム内メニュー(右下のボタン、開いた時の一覧)。バーより手前に描く(開いた時の幕は、バーの下から始まる)。
     m_menu.Draw(*m_ui, skin);
 

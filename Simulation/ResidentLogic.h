@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <vector>
+#include <DirectXMath.h>
 #include "ResidentAgent.h"
 #include "ResidentSimSettings.h"
 #include "FacilityData.h"
@@ -105,3 +106,8 @@ void ProcessResidentWeekEnd(ResidentAgent& agent, const ResidentSimSettings& set
 
 // 週の始まり(就寝明け)の処理: 体力を、上限まで(回復量の範囲で)回復する。
 void ProcessResidentWeekStart(ResidentAgent& agent, const ResidentSimSettings& settings);
+
+// 住居が無い住民を、元の住宅の位置に立たせる時の、位置のずらし(同じ位置に何人もいても、重ならないように)。
+// index: その位置に、既にいる住居なしの住民の数(0なら、ずらさない)。spacing: ずらす距離の基準(ワールド単位)。
+// 戻り値は、(x, z)のずれ。渦を巻くように外へ広がる(同じindexなら、いつも同じ値)。
+DirectX::XMFLOAT2 HomelessOffset(int index, float spacing);

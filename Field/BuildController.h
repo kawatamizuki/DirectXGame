@@ -43,6 +43,10 @@ public:
     // 戻り値は生成した建物のGameObject::id(失敗したら0)。
     uint32_t SpawnBuilding(BuildingType type, const Transform& transform, const BuildingPlacement& placement, bool claimOrientation);
 
+    // 今ある建物(GameObjectのObjectKind::Building)の敷地から、占有(矩形とマスの印)を登録し直す。呼ぶ前に、占有を空にしておくこと。
+    // 建物の解体の後、占有を「道路と建物」から作り直す時に使う(占有は、1つだけを解除できないため)。
+    void ReregisterOccupancy();
+
     // 今選んでいる種類の建物を、hitPoint(ワールド座標のカーソル着地点)の位置に置く。
     // クリックでの配置と同じ処理(置けるか・払えるかの確認 → 建設費を払う → 建てる)。置けたらtrue。
     // 将来の建設メニュー(HUD)や、自動テストから、マウス入力なしで同じ配置を行うために公開している。

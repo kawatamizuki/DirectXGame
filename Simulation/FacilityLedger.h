@@ -23,6 +23,10 @@ struct FacilityRecord
     FacilityTally lastWeek;         // 直前の週(週末で、今の週がここへ移る)
     FacilityTally thisMonth;        // 今の月(月末で0に戻る)
     FacilityTally total;            // 通算
+
+    // 解体された施設の記録か。解体後も、過去の売上・来訪者数は、記録として残す(消さない。合計にも入る)。
+    // 施設の種類(type)も残るので、後から「種類別の収益」などを分析できる。解体済みの記録には、もう利用は足されない。
+    bool demolished = false;
 };
 
 class FacilityLedger
@@ -39,6 +43,9 @@ public:
     FacilityTally SumLastWeek() const;
     FacilityTally SumThisMonth() const;
     FacilityTally SumTotal() const;
+
+    // objectIdの施設を、解体済みとして印を付ける(記録は残す)。記録が無い(一度も使われていない)施設は、何もしない。
+    void MarkDemolished(uint32_t objectId);
 
     const FacilityRecord* Find(uint32_t objectId) const;
     const std::vector<FacilityRecord>& GetRecords() const { return m_records; }

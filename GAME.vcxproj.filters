@@ -360,6 +360,9 @@
     <ClCompile Include="Field\FrontageCells.cpp">
       <Filter>ソース ファイル\Field</Filter>
     </ClCompile>
+    <ClCompile Include="Field\DemolitionController.cpp">
+      <Filter>ソース ファイル\Field</Filter>
+    </ClCompile>
     <ClCompile Include="Field\CurveRoadPlacementStrategy.cpp">
       <Filter>ソース ファイル\Field</Filter>
     </ClCompile>
@@ -741,6 +744,12 @@
       <Filter>ヘッダー ファイル\Field</Filter>
     </ClInclude>
     <ClInclude Include="Field\FrontageCells.h">
+      <Filter>ヘッダー ファイル\Field</Filter>
+    </ClInclude>
+    <ClInclude Include="Field\DemolitionController.h">
+      <Filter>ヘッダー ファイル\Field</Filter>
+    </ClInclude>
+    <ClInclude Include="Field\DemolitionSelection.h">
       <Filter>ヘッダー ファイル\Field</Filter>
     </ClInclude>
     <ClInclude Include="Field\CurveRoadPlacementStrategy.h">

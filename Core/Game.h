@@ -32,6 +32,7 @@
 #include "CellOccupancyGrid.h"
 #include "GridOrientationRegistry.h"
 #include "BuildController.h"
+#include "DemolitionController.h"
 #include "StraightRoadPlacementStrategy.h"
 #include "CurveRoadPlacementStrategy.h"
 #include "QuadRoadMeshGenerator.h"
@@ -234,6 +235,9 @@ private:
     Model m_cinemaModel;
     Model m_cafeModel;
     BuildController m_buildController;
+    DemolitionController m_demolition;   // 解体ツール(建物をなぞって選び、離すと解体する)
+    std::string m_noticeText;            // 画面の左下に、少しの間だけ出す知らせ(解体の結果・お金が足りない、など)
+    float m_noticeSecondsLeft = 0.0f;
     StraightRoadPlacementStrategy m_roadPlacementStrategy;
     CurveRoadPlacementStrategy m_curveRoadPlacementStrategy;
     QuadRoadMeshGenerator m_roadMeshGenerator;

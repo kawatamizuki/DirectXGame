@@ -120,6 +120,7 @@ void DemandSystem::Reset()
     m_random.Seed(m_settings.seed);
     m_lastRoadGraphNodeCount = 0;
     m_lastRoadGraphEdgeCount = 0;
+    m_buildingsWithoutRoad.clear();
 }
 
 namespace
@@ -153,6 +154,7 @@ namespace
         case ResidentAgentState::GoingOut:      return "GoingOut";
         case ResidentAgentState::Visiting:      return "Visiting";
         case ResidentAgentState::ReturningHome: return "ReturningHome";
+        case ResidentAgentState::Homeless:      return "Homeless";
         // 停止中の仕事の状態。保存はしない(家にいる扱いで保存する)。
         case ResidentAgentState::Commuting:
         case ResidentAgentState::AtWork:
@@ -167,6 +169,7 @@ namespace
         if (key == "GoingOut")      { return ResidentAgentState::GoingOut; }
         if (key == "Visiting")      { return ResidentAgentState::Visiting; }
         if (key == "ReturningHome") { return ResidentAgentState::ReturningHome; }
+        if (key == "Homeless")      { return ResidentAgentState::Homeless; }
         return ResidentAgentState::AtHome;
     }
 
@@ -215,6 +218,12 @@ namespace
     {
         return state == ResidentAgentState::GoingOut || state == ResidentAgentState::ReturningHome;
     }
+
+    // 解体された施設の記録につける、仮のid。GameObjectのid(1から順に増える)と重ならないよう、大きな値から始める。
+    constexpr uint32_t kRetiredFacilityIdBase = 0x80000000u;
+
+    // 住居が無い住民を並べる時の、ずらす距離の基準(最初のマス1.0の0.2倍)。
+    const float kHomelessSpacing = WorldScale::FromLegacy(0.2f);
 }
 
 void DemandSystem::Save(Json& section, const SaveContext& context) const
@@ -230,24 +239,34 @@ void DemandSystem::Save(Json& section, const SaveContext& context) const
         for (const ResidentAgent& agent : m_agents)
         {
             // 見た目のオブジェクトや家が見つからない住民は、保存しても復元できないので飛ばす。
+            // (住んでいた住宅が解体された住民は、homeObjectIdが0。家が無くても、住民のデータは保存する)
             const GameObject* marker = GameObjectFactory::FindById(objects, agent.objectId);
-            int homeUid = context.UidForBuildingObject(agent.homeObjectId);
-            if (!marker || homeUid < 0)
+            const bool orphan = (agent.homeObjectId == 0);
+            int homeUid = orphan ? -1 : context.UidForBuildingObject(agent.homeObjectId);
+            if (!marker || (!orphan && homeUid < 0))
             {
                 continue;
             }
 
             // 施設が無くなった(保存できない)外出は、家にいる住民として保存する(途中の経路を引き継げない)。
             int targetUid = (agent.targetFacilityId != 0) ? context.UidForBuildingObject(agent.targetFacilityId) : -1;
-            const bool outing = (agent.state != ResidentAgentState::AtHome) && targetUid >= 0;
-            const ResidentAgentState savedState = outing ? agent.state : ResidentAgentState::AtHome;
+            // 帰宅中は、施設がもう無くても(解体された)、歩いている途中のまま保存する。
+            const bool outing = (agent.state != ResidentAgentState::AtHome) && (agent.state != ResidentAgentState::Homeless)
+                && (targetUid >= 0 || agent.state == ResidentAgentState::ReturningHome);
+            const ResidentAgentState savedState = outing ? agent.state : (orphan ? ResidentAgentState::Homeless : ResidentAgentState::AtHome);
 
             Json entry = Json::MakeObject();
             entry.Set("home", homeUid);
             entry.Set("state", AgentStateKey(savedState));
             entry.Set("speed", agent.speed);
-            entry.Set("position", Vec3ToJson(marker->transform.position));
+            // 住居なしとして保存する住民の位置は、元の住宅の位置(住居なしのまま立っている住民は、ずらした今の位置)。
+            const bool savedAtHomePosition = orphan && !outing && agent.state != ResidentAgentState::Homeless;
+            entry.Set("position", Vec3ToJson(savedAtHomePosition ? agent.homePosition : marker->transform.position));
             entry.Set("scale", Vec3ToJson(marker->transform.scale));
+            if (orphan)
+            {
+                entry.Set("homePosition", Vec3ToJson(agent.homePosition));
+            }
 
             // 内部パラメータ。
             Json traits = Json::MakeObject();
@@ -311,10 +330,15 @@ void DemandSystem::Save(Json& section, const SaveContext& context) const
         Json facilities = Json::MakeArray();
         for (const FacilityRecord& record : m_ledger.GetRecords())
         {
+            // 解体された施設の記録も、残す(過去の売上・来訪者数・種類。施設のuidは無いので-1)。
             int uid = context.UidForBuildingObject(record.objectId);
-            if (uid < 0) { continue; }
+            if (uid < 0 && !record.demolished) { continue; }
             Json item = Json::MakeObject();
             item.Set("facility", uid);
+            if (record.demolished)
+            {
+                item.Set("demolished", true);
+            }
             item.Set("type", ScenarioFile::BuildingTypeKey(record.type));
             item.Set("thisWeek", TallyToJson(record.thisWeek));
             item.Set("lastWeek", TallyToJson(record.lastWeek));
@@ -345,6 +369,7 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
     m_weeksEnded = (std::max)(0, section.GetInt("weeksEnded", 0));
 
     // 施設ごとの集計。
+    uint32_t retiredCount = 0;
     if (const Json* facilities = section.Find("facilities"))
     {
         if (facilities->IsArray())
@@ -353,12 +378,15 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
             {
                 const Json& item = facilities->At(i);
                 if (!item.IsObject()) { continue; }
-                uint32_t facilityId = context.ObjectIdForBuildingUid(item.GetInt("facility", -1));
+                // 解体済みの施設の記録は、建物が無いので、他のidと重ならない仮のid(GameObjectのidより、ずっと大きい値)を付ける。
+                const bool demolished = item.GetBool("demolished", false);
+                uint32_t facilityId = demolished ? (kRetiredFacilityIdBase + retiredCount++) : context.ObjectIdForBuildingUid(item.GetInt("facility", -1));
                 BuildingType type = BuildingType::Shop;
                 if (facilityId == 0 || !ScenarioFile::BuildingTypeFromKey(item.GetString("type"), type)) { continue; }
                 FacilityRecord record;
                 record.objectId = facilityId;
                 record.type = type;
+                record.demolished = demolished;
                 record.thisWeek = TallyFromJson(item.Find("thisWeek"));
                 record.lastWeek = TallyFromJson(item.Find("lastWeek"));
                 record.thisMonth = TallyFromJson(item.Find("thisMonth"));
@@ -375,6 +403,7 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
     }
 
     const int maxPerHome = GetBuildingDefinition(BuildingType::House).representativeAgentCount;
+    int orphanCount = 0; // 住居が無い住民の数(特徴の種を、住民ごとに変えるための通し番号)
     std::map<uint32_t, int> perHome; // 家ごとに復元した住民の数(1軒に住む人数の上限を超える分は、復元しない。古いセーブは1軒に6人いた)
 
     for (size_t i = 0; i < agents->Size(); ++i)
@@ -386,20 +415,32 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
         }
 
         // 建物のuidを、読み込みで新しく作った建物のidに結び直す。家が無い住民は復元できないので飛ばす。
+        // 住居が無い住民は、"home"が-1で、元の住宅の位置("homePosition")を持つ。
         uint32_t homeId = context.ObjectIdForBuildingUid(entry.GetInt("home", -1));
-        if (homeId == 0)
+        XMFLOAT3 savedHomePosition{};
+        const bool orphan = (homeId == 0) && entry.GetInt("home", -1) < 0 && entry.Find("homePosition") != nullptr && JsonToVec3(*entry.Find("homePosition"), savedHomePosition);
+        if (homeId == 0 && !orphan)
         {
             continue;
         }
-        const int indexAtHome = perHome[homeId];
-        if (indexAtHome >= maxPerHome)
+        int indexAtHome = 0;
+        if (orphan)
         {
-            continue;
+            indexAtHome = orphanCount++;
         }
-        perHome[homeId] = indexAtHome + 1;
+        else
+        {
+            indexAtHome = perHome[homeId];
+            if (indexAtHome >= maxPerHome)
+            {
+                continue;
+            }
+            perHome[homeId] = indexAtHome + 1;
+        }
 
         ResidentAgent agent;
         agent.homeObjectId = homeId;
+        agent.homePosition = savedHomePosition;
         // 速さ・位置・大きさ・経路は、保存した時のマスの大きさでの値。今の大きさに合わせる(context.spaceScale)。
         agent.speed = entry.GetFloat("speed", agent.speed / context.spaceScale) * context.spaceScale;
 
@@ -446,9 +487,14 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
         // 今の外出。状態の名前が未知・古いセーブ(通勤)・施設が見つからない・経路が壊れている時は、安全側の「家にいる」にする。
         agent.state = AgentStateFromKey(entry.GetString("state", "AtHome"));
         uint32_t targetId = context.ObjectIdForBuildingUid(entry.GetInt("target", -1));
-        if (agent.state != ResidentAgentState::AtHome)
+        if (!orphan && agent.state == ResidentAgentState::Homeless)
         {
-            if (targetId == 0)
+            agent.state = ResidentAgentState::AtHome; // 家がある住民が「住居なし」と書かれていたら、矛盾なので、家にいる扱いにする
+        }
+        if (agent.state != ResidentAgentState::AtHome && agent.state != ResidentAgentState::Homeless)
+        {
+            // 帰宅中は、行き先の施設が解体されていても(targetなし)、歩いている途中のまま復元する。
+            if (targetId == 0 && agent.state != ResidentAgentState::ReturningHome)
             {
                 agent.state = ResidentAgentState::AtHome;
             }
@@ -505,7 +551,11 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
                 }
             }
         }
-        if (agent.state == ResidentAgentState::AtHome)
+        if (orphan && agent.state == ResidentAgentState::AtHome)
+        {
+            agent.state = ResidentAgentState::Homeless; // 家が無いので、家にいる扱いにはできない
+        }
+        if (agent.state == ResidentAgentState::AtHome || agent.state == ResidentAgentState::Homeless)
         {
             agent.targetFacilityId = 0;
             agent.waypoints.clear();
@@ -525,7 +575,7 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
         transform.scale.y *= context.spaceScale;
         transform.scale.z *= context.spaceScale;
         GameObject& marker = GameObjectFactory::Spawn(objects, m_agentModel, transform, ObjectKind::Agent);
-        marker.visible = IsMoving(agent.state);
+        marker.visible = IsMoving(agent.state) || agent.state == ResidentAgentState::Homeless;
         agent.objectId = marker.id;
 
         m_agents.push_back(agent);
@@ -641,11 +691,137 @@ void DemandSystem::FinishVisit(ResidentAgent& agent, GameContext& context, GameO
     {
         StartMove(agent, false, obj);
     }
+    else if (agent.homeObjectId == 0)
+    {
+        BecomeHomeless(agent, context); // 帰る家が、もう無い
+    }
     else
     {
         agent.state = ResidentAgentState::AtHome;
         agent.targetFacilityId = 0;
     }
+}
+
+void DemandSystem::BecomeHomeless(ResidentAgent& agent, GameContext& context)
+{
+    agent.state = ResidentAgentState::Homeless;
+    agent.targetFacilityId = 0;
+    agent.waypoints.clear();
+    agent.segmentIndices.clear();
+    agent.currentWaypointIndex = 0;
+    agent.visitHoursLeft = 0.0f;
+    agent.outingStopCount = 0;
+    agent.usedFoodLikeFacilityThisOuting = false;
+
+    // 同じ位置に、既に立っている住居なしの住民の数だけ、ずらす(重ならないように)。
+    int sameSpot = 0;
+    for (const ResidentAgent& other : m_agents)
+    {
+        if (&other == &agent || other.state != ResidentAgentState::Homeless || other.homeObjectId != 0)
+        {
+            continue;
+        }
+        const float dx = other.homePosition.x - agent.homePosition.x;
+        const float dz = other.homePosition.z - agent.homePosition.z;
+        if (dx * dx + dz * dz < 0.01f * 0.01f)
+        {
+            ++sameSpot;
+        }
+    }
+
+    GameObject* obj = GameObjectFactory::FindById(*context.objects, agent.objectId);
+    if (obj)
+    {
+        const DirectX::XMFLOAT2 offset = HomelessOffset(sameSpot, kHomelessSpacing);
+        obj->transform.position = XMFLOAT3(agent.homePosition.x + offset.x, agent.homePosition.y, agent.homePosition.z + offset.y);
+        obj->visible = true;
+    }
+}
+
+void DemandSystem::AbortOutingToDemolishedFacility(ResidentAgent& agent, GameContext& context)
+{
+    GameObject* obj = GameObjectFactory::FindById(*context.objects, agent.objectId);
+    agent.targetFacilityId = 0;                 // 向かう施設は、もう無い。利用も売上も、起きない
+    agent.visitHoursLeft = 0.0f;
+    agent.outingStopCount = 0;
+    agent.usedFoodLikeFacilityThisOuting = false;
+    agent.segmentIndices.clear();
+
+    if (agent.state == ResidentAgentState::ReturningHome)
+    {
+        return; // 帰宅中は、そのまま帰る(行き先の記録を消しただけ)
+    }
+
+    if (agent.state == ResidentAgentState::Visiting && agent.waypoints.size() >= 2)
+    {
+        StartMove(agent, false, obj); // 施設の中にいた: 施設の位置から、帰り始める
+        return;
+    }
+
+    if (agent.state == ResidentAgentState::GoingOut && obj && agent.waypoints.size() >= 2)
+    {
+        // 施設へ歩いている途中: その場で折り返す。歩いてきた道(経路の、通り過ぎた所)を、今の位置から逆向きに戻る。位置は、飛ばさない。
+        const size_t passed = (std::min)(agent.currentWaypointIndex + 1, agent.waypoints.size());
+        std::vector<XMFLOAT3> back(agent.waypoints.begin(), agent.waypoints.begin() + static_cast<std::ptrdiff_t>(passed));
+        back.push_back(obj->transform.position);
+        std::reverse(back.begin(), back.end());
+        agent.waypoints = std::move(back);
+        agent.waypointsHomeToTarget = false;
+        agent.currentWaypointIndex = 0;
+        agent.state = ResidentAgentState::ReturningHome;
+        return;
+    }
+
+    // 経路が壊れている時は、その場で、家にいる(家が無ければ、住居なし)扱いにする。
+    agent.waypoints.clear();
+    agent.currentWaypointIndex = 0;
+    if (agent.homeObjectId == 0)
+    {
+        BecomeHomeless(agent, context);
+    }
+    else
+    {
+        agent.state = ResidentAgentState::AtHome;
+        if (obj) { obj->visible = false; }
+    }
+}
+
+void DemandSystem::OnBuildingDemolished(const DemolishedBuilding& building, GameContext& context)
+{
+    if (building.type == BuildingType::House)
+    {
+        for (ResidentAgent& agent : m_agents)
+        {
+            if (agent.homeObjectId != building.id)
+            {
+                continue;
+            }
+            // 住民のデータ(需要・体力・特徴・履歴)は、消さない。家だけを失う。
+            agent.homeObjectId = 0;
+            agent.homePosition = building.position;
+            agent.lastDecisionNote = "住んでいた住宅が解体された";
+            if (agent.state == ResidentAgentState::AtHome)
+            {
+                BecomeHomeless(agent, context);
+            }
+            // 外出中の住民は、今の外出を続ける。帰り着いた時に(UpdateAgentMovementのarrive)、元の位置で住居なしになる。
+        }
+        return;
+    }
+
+    if (IsFacility(building.type))
+    {
+        // 過去の売上・来訪者数は、記録として残す(消さない)。
+        m_ledger.MarkDemolished(building.id);
+        for (ResidentAgent& agent : m_agents)
+        {
+            if (agent.targetFacilityId == building.id && agent.state != ResidentAgentState::AtHome && agent.state != ResidentAgentState::Homeless)
+            {
+                AbortOutingToDemolishedFacility(agent, context);
+            }
+        }
+    }
+    // 職場(Office)は、仕事の概念が停止中なので、住民との関係が無い。
 }
 
 void DemandSystem::UpdateAgentMovement(float deltaTime, GameContext& context)
@@ -657,6 +833,13 @@ void DemandSystem::UpdateAgentMovement(float deltaTime, GameContext& context)
         GameObject* obj = GameObjectFactory::FindById(*context.objects, agent.objectId);
         if (!obj)
         {
+            continue;
+        }
+
+        // 住居が無い住民は、元の住宅の位置で、見える状態のまま立っている(動かない・施設を使わない)。
+        if (agent.state == ResidentAgentState::Homeless)
+        {
+            obj->visible = true;
             continue;
         }
 
@@ -713,6 +896,10 @@ void DemandSystem::UpdateAgentMovement(float deltaTime, GameContext& context)
                 agent.state = ResidentAgentState::Visiting;
                 agent.visitHoursLeft = facility->visitDurationHours;
                 obj->visible = false;
+            }
+            else if (agent.homeObjectId == 0)
+            {
+                BecomeHomeless(agent, context); // 帰り着いたが、家は解体されていた: 元の位置で、住居なしになる
             }
             else
             {
@@ -824,6 +1011,17 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
             facility.type = obj.buildingType;
             facilities.push_back(facility);
         }
+    }
+
+    // 道路に接続できていない建物(住宅・施設)を覚える(「道路がない！」の表示用)。
+    m_buildingsWithoutRoad.clear();
+    for (const BuildingSnapshot& house : houses)
+    {
+        if (!house.hasRoadConnection) { m_buildingsWithoutRoad.push_back(house.id); }
+    }
+    for (const FacilitySnapshot& facility : facilities)
+    {
+        if (!facility.building.hasRoadConnection) { m_buildingsWithoutRoad.push_back(facility.building.id); }
     }
 
     // 建物-道路の接続線(視覚化用)を更新する
@@ -1147,6 +1345,10 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
         {
             m_lastStats.unmetDemand++;
         }
+        if (agent.state == ResidentAgentState::Homeless)
+        {
+            m_lastStats.homelessCount++;
+        }
     }
 }
 
@@ -1194,6 +1396,7 @@ std::string DemandSystem::GetAgentDebugSummary(uint32_t objectId) const
         case ResidentAgentState::GoingOut:      oss << "GoingOut";      break;
         case ResidentAgentState::Visiting:      oss << "Visiting";      break;
         case ResidentAgentState::ReturningHome: oss << "ReturningHome"; break;
+        case ResidentAgentState::Homeless:      oss << "Homeless";      break;
         default:                                oss << "(unused)";      break;
         }
 
@@ -1241,6 +1444,7 @@ ResidentInfo DemandSystem::MakeResidentInfo(const ResidentAgent& agent) const
     ResidentInfo info;
     info.found = true;
     info.homeObjectId = agent.homeObjectId;
+    info.homeless = (agent.homeObjectId == 0);
     info.state = agent.state;
     info.targetFacilityId = agent.targetFacilityId;
     info.purpose = agent.purpose;
@@ -1260,8 +1464,25 @@ ResidentInfo DemandSystem::MakeResidentInfo(const ResidentAgent& agent) const
     return info;
 }
 
+std::vector<uint32_t> DemandSystem::GetHomelessAgentObjectIds() const
+{
+    std::vector<uint32_t> ids;
+    for (const ResidentAgent& agent : m_agents)
+    {
+        if (agent.state == ResidentAgentState::Homeless)
+        {
+            ids.push_back(agent.objectId);
+        }
+    }
+    return ids;
+}
+
 ResidentInfo DemandSystem::GetResidentInfoForHome(uint32_t homeObjectId) const
 {
+    if (homeObjectId == 0)
+    {
+        return ResidentInfo(); // 0は「家が無い住民」の印。どの住宅でもない
+    }
     for (const ResidentAgent& agent : m_agents)
     {
         if (agent.homeObjectId == homeObjectId)

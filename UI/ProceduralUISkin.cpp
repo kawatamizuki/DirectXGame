@@ -363,6 +363,19 @@ void ProceduralUISkin::DrawMonoIcon(UIRenderer& ui, UIIcon icon, float cx, float
         }
         break;
     }
+    case UIIcon::Demolish:
+    {
+        // ハンマー: 斜めの柄と、柄の先の頭(柄に直角の太い線)。足元に、がれきの点。
+        const float handleX0 = cx - h * 0.70f, handleY0 = cy + h * 0.80f;
+        const float handleX1 = cx + h * 0.35f, handleY1 = cy - h * 0.35f;
+        ui.DrawLine(handleX0, handleY0, handleX1, handleY1, size * 0.14f, color);
+        // 頭: 柄の先で、柄に直角に交わる太い線(柄の向き(1,-1)に直角は(1,1))。
+        ui.DrawLine(handleX1 - h * 0.38f, handleY1 - h * 0.38f, handleX1 + h * 0.38f, handleY1 + h * 0.38f, size * 0.30f, color);
+        ui.FillCircle(cx + h * 0.55f, cy + h * 0.75f, size * 0.07f, color);
+        ui.FillCircle(cx + h * 0.80f, cy + h * 0.50f, size * 0.05f, color);
+        ui.FillCircle(cx + h * 0.30f, cy + h * 0.85f, size * 0.05f, color);
+        break;
+    }
     default:
         break;
     }

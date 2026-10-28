@@ -17,6 +17,7 @@ enum class MenuCommandType
     SelectBuilding,     // arg = BuildingType(を整数にした値)。建物の配置を始める
     SelectRoad,         // arg = RoadType。道路の配置を始める
     SetRoadDrawMode,    // arg = RoadDrawMode。道路の引き方(直線/自由)を切り替える
+    SelectDemolish,     // 解体ツールを選ぶ(建物をなぞって選び、離すと解体する)
     CancelPlacement,    // 配置を、やめる
     Save,
     Load,
@@ -71,6 +72,7 @@ struct MenuModel
     std::vector<MenuItem> buildings;
     std::vector<MenuItem> roads;
     std::vector<MenuItem> drawModes;
+    std::vector<MenuItem> tools;    // 建物・道路の配置以外のツール(解体)
     std::vector<MenuInfoLine> info;
     std::string activeToolLabel;    // 配置中のものの名前(「住宅」)。空なら、配置中ではない
     std::string statusText;         // システムタブに出す、直前のセーブ/ロードの結果

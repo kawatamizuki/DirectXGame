@@ -62,7 +62,8 @@ enum class UIIcon
     RoadNormal,
     RoadLarge,
     RoadStraight,
-    RoadFreehand
+    RoadFreehand,
+    Demolish      // 解体(ハンマー)
 };
 
 // 文字の役割。色・縁取りなどの書式は、スキンが役割ごとに決める(呼び出し側は、色の数値を持たない)。

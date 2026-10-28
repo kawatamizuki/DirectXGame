@@ -7,6 +7,7 @@
 #include "ResidentSimSettings.h"
 #include "ResidentLogic.h"
 #include "FacilityLedger.h"
+#include "BuildingType.h"
 #include "ISaveable.h"
 
 struct GameContext;
@@ -32,6 +33,7 @@ struct DemandStats
     int populationTotal = 0;  // House.populationRepresentedの合計(表示上の人口)
     int agentCount = 0;       // 実際にシミュレートしている住民の数
     int unmetDemand = 0;      // 生活またはアクティビティの需要が不足(80未満)の住民の数
+    int homelessCount = 0;    // 住んでいた住宅が解体されて、住居が無い住民の数(agentCountに含まれる)
 
     // 施設の利用の集計(住民が実際に利用した結果)。
     int visitsThisWeek = 0;
@@ -61,6 +63,7 @@ struct ResidentInfo
     bool found = false;                     // その住宅に住む住民が見つかったか
     uint32_t homeObjectId = 0;
     ResidentAgentState state = ResidentAgentState::AtHome;
+    bool homeless = false;                  // 住居が無い(住宅が解体された)住民か
     uint32_t targetFacilityId = 0;          // 向かっている(利用中の)施設のid(0=なし)
     UsagePurpose purpose = UsagePurpose::TopUp;
     float lifeNeed = 0.0f;
@@ -92,6 +95,14 @@ struct DecisionLogEntry
     float activityNeed = 0.0f;
     std::vector<CandidateEvaluation> evaluations; // 全ての候補の評価(除外の理由・重み・確率・選ばれたか)
     int chosenIndex = -1;                       // 選ばれた候補の添字(-1=選べなかった)
+};
+
+// 解体された建物1棟ぶんの情報。建物を消す前に、呼び出し側が集めて渡す(消した後は、位置も種類も分からなくなるため)。
+struct DemolishedBuilding
+{
+    uint32_t id = 0;                            // GameObject::id
+    BuildingType type = BuildingType::House;
+    DirectX::XMFLOAT3 position{};               // 建物の位置(住宅なら、住民が出現する場所)
 };
 
 // 住民の生成・外出・施設の利用・売上、需要と体力、週の処理を管理するクラス。
@@ -138,6 +149,19 @@ public:
     // 建物-道路の接続線(入口/私道)を毎フレーム描画する。RunDemandTickで計算した結果を使う。
     void Draw(DebugRenderer& debugRenderer) const;
 
+    // 建物が解体された(ゲームのオブジェクトからは、もう消した後)。住民・集計を、安全に整える。
+    //  ・住宅: 住んでいた住民は、消さない。家にいた住民は、元の位置に出現して、住居が無い状態(Homeless)になる。外出中の住民は、
+    //    今の外出を続け、帰り着いた時に、元の位置で、住居が無い状態になる(途中で、位置を飛ばさない)。
+    //  ・施設: 向かっていた・利用中の住民は、利用せず(売上・回復なし)、その場から帰宅を始める。確定した過去の売上・来訪者数は、記録として残す。
+    // 道路・占有・オブジェクトの削除は、呼び出し側が行う。
+    void OnBuildingDemolished(const DemolishedBuilding& building, GameContext& context);
+
+    // 直近の需要の更新(RunDemandTick)で、近くに道路が無かった建物(住宅・施設)のid。「道路がない！」の表示に使う。
+    const std::vector<uint32_t>& GetBuildingsWithoutRoad() const { return m_buildingsWithoutRoad; }
+
+    // 住居が無い(Homeless)住民の、見た目のオブジェクト(GameObject::id)の一覧。「住居がない！」を、住民の上に出すのに使う。
+    std::vector<uint32_t> GetHomelessAgentObjectIds() const;
+
     // 住宅(GameObject::id)に住む住民の、表示用のコピーを返す(いなければ found==false)。
     ResidentInfo GetResidentInfoForHome(uint32_t homeObjectId) const;
 
@@ -151,6 +175,12 @@ public:
     DemandMemoryStats GetMemoryStats() const;
 
 private:
+    // 住民を、住居が無い状態にする(元の住宅の位置に、見える状態で立たせる。同じ位置に何人もいる時は、少しずつずらす)。
+    void BecomeHomeless(ResidentAgent& agent, GameContext& context);
+
+    // 向かっていた・利用中だった施設が無くなった住民の、今の外出をやめる(売上・回復なし。その場から帰宅を始める)。
+    void AbortOutingToDemolishedFacility(ResidentAgent& agent, GameContext& context);
+
     // 住民1人の、表示用のコピーを作る。
     ResidentInfo MakeResidentInfo(const ResidentAgent& agent) const;
 
@@ -200,6 +230,9 @@ private:
 
     // 直近のRunDemandTickで見つかった、道路に接続している建物の接続線一覧(Draw()で使う)。
     std::vector<RoadConnectionLine> m_connectionLines;
+
+    // 道路に接続できていない建物のid(直近のRunDemandTickの結果。保存しない)。
+    std::vector<uint32_t> m_buildingsWithoutRoad;
 
     // 施設選びの記録(新しいものが後ろ。デバッグ用。保存しない)。
     std::vector<DecisionLogEntry> m_decisionLog;
