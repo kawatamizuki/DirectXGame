@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <vector>
 #include <string>
+#include <unordered_map>
 #include <DirectXMath.h>
 #include "ResidentAgent.h"
 #include "ResidentSchedule.h"
@@ -10,6 +11,7 @@
 #include "BuildingType.h"
 #include "RoadCutting.h"
 #include "RoutePlanner.h"
+#include "SimDebugRecorder.h"
 #include "ISaveable.h"
 
 struct GameContext;
@@ -105,6 +107,65 @@ struct DecisionLogEntry
     std::string note;                           // 補足(「食事系が続くので、寄らなかった」など)
 };
 
+// 住民1人の、デバッグ表示用の「今の値」のコピー(Editorの「住民デバッグ」パネル用)。過去の判断の値は、SimDebugRecorderの記録が持つ。
+// 住民の内部(ResidentAgent)を画面側へ見せないための橋渡し。
+struct ResidentDebugView
+{
+    bool found = false;                     // 住民が見つかったか
+    uint32_t residentId = 0;                // 見た目のオブジェクトのid(住民の識別)
+    uint32_t homeObjectId = 0;              // 住宅のid(0=住居なし)
+    bool homeExists = false;                // 住宅のオブジェクトが今あるか
+    DirectX::XMFLOAT3 homePosition{};       // 住宅が解体された時の元の位置(homeObjectIdが0の間だけ意味を持つ)
+    ResidentAgentState state = ResidentAgentState::AtHome;
+
+    // 今の外出。
+    uint32_t targetFacilityId = 0;
+    bool targetExists = false;              // 行き先の施設のオブジェクトが今あるか
+    BuildingType targetType = BuildingType::Shop; // targetExistsの時だけ
+    UsagePurpose purpose = UsagePurpose::TopUp;
+    int outingStopCount = 0;
+    bool usedFoodLikeFacilityThisOuting = false;
+    float visitHoursLeft = 0.0f;            // 施設の中に、あと何ゲーム時間いるか
+
+    // 需要・体力など。
+    float lifeNeed = 0.0f;
+    float activityNeed = 0.0f;
+    float needThreshold = 80.0f;
+    float stamina = 0.0f;
+    float staminaCap = 0.0f;                // ペナルティ込みの上限
+    int penaltyLevel = 0;
+    int maxPenaltyLevel = 0;
+    float satisfaction = 0.0f;
+    float unmetLifeHours = 0.0f;
+    float unmetActivityHours = 0.0f;
+    float satisfiedHours = 0.0f;
+    ResidentTraits traits;
+    std::vector<VisitRecord> history;       // 最近使った施設(新しい順)
+    std::string lastDecisionNote;
+
+    // 位置・経路。
+    DirectX::XMFLOAT3 position{};           // 見た目のオブジェクトの位置
+    bool markerVisible = false;             // 見た目が表示されているか(家・施設の中では非表示)
+    size_t waypointCount = 0;
+    size_t currentWaypointIndex = 0;
+    bool waypointsHomeToTarget = true;
+    size_t segmentCount = 0;                // 経路が通る道路区間の数
+    float routeTotalLength = 0.0f;          // 経路の長さの合計
+    float routeRemainingLength = 0.0f;      // 今の位置から、経路の終わりまでの残りの長さ
+
+    // 次の外出判定(家にいる時の予測。実処理と同じ ComputeOutingChance で計算)。
+    float nextOutingChance = 0.0f;
+    OutingChanceBranch nextOutingBranch = OutingChanceBranch::NeedDriven;
+};
+
+// 住民一覧(デバッグの選択用)の1件。
+struct ResidentListItem
+{
+    uint32_t residentId = 0;
+    uint32_t homeObjectId = 0;
+    ResidentAgentState state = ResidentAgentState::AtHome;
+};
+
 // 解体された建物1棟ぶんの情報。建物を消す前に、呼び出し側が集めて渡す(消した後は、位置も種類も分からなくなるため)。
 struct DemolishedBuilding
 {
@@ -194,7 +255,51 @@ public:
     // Profilerのメモリ内訳表示用の集計値を返す。
     DemandMemoryStats GetMemoryStats() const;
 
+    // ---- デバッグ(Editorの「住民デバッグ」パネル用。ゲームの動作には関わらない) ----
+
+    // 判断・状態遷移の記録。ON/OFFの切り替え、容量の変更、読み取りに使う。既定は無効(Editorのビルドが有効にする)。
+    SimDebugRecorder& GetDebugRecorder() { return m_debugRecorder; }
+    const SimDebugRecorder& GetDebugRecorder() const { return m_debugRecorder; }
+
+    // 住民(見た目のオブジェクトのid)の、今の値のコピー。見つからなければ found==false。objectsは、家・施設・見た目の有無を調べるのに使う。
+    ResidentDebugView GetResidentDebugView(uint32_t agentObjectId, const std::vector<GameObject>& objects) const;
+
+    // 住宅に住む住民の見た目のオブジェクトのid(いなければ0)。住宅を選んだ時に、その住民をデバッグ対象にするのに使う。
+    uint32_t FindResidentIdForHome(uint32_t homeObjectId) const;
+
+    // 全住民の一覧(選択用)。
+    std::vector<ResidentListItem> ListResidents() const;
+
+    // 乱数の内部状態(記録のON/OFFで乱数の消費が変わらないことの確認に使う)。
+    uint32_t GetRandomState() const { return m_random.GetState(); }
+
 private:
+    // ---- 記録(SimDebugRecorder)への窓口。記録がOFFなら、すぐ戻る。乱数は引かない・状態は変えない ----
+
+    // 住民の今の状態の写しを作る。
+    SimResidentSnapshot MakeSnapshot(const ResidentAgent& agent) const;
+
+    // イベントを1件記録する。stopIndexが負なら、住民の今の立ち寄り回数を使う。
+    uint64_t RecordEvent(const ResidentAgent& agent, const GameContext& context, SimEventKind kind, SimEventResult result,
+                         SimReason reason = SimReason::None, uint32_t facilityId = 0, float a = 0.0f, float b = 0.0f, float c = 0.0f,
+                         int stopIndex = -1, uint64_t detailId = 0, SimAnomaly anomaly = SimAnomaly::None);
+
+    // 施設選び1回ぶんの、判断の内訳を作って記録する(記録がOFFなら0を返す)。
+    uint64_t RecordDecisionDetail(const ResidentAgent& agent, const GameContext& context, const OutingPurposeChoice& purpose, const PurposeTrace& purposeTrace,
+                                  const std::vector<CandidateEvaluation>& evaluations, const FacilityChoiceTrace& choice, int chosenIndex,
+                                  int stopIndex, bool isStopover, float stopChance, float stopRoll,
+                                  bool foodChecked = false, float foodAccept = 1.0f, float foodRoll = -1.0f, bool foodPassed = true);
+
+    // 住民1人の不変条件を調べ、新しく違反になったものをAnomalyイベントとして記録する(記録がOFFなら何もしない)。
+    // index: オブジェクトのid → オブジェクトの表(全住民をまとめて調べる時だけ渡す。nullptrなら、その都度探す)。
+    void CheckAgentInvariants(const ResidentAgent& agent, const GameContext& context, const std::unordered_map<uint32_t, const GameObject*>* index = nullptr);
+
+    // 全住民について、CheckAgentInvariants を行う(ティックごと)。
+    void CheckAllInvariants(const GameContext& context);
+
+    // 経路の長さの合計(ワールド単位)。
+    static float RouteLength(const std::vector<DirectX::XMFLOAT3>& waypoints);
+
     // 施設の利用が終わって、帰り始める前に、今の道路で、施設から自宅への経路を作り直す(道路が切り取られて、行きの経路が使えなくなっていることがあるため)。
     // 経路が見つかれば、その経路で帰る(元より長ければ、迂回なので、体力を消費し、満足度が下がる)。見つからなければ、立ち往生にして、falseを返す。
     // applyDetourPenalty: 元の経路(今の保存してある経路)より長ければ、迂回の体力の消費・満足度の低下を与えるか。
@@ -215,7 +320,8 @@ private:
 
     // 住民を、立ち往生にする(道路の上に立たせ、動かない・施設を使わない状態にして、満足度を下げる)。
     // 今の位置が、道路の上でない(切り取られた跡・施設の中など)時は、近くの、残った道路の上に寄せる(遠くへは、ワープさせない)。
-    void BecomeStranded(ResidentAgent& agent, GameContext& context, const std::vector<RoadSegment>& segments);
+    // reason: 立ち往生した理由(デバッグの記録用。動作には関わらない)。
+    void BecomeStranded(ResidentAgent& agent, GameContext& context, const std::vector<RoadSegment>& segments, SimReason reason = SimReason::NoRouteHome);
 
     // 住民を、住居が無い状態にする(元の住宅の位置に、見える状態で立たせる。同じ位置に何人もいる時は、少しずつずらす)。
     void BecomeHomeless(ResidentAgent& agent, GameContext& context);
@@ -281,6 +387,10 @@ private:
 
     // 施設選びの記録(新しいものが後ろ。デバッグ用。保存しない)。
     std::vector<DecisionLogEntry> m_decisionLog;
+
+    // 判断・状態遷移・異常の記録(Editorの「住民デバッグ」用。既定は無効。保存しない)。
+    SimDebugRecorder m_debugRecorder;
+    uint64_t m_tickIndex = 0;               // RunDemandTick を呼んだ回数(記録用。保存しない)
 
     // 最後に時計から読んだ、通算の週(デバッグ表示用)。
     int m_lastWeekCount = 1;

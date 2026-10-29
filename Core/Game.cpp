@@ -127,6 +127,10 @@ bool Game::Initialize(HWND hwnd)
     m_assetBrowser.SetOpenFlag(m_editorUi.PanelFlag("Assets"));
     m_assetViewer.SetOpenFlag(m_editorUi.PanelFlag("Asset Viewer"));
     m_audioPanel.SetOpenFlag(m_editorUi.PanelFlag("Audio"));
+    m_residentDebugPanel.SetOpenFlag(m_editorUi.PanelFlag("住民デバッグ"));
+
+    // 住民の判断・状態遷移の記録を有効にする(Editorのビルドだけ。Releaseでは無効のまま)。記録は、乱数・シミュレーションの結果を変えない。
+    m_demandSystem.GetDebugRecorder().SetEnabled(true);
 
 #endif
 
@@ -406,6 +410,23 @@ void Game::Update()
 #ifdef ENABLE_EDITOR
     // Assetsからモデルをドラッグしている状態を読み取り、ゲームの画面の上で離されたら飾りを置く。
     UpdateAssetDragState();
+
+    // 「住民デバッグ」の対象を、ゲームの選択(クリックした住民、またはクリックした住宅の住民)に連動させる。
+    // ゲームシーンの外(タイトル画面)では、対象を外す。パネルを開いても、ゲーム内の時間は止めない。
+    if (IsInGameScene())
+    {
+        uint32_t selectedResident = m_followAgentId;
+        if (selectedResident == 0 && m_selectedBuildingId != 0)
+        {
+            selectedResident = m_demandSystem.FindResidentIdForHome(m_selectedBuildingId);
+        }
+        m_residentDebugPanel.NotifySelection(selectedResident);
+    }
+    else
+    {
+        m_residentDebugPanel.ClearTarget();
+    }
+
 #endif
     if (IsInGameScene())
     {
@@ -1828,6 +1849,7 @@ void Game::Draw()
     // 人流・需要シミュレーションの統計・プロファイラ・ログはモードによらず常時表示する
     // (Editorメニューのパネル一覧、またはタイトルバーの×で閉じられる)。
     m_demandSystem.DrawDebugUI(m_editorUi.PanelFlag("City Stats"));
+    m_residentDebugPanel.Draw(m_demandSystem, m_objects);
     m_gameClock.DrawDebugUI(m_editorUi.PanelFlag("Time"));
     m_gameEconomy.DrawDebugUI(m_editorUi.PanelFlag("Economy"));
     m_assetBrowser.DrawDebugUI();

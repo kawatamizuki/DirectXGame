@@ -18,6 +18,7 @@
 #include "AssetBrowser.h"
 #include "AssetViewer.h"
 #include "AudioPanel.h"
+#include "ResidentDebugPanel.h"
 #include "CityCameraController.h"
 #include "ClickDragGesture.h"
 #include "ModelCache.h"
@@ -248,4 +249,7 @@ private:
     Model m_agentModel;
     DijkstraPathfinder m_pathfinder;
     DemandSystem m_demandSystem;
+
+    // Editorの「住民デバッグ」パネル(選んだ住民の現在値・判断の計算・処理の履歴・異常)。Editorのビルドだけが描く。
+    ResidentDebugPanel m_residentDebugPanel;
 };

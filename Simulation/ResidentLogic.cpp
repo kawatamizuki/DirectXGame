@@ -87,13 +87,42 @@ void InitializeResident(ResidentAgent& agent, uint32_t seed, const ResidentSimSe
 }
 
 // ---------------------------------------------------------------------------
+// 外出を考える確率
+// ---------------------------------------------------------------------------
+float ComputeOutingChance(const ResidentAgent& agent, const ResidentSimSettings& settings, OutingChanceBranch* branch)
+{
+    const bool unmet = IsLifeNeedUnmet(agent, settings) || IsActivityNeedUnmet(agent, settings);
+    float chance = 0.0f;
+    OutingChanceBranch which = OutingChanceBranch::SpontaneousLowStamina;
+    if (unmet)
+    {
+        chance = settings.needDrivenChancePerTick;
+        which = OutingChanceBranch::NeedDriven;
+    }
+    else if (agent.stamina >= settings.spontaneousMinStamina)
+    {
+        chance = settings.spontaneousChancePerTick * agent.traits.spontaneity;
+        which = OutingChanceBranch::Spontaneous;
+    }
+    if (branch)
+    {
+        *branch = which;
+    }
+    return chance;
+}
+
+// ---------------------------------------------------------------------------
 // 外出の目的
 // ---------------------------------------------------------------------------
-OutingPurposeChoice ChoosePurpose(const ResidentAgent& agent, const ResidentSimSettings& settings, SimRandom& random)
+OutingPurposeChoice ChoosePurpose(const ResidentAgent& agent, const ResidentSimSettings& settings, SimRandom& random, PurposeTrace* outTrace)
 {
+    // 判断の過程は、実際に引いた乱数をそのまま書き出す(traceの有無で、乱数の消費は変わらない)。
+    PurposeTrace trace;
     OutingPurposeChoice choice;
     const bool lifeUnmet = IsLifeNeedUnmet(agent, settings);
     const bool activityUnmet = IsActivityNeedUnmet(agent, settings);
+    trace.lifeUnmet = lifeUnmet;
+    trace.activityUnmet = activityUnmet;
     choice.needDriven = lifeUnmet || activityUnmet;
 
     if (choice.needDriven)
@@ -101,7 +130,13 @@ OutingPurposeChoice ChoosePurpose(const ResidentAgent& agent, const ResidentSimS
         // 両方が不足なら、より不足している方(同じなら乱数)を優先する。
         if (lifeUnmet && activityUnmet)
         {
-            if (std::fabs(agent.lifeNeed - agent.activityNeed) < 0.001f) { choice.category = (random.Next01() < 0.5f) ? FacilityCategory::Daily : FacilityCategory::Leisure; }
+            if (std::fabs(agent.lifeNeed - agent.activityNeed) < 0.001f)
+            {
+                const float roll = random.Next01();
+                trace.tieBreakDrawn = true;
+                trace.tieBreakRoll = roll;
+                choice.category = (roll < 0.5f) ? FacilityCategory::Daily : FacilityCategory::Leisure;
+            }
             else { choice.category = (agent.lifeNeed < agent.activityNeed) ? FacilityCategory::Daily : FacilityCategory::Leisure; }
         }
         else
@@ -112,7 +147,11 @@ OutingPurposeChoice ChoosePurpose(const ResidentAgent& agent, const ResidentSimS
     else
     {
         // 自発的な外出。需要の回復に限らないので、娯楽を多めに。
-        choice.category = (random.Next01() < 0.7f) ? FacilityCategory::Leisure : FacilityCategory::Daily;
+        const float roll = random.Next01();
+        trace.categoryDrawn = true;
+        trace.categoryRoll = roll;
+        trace.leisureChance = 0.7f;
+        choice.category = (roll < 0.7f) ? FacilityCategory::Leisure : FacilityCategory::Daily;
     }
 
     if (choice.category == FacilityCategory::Daily)
@@ -120,11 +159,22 @@ OutingPurposeChoice ChoosePurpose(const ResidentAgent& agent, const ResidentSimS
         // 生活が大きく不足しているほど、まとめ買い。そうでなければ、買い足し。
         const float deficit = Clamp((settings.needSatisfiedThreshold - agent.lifeNeed) / settings.needSatisfiedThreshold, 0.0f, 1.0f);
         const float bulkChance = choice.needDriven ? (0.2f + deficit) : 0.3f;
-        choice.purpose = (random.Next01() < bulkChance) ? UsagePurpose::BulkBuy : UsagePurpose::TopUp;
+        const float roll = random.Next01();
+        trace.lifeDeficit = deficit;
+        trace.purposeRoll = roll;
+        trace.purposeChance = bulkChance;
+        choice.purpose = (roll < bulkChance) ? UsagePurpose::BulkBuy : UsagePurpose::TopUp;
     }
     else
     {
-        choice.purpose = (random.Next01() < 0.5f) ? UsagePurpose::Movie : UsagePurpose::Light;
+        const float roll = random.Next01();
+        trace.purposeRoll = roll;
+        trace.purposeChance = 0.5f;
+        choice.purpose = (roll < 0.5f) ? UsagePurpose::Movie : UsagePurpose::Light;
+    }
+    if (outTrace)
+    {
+        *outTrace = trace;
     }
     return choice;
 }
@@ -132,26 +182,38 @@ OutingPurposeChoice ChoosePurpose(const ResidentAgent& agent, const ResidentSimS
 // ---------------------------------------------------------------------------
 // 施設の選び方
 // ---------------------------------------------------------------------------
+void ComputeFacilityWeightBreakdown(const ResidentAgent& agent, const FacilityDefinition& facility, UsagePurpose purpose,
+                                    float pathLength, const ResidentSimSettings& settings, FacilityWeightBreakdown& out)
+{
+    const int purposeIndex = static_cast<int>(purpose);
+    out.suitability = (purposeIndex >= 0 && purposeIndex < kUsagePurposeCount) ? facility.purposeSuitability[purposeIndex] : 1.0f;
+
+    out.quality = (std::max)(0.01f, facility.quality);
+    out.qualityExponent = settings.qualityExponent * agent.traits.qualityWeight;
+    out.qualityFactor = std::pow(out.quality, out.qualityExponent);
+
+    out.priceYen = static_cast<float>(facility.pricePerVisit);
+    out.priceRatio = out.priceYen / (std::max)(1.0f, settings.priceReferenceYen);
+    out.priceStrength = settings.priceStrength * agent.traits.priceSensitivity;
+    out.priceFactor = 1.0f / (1.0f + out.priceStrength * out.priceRatio);
+
+    // 距離: 道のり(マス基準に直した値)が、距離の目安の分だけ離れるごとに、約37%(1/e)になる。
+    out.legacyDistance = pathLength / WorldScale::FromLegacy(1.0f);
+    out.distanceScale = (std::max)(0.1f, settings.distanceScaleLegacyCells * agent.traits.distanceTolerance);
+    out.distanceFactor = std::exp(-(std::max)(0.0f, out.legacyDistance) / out.distanceScale);
+
+    out.product = (std::max)(0.0f, out.suitability) * out.qualityFactor * out.priceFactor * out.distanceFactor;
+    // 到達できる候補を、無条件に0にしない(弱い候補も、ごくまれに選ばれる)。
+    out.floorWeight = settings.minimumWeight;
+    out.weight = (std::max)(out.product, out.floorWeight);
+}
+
 float ComputeFacilityWeight(const ResidentAgent& agent, const FacilityDefinition& facility, UsagePurpose purpose,
                             float pathLength, const ResidentSimSettings& settings)
 {
-    const int purposeIndex = static_cast<int>(purpose);
-    const float suitability = (purposeIndex >= 0 && purposeIndex < kUsagePurposeCount) ? facility.purposeSuitability[purposeIndex] : 1.0f;
-
-    const float quality = (std::max)(0.01f, facility.quality);
-    const float qualityFactor = std::pow(quality, settings.qualityExponent * agent.traits.qualityWeight);
-
-    const float priceRatio = static_cast<float>(facility.pricePerVisit) / (std::max)(1.0f, settings.priceReferenceYen);
-    const float priceFactor = 1.0f / (1.0f + settings.priceStrength * agent.traits.priceSensitivity * priceRatio);
-
-    // 距離: 道のり(マス基準に直した値)が、距離の目安の分だけ離れるごとに、約37%(1/e)になる。
-    const float legacyDistance = pathLength / WorldScale::FromLegacy(1.0f);
-    const float scale = (std::max)(0.1f, settings.distanceScaleLegacyCells * agent.traits.distanceTolerance);
-    const float distanceFactor = std::exp(-(std::max)(0.0f, legacyDistance) / scale);
-
-    const float weight = (std::max)(0.0f, suitability) * qualityFactor * priceFactor * distanceFactor;
-    // 到達できる候補を、無条件に0にしない(弱い候補も、ごくまれに選ばれる)。
-    return (std::max)(weight, settings.minimumWeight);
+    FacilityWeightBreakdown breakdown;
+    ComputeFacilityWeightBreakdown(agent, facility, purpose, pathLength, settings, breakdown);
+    return breakdown.weight;
 }
 
 float RequiredStamina(const FacilityDefinition& facility, float pathLength, const ResidentSimSettings& settings)
@@ -190,12 +252,19 @@ float ComputeRepeatVisitFactor(const ResidentAgent& agent, uint32_t facilityObje
     return factor;
 }
 
+StopoverBlock ExplainStopoverBlock(const ResidentAgent& agent, float hour, const ResidentSimSettings& settings)
+{
+    // 判定の順序は、以前の CanConsiderStopover の && の並び(家・回数・時刻・体力)のまま。ここが唯一の定義。
+    if (!(agent.homeObjectId != 0))                       { return StopoverBlock::NoHome; }
+    if (!(agent.outingStopCount < settings.maxStopovers)) { return StopoverBlock::MaxStops; }
+    if (!(hour < settings.stopoverLatestHour))            { return StopoverBlock::TooLate; }
+    if (!(agent.stamina >= settings.stopoverMinStamina))  { return StopoverBlock::LowStamina; }
+    return StopoverBlock::None;
+}
+
 bool CanConsiderStopover(const ResidentAgent& agent, float hour, const ResidentSimSettings& settings)
 {
-    return agent.homeObjectId != 0
-        && agent.outingStopCount < settings.maxStopovers
-        && hour < settings.stopoverLatestHour
-        && agent.stamina >= settings.stopoverMinStamina;
+    return ExplainStopoverBlock(agent, hour, settings) == StopoverBlock::None;
 }
 
 float ComputeStopoverChance(const ResidentAgent& agent, const ResidentSimSettings& settings)
@@ -236,7 +305,7 @@ int PickWeightedIndex(const std::vector<float>& weights, float unit)
 
 int ChooseFacility(const ResidentAgent& agent, const std::vector<FacilityCandidate>& candidates, const OutingPurposeChoice& purpose,
                    const ResidentSimSettings& settings, SimRandom& random, std::vector<CandidateEvaluation>& evaluations,
-                   int visitsThisOuting)
+                   int visitsThisOuting, FacilityChoiceTrace* outTrace)
 {
     evaluations.clear();
     evaluations.reserve(candidates.size());
@@ -275,18 +344,26 @@ int ChooseFacility(const ResidentAgent& agent, const std::vector<FacilityCandida
         {
             evaluation.reject = CandidateReject::Unreachable;
         }
-        else if (agent.stamina < ((candidate.walkLength >= 0.0f)
-                     ? RequiredStaminaForWalk(*facility, candidate.walkLength, settings)
-                     : RequiredStamina(*facility, candidate.pathLength, settings)))
-        {
-            evaluation.reject = CandidateReject::NotEnoughStamina;
-        }
         else
         {
-            evaluation.repeatFactor = ComputeRepeatVisitFactor(agent, candidate.objectId, needDrivenDaily, settings);
-            const float baseWeight = ComputeFacilityWeight(agent, *facility, purpose.purpose, candidate.pathLength, settings);
-            // 履歴で下げても、到達できる候補を、無条件に0にはしない(下限を守る)。
-            evaluation.weight = (std::max)(baseWeight * evaluation.repeatFactor, settings.minimumWeight);
+            // 体力の判定に使った必要な体力を覚える(判定の式は、以前と同じ)。
+            evaluation.requiredStamina = (candidate.walkLength >= 0.0f)
+                ? RequiredStaminaForWalk(*facility, candidate.walkLength, settings)
+                : RequiredStamina(*facility, candidate.pathLength, settings);
+            if (agent.stamina < evaluation.requiredStamina)
+            {
+                evaluation.reject = CandidateReject::NotEnoughStamina;
+            }
+            else
+            {
+                evaluation.repeatFactor = ComputeRepeatVisitFactor(agent, candidate.objectId, needDrivenDaily, settings);
+                ComputeFacilityWeightBreakdown(agent, *facility, purpose.purpose, candidate.pathLength, settings, evaluation.breakdown);
+                evaluation.hasBreakdown = true;
+                const float baseWeight = evaluation.breakdown.weight;
+                evaluation.weightAfterRepeat = baseWeight * evaluation.repeatFactor;
+                // 履歴で下げても、到達できる候補を、無条件に0にはしない(下限を守る)。
+                evaluation.weight = (std::max)(evaluation.weightAfterRepeat, settings.minimumWeight);
+            }
         }
         weights.push_back(evaluation.weight);
         evaluations.push_back(evaluation);
@@ -299,10 +376,27 @@ int ChooseFacility(const ResidentAgent& agent, const std::vector<FacilityCandida
         for (CandidateEvaluation& evaluation : evaluations) { evaluation.chance = evaluation.weight / total; }
     }
 
-    const int picked = PickWeightedIndex(weights, random.Next01());
+    // 抽選の累積の範囲(重みを順に足した値)。PickWeightedIndexと同じく、正の重みだけを足す。
+    float positiveTotal = 0.0f;
+    for (CandidateEvaluation& evaluation : evaluations)
+    {
+        evaluation.rangeBegin = positiveTotal;
+        if (evaluation.weight > 0.0f) { positiveTotal += evaluation.weight; }
+        evaluation.rangeEnd = positiveTotal;
+    }
+
+    const float unit = random.Next01();
+    const int picked = PickWeightedIndex(weights, unit);
     if (picked >= 0)
     {
         evaluations[static_cast<size_t>(picked)].chosen = true;
+    }
+    if (outTrace)
+    {
+        outTrace->randomUnit = unit;
+        outTrace->totalWeight = total;
+        outTrace->pickTarget = Clamp(unit, 0.0f, 0.99999994f) * positiveTotal;
+        outTrace->pickedIndex = picked;
     }
     return picked;
 }

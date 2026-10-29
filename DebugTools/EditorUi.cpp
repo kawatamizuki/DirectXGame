@@ -19,6 +19,7 @@ namespace
     constexpr const char* kPanelEconomy = "Economy";
     constexpr const char* kPanelScenario = "Scenario";
     constexpr const char* kPanelCityStats = "City Stats";
+    constexpr const char* kPanelResidentDebug = "住民デバッグ";
     constexpr const char* kPanelProfiler = "Profiler";
     constexpr const char* kPanelLog = "Log";
     constexpr const char* kPanelAssets = "Assets";
@@ -46,6 +47,7 @@ namespace
         { kPanelEconomy,        true,  nullptr },
         { kPanelScenario,       true,  nullptr },
         { kPanelCityStats,      true,  nullptr },
+        { kPanelResidentDebug,  true,  nullptr }, // 住民を1人選んで、現在値・判断の計算・処理の履歴・異常を見る
         { kPanelProfiler,       true,  nullptr },
         { kPanelLog,            true,  nullptr },
         { kPanelAssets,         false, "F2"    }, // 開くまでは何も処理しない(素材を探すのも、初めて開いた時)
@@ -316,6 +318,7 @@ void EditorUi::BuildDefaultLayout(unsigned int dockId, float width, float height
     ImGui::DockBuilderDockWindow(kPanelLog, bottom);
     ImGui::DockBuilderDockWindow(kPanelProfiler, bottom);
     ImGui::DockBuilderDockWindow(kPanelCityStats, bottom);
+    ImGui::DockBuilderDockWindow(kPanelResidentDebug, bottom);
     ImGui::DockBuilderDockWindow(kPanelAudio, bottom);
 
     ImGui::DockBuilderFinish(dockId);
