@@ -282,6 +282,9 @@
     <ClCompile Include="Simulation\SimTimeline.cpp">
       <Filter>ソース ファイル\Simulation</Filter>
     </ClCompile>
+    <ClCompile Include="Simulation\SimTest.cpp">
+      <Filter>ソース ファイル\Simulation</Filter>
+    </ClCompile>
     <ClCompile Include="Simulation\RoutePlanner.cpp">
       <Filter>ソース ファイル\Simulation</Filter>
     </ClCompile>
@@ -660,6 +663,9 @@
       <Filter>ヘッダー ファイル\Simulation</Filter>
     </ClInclude>
     <ClInclude Include="Simulation\SimTimeline.h">
+      <Filter>ヘッダー ファイル\Simulation</Filter>
+    </ClInclude>
+    <ClInclude Include="Simulation\SimTest.h">
       <Filter>ヘッダー ファイル\Simulation</Filter>
     </ClInclude>
     <ClInclude Include="Simulation\ResidentSimSettings.h">

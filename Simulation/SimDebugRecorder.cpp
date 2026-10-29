@@ -174,6 +174,10 @@ uint64_t SimDebugRecorder::AddEvent(SimEvent event)
         resident.currentOutingId = m_nextOutingId++;
     }
     event.outingId = resident.currentOutingId;
+    if (event.testId == 0)
+    {
+        event.testId = resident.activeTestId; // 行動テストで強制している間のイベントには、テストの番号を付ける
+    }
     event.eventId = m_nextEventId++;
     event.runId = m_runId;
     const uint64_t id = event.eventId;
@@ -210,6 +214,14 @@ uint64_t SimDebugRecorder::AddDetail(SimDecisionDetail detail)
     {
         return 0;
     }
+    if (detail.testId == 0)
+    {
+        const auto resident = m_residents.find(detail.residentId);
+        if (resident != m_residents.end())
+        {
+            detail.testId = resident->second.activeTestId;
+        }
+    }
     detail.detailId = m_nextDetailId++;
     const uint64_t id = detail.detailId;
     m_details.push_back(std::move(detail));
@@ -241,6 +253,31 @@ void SimDebugRecorder::NoteOutingRoll(uint32_t residentId, OutingChanceBranch br
     summary.lastHit = hit;
     summary.lastWeek = week;
     summary.lastHour = hour;
+}
+
+void SimDebugRecorder::SetActiveTest(uint32_t residentId, uint32_t testId)
+{
+    if (!m_enabled)
+    {
+        return;
+    }
+    if (testId == 0)
+    {
+        // 外す時は、住民の記録を、新しく作らない(既にある時だけ)。
+        const auto it = m_residents.find(residentId);
+        if (it != m_residents.end())
+        {
+            it->second.activeTestId = 0;
+        }
+        return;
+    }
+    m_residents[residentId].activeTestId = testId;
+}
+
+uint32_t SimDebugRecorder::ActiveTestId(uint32_t residentId) const
+{
+    const SimResidentRecord* record = FindResident(residentId);
+    return record ? record->activeTestId : 0;
 }
 
 void SimDebugRecorder::NoteTickGate(const SimTickGate& gate)

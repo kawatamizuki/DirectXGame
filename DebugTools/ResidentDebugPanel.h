@@ -3,6 +3,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include "SimTest.h"
 #include "SimTimeline.h"
 
 class DemandSystem;
@@ -62,6 +63,8 @@ private:
     void DrawDecisionTab(DemandSystem& demand, const std::vector<GameObject>& objects);
     void DrawHistoryTab(DemandSystem& demand, const std::vector<GameObject>& objects);
     void DrawAnomalyTab(DemandSystem& demand, const std::vector<GameObject>& objects);
+    // 行動テスト(段階3): 行動・強制の範囲・対象・実行・取消・結果の一覧。
+    void DrawTestTab(DemandSystem& demand, const std::vector<GameObject>& objects);
     void DrawDecisionDetail(const SimDecisionDetail& detail, const std::vector<GameObject>& objects);
 
     bool* m_open = nullptr;
@@ -92,4 +95,17 @@ private:
     std::set<uint64_t> m_bookmarks;     // ブックマークしたイベントの番号(全住民ぶん。世界が変わったら消す)
     uint32_t m_bookmarksRunId = 0;      // m_bookmarks が属する、記録の世界
     uint64_t m_lastPausedSeen = 0;      // 最後に見た、一時停止のイベント番号(新しい停止に、自動で切り替えるため)
+
+    // ---- 行動テスト(段階3)。画面の入力(指示を作る材料)と、直近の結果 ----
+    int m_testAction = 0;               // SimTestAction の値
+    int m_testMode = 0;                 // SimTestMode の値
+    int m_testTarget = 0;               // SimTestTarget の値
+    float m_testRect[4] = { -20.0f, -20.0f, 20.0f, 20.0f }; // 範囲(minX, minZ, maxX, maxZ)
+    int m_testMaxCount = 50;
+    int m_testForcedStopovers = 1;
+    float m_testStamina = 40.0f;
+    uint32_t m_testFacilityId = 0;      // 指定する施設(GameObject::id)
+    SimTestSubmitResult m_testLastSubmit;
+    bool m_testSubmitted = false;       // 一度でも、指示を出したか
+    bool m_testConfirmOpen = false;     // 人数が多い時の、確認の画面を開く要求
 };

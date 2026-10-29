@@ -12,6 +12,7 @@
 #include "RoadCutting.h"
 #include "RoutePlanner.h"
 #include "SimDebugRecorder.h"
+#include "SimTest.h"
 #include "ISaveable.h"
 
 struct GameContext;
@@ -304,6 +305,24 @@ public:
     // 乱数の内部状態(記録のON/OFFで乱数の消費が変わらないことの確認に使う)。
     uint32_t GetRandomState() const { return m_random.GetState(); }
 
+    // ---- 行動テスト(段階3。Editorの「住民デバッグ」の「行動テスト」タブ用。詳しくは SimTest.h) ----
+    // 指示を、対象の住民ごとの「計画」にして、待機させる(ここでは、住民の状態を変えない)。計画は、次の安全なタイミング
+    // (外出判定・立ち寄り判定・更新の最初)で、1回だけ消化される。selectedResidentId: target==Selected の時の住民。
+    SimTestSubmitResult SubmitTestCommand(const SimTestCommand& command, uint32_t selectedResidentId, const std::vector<GameObject>& objects);
+
+    // 待機中・実行中の計画を、取り消す(batchId=指示のまとまり / testId=1件)。取り消した件数を返す。
+    // 実行中の計画は、強制を外す(既に始まった外出・行動は、そのまま続く)。
+    int CancelTestBatch(uint32_t batchId);
+    int CancelTestPlan(uint32_t testId);
+
+    // 計画の一覧(古い物から。待機中・実行中・終わった物。上限を超えると、終わった古い物から捨てる)と、終わった物を消す操作。
+    const std::vector<SimTestPlan>& GetTestPlans() const { return m_testPlans; }
+    void ClearFinishedTestPlans();
+    int CountActiveTestPlans() const;
+
+    // 四角(ワールドのXZ)の中にいる住民の人数(今の位置。「範囲」の指示を出す前の、目安の表示用)。
+    int CountResidentsInRect(float minX, float minZ, float maxX, float maxZ, const std::vector<GameObject>& objects) const;
+
 private:
     // ---- 記録(SimDebugRecorder)への窓口。記録がOFFなら、すぐ戻る。乱数は引かない・状態は変えない ----
 
@@ -319,7 +338,7 @@ private:
     uint64_t RecordDecisionDetail(const ResidentAgent& agent, const GameContext& context, const OutingPurposeChoice& purpose, const PurposeTrace& purposeTrace,
                                   const std::vector<CandidateEvaluation>& evaluations, const FacilityChoiceTrace& choice, int chosenIndex,
                                   int stopIndex, bool isStopover, float stopChance, float stopRoll,
-                                  bool foodChecked = false, float foodAccept = 1.0f, float foodRoll = -1.0f, bool foodPassed = true);
+                                  bool foodChecked = false, float foodAccept = 1.0f, float foodRoll = -1.0f, bool foodPassed = true, bool forcedFacility = false);
 
     // 住民1人の不変条件を調べ、新しく違反になったものをAnomalyイベントとして記録する(記録がOFFなら何もしない)。
     // index: オブジェクトのid → オブジェクトの表(全住民をまとめて調べる時だけ渡す。nullptrなら、その都度探す)。
@@ -330,6 +349,20 @@ private:
 
     // 経路の長さの合計(ワールド単位)。
     static float RouteLength(const std::vector<DirectX::XMFLOAT3>& waypoints);
+
+    // ---- 行動テストの内部(SimTest.h) ----
+    // 住民に、待機中・実行中の計画があれば、返す(無ければnullptr)。
+    SimTestPlan* FindActiveTestPlan(uint32_t residentId);
+    // 待機中の計画を、実行中にする(消化した)。住民に、テストの番号を付け(以後のイベントに付く)、TestCommandイベントを記録する。roll/chanceは、強制した確率の抽選の乱数と確率。
+    void BeginTestPlan(SimTestPlan& plan, const ResidentAgent& agent, const GameContext& context, float roll = -1.0f, float chance = 0.0f);
+    // 計画を終える(成功・拒否・取消・期限切れ)。agentがあれば、拒否のTestCommandイベントを記録し、テストの番号を外す。
+    void FinishTestPlan(SimTestPlan& plan, SimTestStatus status, SimTestReject reject, int detail, const ResidentAgent* agent, const GameContext& context);
+    // 更新の最初に、待機中の「すぐ消化できる指示」(帰宅・行き先変更・体力)を、上限つきで消化する。
+    void ProcessImmediateTestPlans(GameContext& context);
+    // 需要判定のたびに、待機中の計画の前提(家にいる・外出中)・期限を確かめる。
+    void MaintainTestPlansAtTick(GameContext& context);
+    // 外出が終わった(家に着いた・住居なし・立ち往生)時に、実行中の計画を、成功か、拒否(強制が残った)で終える。
+    void FinalizeTestOnOutingEnd(ResidentAgent& agent, GameContext& context);
 
     // 施設の利用が終わって、帰り始める前に、今の道路で、施設から自宅への経路を作り直す(道路が切り取られて、行きの経路が使えなくなっていることがあるため)。
     // 経路が見つかれば、その経路で帰る(元より長ければ、迂回なので、体力を消費し、満足度が下がる)。見つからなければ、立ち往生にして、falseを返す。
@@ -424,12 +457,19 @@ private:
     // 入居者を選ぶ待ちの住宅(新しい住民を、まだ生まれさせない)。保存しない。
     std::vector<uint32_t> m_reservedHouses;
 
+    // 行動テストの計画(待機中・実行中・終わった物)。保存しない。
+    std::vector<SimTestPlan> m_testPlans;
+    uint32_t m_nextTestId = 1;
+    uint32_t m_nextTestBatchId = 1;
+    static constexpr size_t kMaxTestPlans = 600;
+
     // 判断・状態遷移・異常の記録(Editorの「住民デバッグ」用。既定は無効。保存しない)。
     SimDebugRecorder m_debugRecorder;
     uint64_t m_tickIndex = 0;               // RunDemandTick を呼んだ回数(記録用。保存しない)
 
     // 最後に時計から読んだ、通算の週(デバッグ表示用)。
     int m_lastWeekCount = 1;
+    float m_lastClockHour = 8.0f;   // 最後に時計から読んだ時刻(行動テストの計画の記録用)
 
     // Profilerのメモリ内訳表示用。直近のRunDemandTickで作った経路探索グラフの規模を覚えておく
     // (グラフ自体はRunDemandTick内のローカル変数のため、規模だけをここに残す)。
