@@ -139,6 +139,10 @@ void SimDebugRecorder::StartNewRun()
     m_detailsRecordedTotal = 0;
     m_detailsDropped = 0;
     m_anomaliesRaised = 0;
+    if (m_observer)
+    {
+        m_observer->OnWorldReset();
+    }
     // 通し番号(m_nextEventId・m_nextDetailId・m_nextOutingId)は戻さない(古い番号と混ざらないように)。
 }
 
@@ -197,6 +201,10 @@ uint64_t SimDebugRecorder::AddEvent(SimEvent event)
         m_pauseActive = true;
         m_pausedEventId = id;
     }
+    if (m_observer)
+    {
+        m_observer->OnEvent(event);
+    }
     m_events.push_back(std::move(event));
     ++m_eventsRecordedTotal;
     TrimEvents();
@@ -224,6 +232,10 @@ uint64_t SimDebugRecorder::AddDetail(SimDecisionDetail detail)
     }
     detail.detailId = m_nextDetailId++;
     const uint64_t id = detail.detailId;
+    if (m_observer)
+    {
+        m_observer->OnDetail(detail);
+    }
     m_details.push_back(std::move(detail));
     ++m_detailsRecordedTotal;
     TrimDetails();
@@ -253,6 +265,10 @@ void SimDebugRecorder::NoteOutingRoll(uint32_t residentId, OutingChanceBranch br
     summary.lastHit = hit;
     summary.lastWeek = week;
     summary.lastHour = hour;
+    if (m_observer)
+    {
+        m_observer->OnOutingRoll(week, branch, chance, hit);
+    }
 }
 
 void SimDebugRecorder::SetActiveTest(uint32_t residentId, uint32_t testId)

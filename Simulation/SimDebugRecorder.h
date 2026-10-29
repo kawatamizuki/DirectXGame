@@ -286,9 +286,25 @@ uint32_t CheckResidentInvariants(const ResidentAgent& agent, const SimInvariantI
 // 記録の窓口
 // ---------------------------------------------------------------------------
 
+// 記録が追加される瞬間を、横から見る人(統計など)。記録部は、イベント・判断の内訳・外出判定の結果を渡すだけで、相手の中身を知らない。
+// 観察者は、数えるだけ(乱数を引かない・住民の状態を変えない)。記録がOFFの間は、呼ばれない。
+class ISimRecordObserver
+{
+public:
+    virtual ~ISimRecordObserver() = default;
+    virtual void OnEvent(const SimEvent& event) = 0;                // 追加したイベント(番号・テスト番号は付与済み)
+    virtual void OnDetail(const SimDecisionDetail& detail) = 0;     // 追加した判断の内訳
+    // 外出判定の1回(不発も)。naturalHit は、行動テストの強制を除いた、本当の抽選の結果。
+    virtual void OnOutingRoll(int week, OutingChanceBranch branch, float chance, bool naturalHit) = 0;
+    virtual void OnWorldReset() = 0;                                // 新しい世界になった(ロード・リセット)
+};
+
 class SimDebugRecorder
 {
 public:
+    // 観察者を付ける(nullptrで外す)。所有はしない。
+    void SetObserver(ISimRecordObserver* observer) { m_observer = observer; }
+
     static constexpr size_t kDefaultEventCapacity = 20000;  // 全住民の重要イベントの上限
     static constexpr size_t kDefaultDetailCapacity = 2000;  // 判断の内訳(候補ごとの計算)の上限(1件は、候補が数軒で約1KB。実測は学習メモ)
 
@@ -354,6 +370,7 @@ private:
     void TrimDetails();
 
     bool m_enabled = false;
+    ISimRecordObserver* m_observer = nullptr; // 統計など(所有しない)
     SimBreakpoints m_breakpoints;       // 止める条件(世界を作り直しても、残す)
     bool m_pauseActive = false;         // 止める印が立っているか
     uint64_t m_pausedEventId = 0;

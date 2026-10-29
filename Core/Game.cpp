@@ -128,6 +128,7 @@ bool Game::Initialize(HWND hwnd)
     m_assetViewer.SetOpenFlag(m_editorUi.PanelFlag("Asset Viewer"));
     m_audioPanel.SetOpenFlag(m_editorUi.PanelFlag("Audio"));
     m_residentDebugPanel.SetOpenFlag(m_editorUi.PanelFlag("住民デバッグ"));
+    m_simStatsPanel.SetOpenFlag(m_editorUi.PanelFlag("行動統計"));
 
     // 住民の判断・状態遷移の記録を有効にする(Editorのビルドだけ。Releaseでは無効のまま)。記録は、乱数・シミュレーションの結果を変えない。
     m_demandSystem.GetDebugRecorder().SetEnabled(true);
@@ -1981,6 +1982,7 @@ void Game::Draw()
     // (Editorメニューのパネル一覧、またはタイトルバーの×で閉じられる)。
     m_demandSystem.DrawDebugUI(m_editorUi.PanelFlag("City Stats"));
     m_residentDebugPanel.Draw(m_demandSystem, m_objects);
+    m_simStatsPanel.Draw(m_demandSystem, m_objects);
     m_gameClock.DrawDebugUI(m_editorUi.PanelFlag("Time"));
     m_gameEconomy.DrawDebugUI(m_editorUi.PanelFlag("Economy"));
     m_assetBrowser.DrawDebugUI();

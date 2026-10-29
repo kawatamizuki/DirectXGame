@@ -282,6 +282,12 @@
     <ClCompile Include="Simulation\SimTimeline.cpp">
       <Filter>ソース ファイル\Simulation</Filter>
     </ClCompile>
+    <ClCompile Include="Simulation\SimStats.cpp">
+      <Filter>ソース ファイル\Simulation</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\SimStatsPanel.cpp">
+      <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
     <ClCompile Include="Simulation\SimTest.cpp">
       <Filter>ソース ファイル\Simulation</Filter>
     </ClCompile>
@@ -664,6 +670,12 @@
     </ClInclude>
     <ClInclude Include="Simulation\SimTimeline.h">
       <Filter>ヘッダー ファイル\Simulation</Filter>
+    </ClInclude>
+    <ClInclude Include="Simulation\SimStats.h">
+      <Filter>ヘッダー ファイル\Simulation</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\SimStatsPanel.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
     </ClInclude>
     <ClInclude Include="Simulation\SimTest.h">
       <Filter>ヘッダー ファイル\Simulation</Filter>
