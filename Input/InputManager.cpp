@@ -187,6 +187,11 @@ void InputManager::Update()
         (result == ERROR_SUCCESS);
 }
 
+bool InputManager::HasFocus() const
+{
+    return (m_hwnd == nullptr) || (GetForegroundWindow() == m_hwnd);
+}
+
 void InputManager::SetWindowHandle(HWND hwnd)
 {
     m_hwnd = hwnd;

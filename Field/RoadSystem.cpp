@@ -1582,8 +1582,10 @@ float RoadSystem::GetSliceLength() const
 RoadCutResult RoadSystem::PreviewCut(const std::vector<RoadCutWindow>& windows) const
 {
     // 短すぎる端切れの下限: マスの1/4(これより短い残りは、微小な区間・ノードになるので捨てる)。
+    // 孤立した切れ端(両端が切り口)は、スライスの7割より短ければ、捨てる(つながらない短い道は、ごみになる)。
     const float minPiece = GetSliceLength() * 0.25f;
-    return CutRoads(m_segments, windows, minPiece);
+    const float isolatedMinPiece = GetSliceLength() * 0.7f;
+    return CutRoads(m_segments, windows, minPiece, isolatedMinPiece);
 }
 
 RoadCutResult RoadSystem::ApplyCut(const std::vector<RoadCutWindow>& windows)

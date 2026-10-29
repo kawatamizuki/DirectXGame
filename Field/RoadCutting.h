@@ -56,8 +56,12 @@ bool ClipLineToWindow(const DirectX::XMFLOAT3& a, const DirectX::XMFLOAT3& b, co
 
 // windowsの中にある部分を、全ての区間から切り取る。
 // minPieceLength: これより短い、残りの端切れは、捨てる(微小な区間が残ると、ノードが増えて、見た目も壊れるため)。
+// isolatedMinPieceLength: 両端とも切り口(どこにもつながらない)になった、孤立した切れ端が、これより短ければ、捨てる(つながらない短い道は、ごみになるため。
+//   自由描きの短い区間(約0.8)は、スライス(0.5)で割り切れず、選んだスライスの間に、短い切れ端が挟まることがある)。
+//   片方の端が、元の端(つながっている)の切れ端は、対象外。0なら、この規則は使わない。
 // 切った端は、flatStart/flatEndをtrueにする(平らに描き、延長しない)。切られなかった端の印は、そのまま。
-RoadCutResult CutRoads(const std::vector<RoadSegment>& segments, const std::vector<RoadCutWindow>& windows, float minPieceLength);
+RoadCutResult CutRoads(const std::vector<RoadSegment>& segments, const std::vector<RoadCutWindow>& windows, float minPieceLength,
+                       float isolatedMinPieceLength = 0.0f);
 
 // 取り除いた部分の、解体費(円)。道路の種類ごとの建設単価(costPerCell。最初のマス1つぶんの長さあたり)の、半額。
 // 全ての部分を合計してから、切り上げる(操作ごとに1回)。何かを取り除いたなら、最低1円。何も無ければ0円。

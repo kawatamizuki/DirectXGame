@@ -313,7 +313,11 @@ bool Game::Initialize(HWND hwnd)
     m_scenarioManager.RegisterSaveable(&m_demandSystem);
 #ifdef ENABLE_EDITOR
     // 読み込みで建物などのオブジェクトが入れ替わるので、エディタの選択(添字)を解除する。
-    m_scenarioManager.SetOnWorldReplaced([this]() { m_debugEditor.ClearSelection(); });
+    m_scenarioManager.SetOnWorldReplaced([this]()
+    {
+        m_debugEditor.ClearSelection();
+        m_demolition.Cancel(); // ロード中(F9)に、解体の選びかけがあれば、やめる(選んだ位置は、前の街の物)
+    });
 
     // 「Editor > エディタ機能のON/OFF」に出すスイッチ。全て登録し終えてから、保存してある設定を読む。
     m_buildController.RegisterEditorToggles(m_editorUi.Settings());
@@ -464,6 +468,11 @@ void Game::Update()
 
         // 住民の移動・需要更新は、ゲーム内時間の倍率(停止/倍速)に従って進める。
         m_demandSystem.Update(m_gameClock.GetScaledDeltaSeconds(), m_context, m_roadSystem.GetSegments());
+    }
+    else
+    {
+        // ゲームシーンでない(タイトルへ戻った)・Editingモードの間は、解体の選びかけを残さない(戻った時に、前の選択が、残らないように)。
+        m_demolition.Cancel();
     }
 
     // 音: 聞く位置はカメラ。時間は、ゲーム内の倍率に関係なく、実時間で進める(メニューで時間を止めても、曲のフェードは進む)。

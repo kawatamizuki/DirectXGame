@@ -1,6 +1,8 @@
 ﻿#include "RoadCutting.h"
 #include <algorithm>
 #include <cmath>
+#include <map>
+#include <utility>
 #include "WorldScale.h"
 
 using namespace DirectX;
@@ -126,10 +128,12 @@ bool ClipLineToWindow(const XMFLOAT3& a, const XMFLOAT3& b, const RoadCutWindow&
     return true;
 }
 
-RoadCutResult CutRoads(const std::vector<RoadSegment>& segments, const std::vector<RoadCutWindow>& windows, float minPieceLength)
+RoadCutResult CutRoads(const std::vector<RoadSegment>& segments, const std::vector<RoadCutWindow>& windows, float minPieceLength,
+                       float isolatedMinPieceLength)
 {
     RoadCutResult result;
     result.segments.reserve(segments.size());
+    std::vector<char> fromCut;      // result.segmentsと同じ並び。切られた区間から出てきた切れ端か(切られなかった区間は、false)
 
     for (const RoadSegment& segment : segments)
     {
@@ -139,8 +143,19 @@ RoadCutResult CutRoads(const std::vector<RoadSegment>& segments, const std::vect
         std::vector<Interval> hits;
         if (length >= kEpsilon)
         {
+            const float segMinX = (std::min)(segment.start.x, segment.end.x);
+            const float segMaxX = (std::max)(segment.start.x, segment.end.x);
+            const float segMinZ = (std::min)(segment.start.z, segment.end.z);
+            const float segMaxZ = (std::max)(segment.start.z, segment.end.z);
             for (const RoadCutWindow& window : windows)
             {
+                // 窓を囲む円と、区間を囲む四角が、離れていれば、当たらない(ClipLineToWindowの前に、安く除く)。
+                const float radius = std::sqrt(window.halfLength * window.halfLength + window.halfWidth * window.halfWidth) + kEpsilon;
+                if (window.center.x + radius < segMinX || window.center.x - radius > segMaxX ||
+                    window.center.z + radius < segMinZ || window.center.z - radius > segMaxZ)
+                {
+                    continue;
+                }
                 Interval hit;
                 if (ClipLineToWindow(segment.start, segment.end, window, hit.a, hit.b))
                 {
@@ -151,6 +166,7 @@ RoadCutResult CutRoads(const std::vector<RoadSegment>& segments, const std::vect
         if (hits.empty())
         {
             result.segments.push_back(segment); // 切られない区間は、そのまま
+            fromCut.push_back(0);
             continue;
         }
 
@@ -178,7 +194,14 @@ RoadCutResult CutRoads(const std::vector<RoadSegment>& segments, const std::vect
             cursor = (std::max)(cursor, cut.b);
         }
         if (length - cursor > kEpsilon) { kept.push_back({ cursor, length }); }
-        kept.erase(std::remove_if(kept.begin(), kept.end(), [&](const Interval& piece) { return (piece.b - piece.a) < minPieceLength; }), kept.end());
+        kept.erase(std::remove_if(kept.begin(), kept.end(), [&](const Interval& piece)
+        {
+            const float pieceLength = piece.b - piece.a;
+            if (pieceLength < minPieceLength) { return true; }
+            // 両端とも切り口(元の端を含まない)の、孤立した短い切れ端は、捨てる。
+            const bool isolated = (piece.a > kEpsilon) && (piece.b < length - kEpsilon);
+            return isolated && pieceLength < isolatedMinPieceLength;
+        }), kept.end());
 
         // 残った部分を、新しい区間にする。切った側の端は、平ら。切っていない側の端は、元の点・元の印のまま。
         const float inverse = 1.0f / length;
@@ -202,6 +225,7 @@ RoadCutResult CutRoads(const std::vector<RoadSegment>& segments, const std::vect
                 out.flatEnd = true;
             }
             result.segments.push_back(out);
+            fromCut.push_back(1);
         }
 
         // 取り除いた部分(残る部分の、間と外側)。
@@ -225,8 +249,58 @@ RoadCutResult CutRoads(const std::vector<RoadSegment>& segments, const std::vect
         addRemoved(removedCursor, length);
         result.changed = true;
     }
+
+    // 切った跡で、両端とも、どこにもつながらない(行き止まり)になった、短い切れ端は、捨てる。
+    // (隣の区間の一部を切ったために、つなぎ目が、行き止まりになり、間に、短い切れ端が、孤立して残ることがある。自由描きの区間の連なりで、起きる)
+    // 切られた区間から出てきた切れ端だけが対象(最初から、孤立していた、短い道は、触らない)。
+    if (result.changed && isolatedMinPieceLength > 0.0f)
+    {
+        using Key = std::pair<long long, long long>;
+        auto keyOf = [](const XMFLOAT3& p) { return Key(std::llround(static_cast<double>(p.x) * 10000.0), std::llround(static_cast<double>(p.z) * 10000.0)); };
+        std::map<Key, int> degree;
+        for (const RoadSegment& s : result.segments) { ++degree[keyOf(s.start)]; ++degree[keyOf(s.end)]; }
+        std::vector<RoadSegment> kept;
+        kept.reserve(result.segments.size());
+        for (size_t i = 0; i < result.segments.size(); ++i)
+        {
+            const RoadSegment& s = result.segments[i];
+            const float pieceLength = Distance(s.start, s.end);
+            if (fromCut[i] && pieceLength < isolatedMinPieceLength && degree[keyOf(s.start)] == 1 && degree[keyOf(s.end)] == 1)
+            {
+                RemovedRoadSpan span;
+                span.start = s.start;
+                span.end = s.end;
+                span.width = s.width;
+                span.type = s.type;
+                result.removed.push_back(span);
+                result.removedLength += pieceLength;
+                continue;
+            }
+            kept.push_back(s);
+        }
+        result.segments = std::move(kept);
+    }
+
+    // 切った跡で、「交差点・区間のつなぎ目だった点」が、行き止まり(1本だけ)になった端は、平らにする。
+    // そのままだと、行き止まりの見た目の延長(0.5)が、隣の、切り取った隙間を、見た目だけ、塞いでしまう
+    // (例: 区間Aの終わりの1スライスを切ると、続きの区間Bの始点が、行き止まりになり、延長で、隙間が消える)。
+    if (result.changed)
+    {
+        using Key = std::pair<long long, long long>;
+        auto keyOf = [](const XMFLOAT3& p) { return Key(std::llround(static_cast<double>(p.x) * 10000.0), std::llround(static_cast<double>(p.z) * 10000.0)); };
+        std::map<Key, int> before;
+        std::map<Key, int> after;
+        for (const RoadSegment& s : segments) { ++before[keyOf(s.start)]; ++before[keyOf(s.end)]; }
+        for (const RoadSegment& s : result.segments) { ++after[keyOf(s.start)]; ++after[keyOf(s.end)]; }
+        for (RoadSegment& s : result.segments)
+        {
+            if (!s.flatStart && before[keyOf(s.start)] >= 2 && after[keyOf(s.start)] == 1) { s.flatStart = true; }
+            if (!s.flatEnd && before[keyOf(s.end)] >= 2 && after[keyOf(s.end)] == 1) { s.flatEnd = true; }
+        }
+    }
     return result;
 }
+
 
 int CalculateRoadDemolitionCost(const std::vector<RemovedRoadSpan>& removed)
 {

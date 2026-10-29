@@ -264,9 +264,23 @@ void DemolitionController::Update()
         return;
     }
 
-    const bool overUi = IsMouseOverEditorUi() || m_context->mouseOverUI;
     const POINT cursor = m_context->input->GetMousePosition();
     const bool down = m_context->input->IsKeyDown(VK_LBUTTON);
+
+    // カーソルが、ゲームの画面の外(ウィンドウの外・エディタのパネルより外)にある時は、UIの上と、同じ扱いにする
+    // (選びかけは、そのまま。新しくは選ばない。そこで離したら、取り消す)。
+    const bool outsideView = m_context->renderer
+        && (cursor.x < 0 || cursor.y < 0
+            || cursor.x >= static_cast<LONG>(m_context->renderer->GetViewWidth())
+            || cursor.y >= static_cast<LONG>(m_context->renderer->GetViewHeight()));
+    const bool overUi = IsMouseOverEditorUi() || m_context->mouseOverUI || outsideView;
+
+    // ドラッグ中に、ウィンドウが前面でなくなった(Alt+Tabなど): ボタンが「離された」扱いになるが、確定はしない(取り消す)。
+    if (m_dragging && !m_context->input->HasFocus())
+    {
+        Cancel();
+        return;
+    }
 
     if (m_dragging)
     {
@@ -301,13 +315,20 @@ void DemolitionController::Update()
     }
 
     // カーソルの横の費用タグ: 選んでいるもの全部の合計(選んでいなければ、カーソルの下の1つぶん)。
+    // 道路だけを選んでいる時は、切り取る長さを、マスの数で、一緒に出す(建物が混ざる時は、金額だけ)。
     int cost = 0;
+    int roadCells = 0;
     if (m_dragging)
     {
         cost = m_selection.BuildingCost();
         if (!m_roadSlices.empty())
         {
-            cost += CalculateRoadDemolitionCost(m_roadSystem->PreviewCut(SelectedWindows()).removed);
+            const RoadCutResult preview = m_roadSystem->PreviewCut(SelectedWindows());
+            cost += CalculateRoadDemolitionCost(preview.removed);
+            if (m_selection.Empty() && m_field)
+            {
+                roadCells = static_cast<int>(std::lround(preview.removedLength / m_field->GetCellSize()));
+            }
         }
     }
     else if (m_hoverId != 0)
@@ -316,13 +337,15 @@ void DemolitionController::Update()
     }
     else if (m_hasHoverRoad)
     {
-        cost = CalculateRoadDemolitionCost(m_roadSystem->PreviewCut({ m_hoverRoad.window }).removed);
+        const RoadCutResult preview = m_roadSystem->PreviewCut({ m_hoverRoad.window });
+        cost = CalculateRoadDemolitionCost(preview.removed);
+        if (m_field) { roadCells = static_cast<int>(std::lround(preview.removedLength / m_field->GetCellSize())); }
     }
     if (cost > 0)
     {
         m_context->costPreview.visible = true;
         m_context->costPreview.cost = cost;
-        m_context->costPreview.cells = 0;
+        m_context->costPreview.cells = roadCells;
         m_context->costPreview.affordable = !m_context->economy || CanPayDemolition(m_context->economy->GetCash(), cost);
     }
 }
