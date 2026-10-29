@@ -1040,17 +1040,28 @@ void Game::HandleMenuKeys()
 void Game::SyncMenuTimeScale()
 {
     const bool open = m_gameUI.IsMenuOpen() || m_gameUI.IsResidentPanelOpen();
-    if (open && !m_menuWasOpen)
+    // 建物・道路・解体のツールを選んでいる間(画面を動かして置き場所を探している間)も、時間を止める。
+    // ゲーム画面を出していない時(タイトルなど)に、ツールの選択が残っていても止めない。
+    const bool toolActive = IsGameUIVisible() && (m_context.mode == GameMode::Playing)
+        && (m_context.placementTool != PlacementTool::None);
+    const bool paused = open || toolActive;
+    if (paused && !m_timePausedByUi)
     {
-        // 開いた: 時間を止め、置きかけの道路はやめる(メニューを閉じた後に、中途半端な状態を残さない)。
+        // 止める: 元の倍率を覚える(閉じたら戻す)。
         m_scaleBeforeMenu = m_gameClock.GetTimeScale();
         m_gameClock.SetTimeScale(0.0f);
-        m_roadSystem.CancelPlacement();
-        m_audio.PlaySe("ui_open");      // メニューを開いた時(ボタンでもEscでも)。閉じる時は鳴らさない
     }
-    else if (!open && m_menuWasOpen)
+    else if (!paused && m_timePausedByUi)
     {
         m_gameClock.SetTimeScale(m_scaleBeforeMenu);
+    }
+    m_timePausedByUi = paused;
+
+    if (open && !m_menuWasOpen)
+    {
+        // 開いた: 置きかけの道路はやめる(メニューを閉じた後に、中途半端な状態を残さない)。
+        m_roadSystem.CancelPlacement();
+        m_audio.PlaySe("ui_open");      // メニューを開いた時(ボタンでもEscでも)。閉じる時は鳴らさない
     }
     m_menuWasOpen = open;
 }

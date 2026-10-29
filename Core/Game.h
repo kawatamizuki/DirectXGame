@@ -196,7 +196,8 @@ private:
     bool m_leftDragActive = false;     // 今、左ボタンのドラッグ(カメラの移動)の最中か
     bool m_leftDragJustStarted = false;// ドラッグが始まったフレームか(つかんだ点を、押した位置にするため。UpdateCityCameraが使う)
     POINT m_leftPressPos = { 0, 0 };   // 左ボタンを押した位置(ゲームビューの左上が原点)
-    float m_scaleBeforeMenu = 1.0f;    // メニューを開く前の、ゲーム内時間の倍率(閉じたら戻す)
+    bool m_timePausedByUi = false;     // メニュー・情報パネル・配置ツールの選択で、ゲーム内時間を止めているか(止める/戻す瞬間を見つけるため)
+    float m_scaleBeforeMenu = 1.0f;    // 止める前の、ゲーム内時間の倍率(止めるUIが全て無くなったら戻す)
     std::string m_menuStatus;          // メニューのシステムタブに出す、直前のセーブ/ロードの結果
 
     Camera m_camera;
