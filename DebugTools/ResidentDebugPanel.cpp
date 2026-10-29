@@ -120,6 +120,7 @@ namespace
         case SimEventKind::HomeDemolished:    return "住宅解体";
         case SimEventKind::Anomaly:           return "異常";
         case SimEventKind::MovedIn:           return "入居";
+        case SimEventKind::TestCommand:       return "テスト指示";
         }
         return "?";
     }
@@ -146,8 +147,93 @@ namespace
         return Fmt("%s #%u", definition ? definition->name : GetBuildingDefinition(type).name, id);
     }
 
+    // ---- 行動テスト(段階3)の、表示用の名前 ----
+    const char* TestActionJa(SimTestAction action)
+    {
+        switch (action)
+        {
+        case SimTestAction::ForceOuting:   return "外出させる";
+        case SimTestAction::ForceStopover: return "立ち寄りを当選させる";
+        case SimTestAction::ReturnHome:    return "帰宅させる";
+        case SimTestAction::Redirect:      return "行き先を変える";
+        case SimTestAction::SetStamina:    return "体力を決める";
+        }
+        return "?";
+    }
+
+    const char* TestStatusJa(SimTestStatus status)
+    {
+        switch (status)
+        {
+        case SimTestStatus::Pending:   return "待機中";
+        case SimTestStatus::Running:   return "実行中";
+        case SimTestStatus::Succeeded: return "成功";
+        case SimTestStatus::Rejected:  return "拒否";
+        case SimTestStatus::Cancelled: return "取消";
+        case SimTestStatus::Expired:   return "期限切れ";
+        }
+        return "?";
+    }
+
+    ImVec4 TestStatusColor(SimTestStatus status)
+    {
+        switch (status)
+        {
+        case SimTestStatus::Succeeded: return kColorSuccess;
+        case SimTestStatus::Rejected:  return kColorNotMet;   // 通常ルールの結果(異常ではない)。灰
+        case SimTestStatus::Cancelled: return kColorNotMet;
+        case SimTestStatus::Expired:   return kColorWarning;
+        case SimTestStatus::Running:   return kColorHeading;
+        default:                       return kColorNormal;
+        }
+    }
+
+    // 拒否された理由の説明。detailは、理由ごとの補足の番号(CandidateReject・StopoverBlock・住民の状態・残りの回数など)。
+    std::string TestRejectJa(SimTestReject reject, int detail)
+    {
+        switch (reject)
+        {
+        case SimTestReject::None:                 return "-";
+        case SimTestReject::AlreadyTesting:       return "この住民には、別のテストが、待機中・実行中です";
+        case SimTestReject::ResidentNotFound:     return "住民が見つかりません";
+        case SimTestReject::NotAtHome:            return Fmt("家にいないので、外出させられません(今の状態: %s)", StateJa(static_cast<ResidentAgentState>(detail)));
+        case SimTestReject::NotOut:               return Fmt("外出中ではありません(今の状態: %s)", StateJa(static_cast<ResidentAgentState>(detail)));
+        case SimTestReject::NotGoingOut:          return Fmt("施設へ向かう途中ではありません(今の状態: %s)", StateJa(static_cast<ResidentAgentState>(detail)));
+        case SimTestReject::HomeNoRoad:           return "自宅の近くに道路が無く、出られません";
+        case SimTestReject::NoFacilityInCategory: return Fmt("目的のカテゴリ(%s)の施設が、1軒もありません", FacilityCategoryName(static_cast<FacilityCategory>(detail)));
+        case SimTestReject::NoPickable:           return "候補は有りましたが、全て除外されました(到達不可・体力不足など)";
+        case SimTestReject::FacilityNotFound:     return "指定した施設が、見つからない・施設でない・候補にありません";
+        case SimTestReject::FacilityNotEligible:  return Fmt("指定した施設は、除外されました: %s", RejectJa(static_cast<CandidateReject>(detail)));
+        case SimTestReject::SameFacility:         return "今の行き先と、同じ施設です";
+        case SimTestReject::NoRoute:              return "道路でつながっていない(経路が無い)ため、実行できません";
+        case SimTestReject::NotEnoughStamina:     return Fmt("体力が足りません(必要 %d)", detail);
+        case SimTestReject::StopBlocked:
+        {
+            const char* why = "?";
+            switch (static_cast<StopoverBlock>(detail))
+            {
+            case StopoverBlock::NoHome:    why = "帰る家が無い"; break;
+            case StopoverBlock::MaxStops:  why = "立ち寄りの回数が上限"; break;
+            case StopoverBlock::TooLate:   why = "時刻が遅い"; break;
+            case StopoverBlock::LowStamina:why = "体力が足りない"; break;
+            default: break;
+            }
+            return Fmt("立ち寄りを考えない条件に合いました: %s", why);
+        }
+        case SimTestReject::StopNoRoad:           return "家か今の施設の近くに道路が無く、立ち寄れません";
+        case SimTestReject::StopHomeMissing:      return "帰る家のオブジェクトが見つかりません";
+        case SimTestReject::StopNoCandidates:     return "同じカテゴリの、他の施設がありません";
+        case SimTestReject::StopNoPickable:       return "候補は有りましたが、全て除外されました(範囲外・体力不足・使用済みなど)";
+        case SimTestReject::StopFoodChain:        return "食事系が続くので、取りやめました(この確率の判定は、強制しません)";
+        case SimTestReject::NotConsumed:          return Fmt("外出が終わるまで、強制する判定が来ませんでした(残り %d 回)", detail);
+        case SimTestReject::WorldChanged:         return "ロード・リセットで、住民が入れ替わりました";
+        case SimTestReject::Superseded:           return "実行中でしたが、新しい指示で置き換えられました";
+        }
+        return "?";
+    }
+
     // 1件のイベントの、人間向けの説明(UI側で作る。イベント自体は数値と列挙型だけを持つ)。
-    std::string DescribeEvent(const SimEvent& e, const std::vector<GameObject>& objects)
+    std::string DescribeEventBody(const SimEvent& e, const std::vector<GameObject>& objects)
     {
         const std::string facility = FacilityLabel(objects, e.facilityId);
         const std::string stop = (e.stopIndex > 0) ? Fmt("立ち寄り%d回目: ", e.stopIndex) : std::string();
@@ -215,8 +301,21 @@ namespace
             return Fmt("異常: %s(値 %.3f)", AnomalyJa(e.anomaly), e.a);
         case SimEventKind::MovedIn:
             return Fmt("新しい住宅(#%u)への入居が決まった(プレイヤーが選んだ)。今の位置から歩いて向かう", e.facilityId);
+        case SimEventKind::TestCommand:
+            if (e.reason == SimReason::TestRejected)
+            {
+                return Fmt("テスト#%.0f の指示を、拒否した: %s", e.a, TestRejectJa(static_cast<SimTestReject>(static_cast<int>(e.b)), static_cast<int>(e.c)).c_str());
+            }
+            return Fmt("テスト#%.0f の指示を、適用した(確率の抽選を当選にした・行き先を変えた・帰宅させた・体力を決めた、のどれか。値 %.3f / %.3f)", e.a, e.b, e.c);
         }
         return "?";
+    }
+
+    // 行動テストで強制している間のイベントには、先頭に[テスト#n]を付ける(通常のプレイの流れと、区別できるように)。
+    std::string DescribeEvent(const SimEvent& e, const std::vector<GameObject>& objects)
+    {
+        const std::string body = DescribeEventBody(e, objects);
+        return e.testId != 0 ? Fmt("[テスト#%u] ", e.testId) + body : body;
     }
 
     // 住民の外出判定の集計があるか(記録がOFFで、まだ何も数えていない時はfalse)。
@@ -331,6 +430,11 @@ void ResidentDebugPanel::Draw(DemandSystem& demand, const std::vector<GameObject
         ImGui::Spacing();
         ImGui::TextWrapped("住民が選ばれていません。ゲームの画面で、住民か住宅をクリックするか、上の一覧から選んでください。");
         ImGui::TextDisabled("(クリックしても、ゲーム内の時間は止まりません。2回クリックで開く「住民の情報」は、これとは別です)");
+        // 行動テストは、住民を選ばなくても、範囲・全住民へ出せる。
+        if (ImGui::CollapsingHeader("行動テスト(範囲・全住民へ、住民を選ばずに実行できます)"))
+        {
+            DrawTestTab(demand, objects);
+        }
         ImGui::End();
         return;
     }
@@ -390,6 +494,11 @@ void ResidentDebugPanel::Draw(DemandSystem& demand, const std::vector<GameObject
         if (ImGui::BeginTabItem("異常"))
         {
             DrawAnomalyTab(demand, objects);
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("行動テスト"))
+        {
+            DrawTestTab(demand, objects);
             ImGui::EndTabItem();
         }
         ImGui::EndTabBar();
@@ -796,7 +905,7 @@ void ResidentDebugPanel::DrawNavigator(DemandSystem& demand, const std::vector<G
 
         // 種類で止める。
         ImGui::TextUnformatted("止めるイベントの種類:");
-        constexpr int kKindCount = static_cast<int>(SimEventKind::MovedIn) + 1;
+        constexpr int kKindCount = static_cast<int>(SimEventKind::TestCommand) + 1;
         for (int k = 0; k < kKindCount; ++k)
         {
             bool on = (bp.kindMask & (1u << k)) != 0;
@@ -1442,4 +1551,298 @@ void ResidentDebugPanel::DrawAnomalyTab(DemandSystem& demand, const std::vector<
     {
         ImGui::TextDisabled("異常は検出されていません");
     }
+}
+
+// ---------------------------------------------------------------------------
+// 行動テスト(段階3)
+// ---------------------------------------------------------------------------
+namespace
+{
+    // 薄い色の説明文を、ウィンドウの幅で折り返して出す(長い説明が、右で切れないように)。
+    void NoteWrapped(const char* format, ...)
+    {
+        char buffer[1024];
+        va_list args;
+        va_start(args, format);
+        std::vsnprintf(buffer, sizeof(buffer), format, args);
+        va_end(args);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextWrapped("%s", buffer);
+        ImGui::PopStyleColor();
+    }
+}
+
+void ResidentDebugPanel::DrawTestTab(DemandSystem& demand, const std::vector<GameObject>& objects)
+{
+    const ResidentSimSettings& settings = demand.GetSettings();
+    ImGui::BeginChild("##testtab", ImVec2(0.0f, 0.0f), false);
+
+    ImGui::TextWrapped("住民に、意図した行動を、「次の安全なタイミング」で1回だけ実行させて、結果を確かめます。画面が、住民を直接動かすことはありません(指示を出すと、待機中になり、外出判定・立ち寄り判定・更新の最初で消化されます)。");
+    NoteWrapped("強制するのは、指定した判定だけです。時刻・体力・到達できるか・使用済みの施設などの、普通のルールは、そのまま通します(合わない時は、実行せずに、拒否の理由を返します)。");
+    NoteWrapped("強制した行動の結果(来客・売上・所持金)は、本物のプレイと同じように、街に反映されます。やり直したい時は、先にF5で、セーブしておいてください(乱数の状態は、戻りません)。");
+
+    // ---- 1. 行動 ----
+    Heading("1. 行動を選ぶ");
+    static const char* const kActionLabels[] = { "外出させる", "立ち寄りを当選させる", "帰宅させる", "行き先を変える", "体力を決める" };
+    ImGui::SetNextItemWidth(260.0f);
+    ImGui::Combo("行動", &m_testAction, kActionLabels, 5);
+    const SimTestAction action = static_cast<SimTestAction>(m_testAction);
+    switch (action)
+    {
+    case SimTestAction::ForceOuting:
+        NoteWrapped("家にいる住民の、次の外出判定の確率を、必ず当選にします。就寝中・遅い時刻なら、朝まで(次の週まで)待機します。");
+        break;
+    case SimTestAction::ForceStopover:
+        NoteWrapped("外出中(向かっている途中・施設の中)の住民の、次の立ち寄り判定の確率を、指定した回数、必ず当選にします。");
+        break;
+    case SimTestAction::ReturnHome:
+        NoteWrapped("外出中の住民を、今の位置から、家へ帰らせます(施設は使わない。売上・回復なし。位置は飛ばしません)。");
+        break;
+    case SimTestAction::Redirect:
+        NoteWrapped("施設へ向かう途中の住民の、行き先を、別の施設に変えます(今の位置から経路を作り直す。体力・使用済みの確認あり)。");
+        break;
+    case SimTestAction::SetStamina:
+        NoteWrapped("体力を、指定した値にします(0〜今の上限)。体力ぎりぎりの検証の準備に使います。");
+        break;
+    }
+
+    // ---- 2. 強制する範囲 ----
+    const bool usesFacility = (action == SimTestAction::ForceOuting || action == SimTestAction::ForceStopover || action == SimTestAction::Redirect);
+    if (action == SimTestAction::ForceOuting || action == SimTestAction::ForceStopover)
+    {
+        Heading("2. どこまで強制するか");
+        ImGui::RadioButton("通常ルール: 確率の抽選だけを当選にする(施設は、普通の抽選で選ぶ)", &m_testMode, static_cast<int>(SimTestMode::Normal));
+        ImGui::RadioButton("施設を指定: 抽選の結果を無視して、指定した施設を選ぶ(除外された施設なら、拒否)", &m_testMode, static_cast<int>(SimTestMode::ForceFacility));
+        const int maxStops = (std::max)(0, settings.maxStopovers);
+        if (action == SimTestAction::ForceOuting)
+        {
+            ImGui::SetNextItemWidth(160.0f);
+            ImGui::SliderInt("外出の後、立ち寄りも当選させる回数", &m_testForcedStopovers, 0, maxStops);
+        }
+        else
+        {
+            ImGui::SetNextItemWidth(160.0f);
+            ImGui::SliderInt("当選させる立ち寄りの回数", &m_testForcedStopovers, 1, (std::max)(1, maxStops));
+        }
+    }
+    else if (action == SimTestAction::SetStamina)
+    {
+        Heading("2. 体力");
+        ImGui::SetNextItemWidth(220.0f);
+        ImGui::SliderFloat("体力の値", &m_testStamina, 0.0f, 150.0f, "%.1f");
+    }
+    else
+    {
+        Heading("2. 指定");
+    }
+
+    // 施設の指定(施設を指定するモード、または、行き先を変える時)。
+    if (usesFacility && (m_testMode == static_cast<int>(SimTestMode::ForceFacility) || action == SimTestAction::Redirect))
+    {
+        const std::string preview = m_testFacilityId != 0 ? FacilityLabel(objects, m_testFacilityId) : std::string("施設を選ぶ...");
+        ImGui::SetNextItemWidth(280.0f);
+        if (ImGui::BeginCombo("施設", preview.c_str()))
+        {
+            for (const GameObject& object : objects)
+            {
+                if (object.kind != ObjectKind::Building || !IsFacility(object.buildingType)) { continue; }
+                ImGui::PushID(static_cast<int>(object.id));
+                if (ImGui::Selectable(FacilityLabel(objects, object.id).c_str(), object.id == m_testFacilityId))
+                {
+                    m_testFacilityId = object.id;
+                }
+                ImGui::PopID();
+            }
+            ImGui::EndCombo();
+        }
+        if (m_testFacilityId != 0 && !GameObjectFactory::FindById(objects, m_testFacilityId))
+        {
+            ImGui::TextColored(kColorWarning, "選んでいた施設は、もうありません。選び直してください。");
+        }
+    }
+
+    // ---- 3. 対象 ----
+    Heading("3. 誰に実行するか");
+    ImGui::RadioButton(m_target != 0 ? Fmt("今見ている住民 (#%u)", m_target).c_str() : "今見ている住民(未選択)", &m_testTarget, static_cast<int>(SimTestTarget::Selected));
+    ImGui::SameLine();
+    ImGui::RadioButton("範囲(四角)の中の住民", &m_testTarget, static_cast<int>(SimTestTarget::Rect));
+    ImGui::SameLine();
+    ImGui::RadioButton("全住民", &m_testTarget, static_cast<int>(SimTestTarget::All));
+    const size_t residentCount = demand.ListResidents().size();
+    int targetCount = 0;
+    if (m_testTarget == static_cast<int>(SimTestTarget::Rect))
+    {
+        NoteWrapped("ワールドのXZ座標です。実行ボタンを押した時の、住民の位置で選びます。");
+        ImGui::SetNextItemWidth(70.0f); ImGui::InputFloat("最小X", &m_testRect[0], 0.0f, 0.0f, "%.1f"); ImGui::SameLine();
+        ImGui::SetNextItemWidth(70.0f); ImGui::InputFloat("最小Z", &m_testRect[1], 0.0f, 0.0f, "%.1f"); ImGui::SameLine();
+        ImGui::SetNextItemWidth(70.0f); ImGui::InputFloat("最大X", &m_testRect[2], 0.0f, 0.0f, "%.1f"); ImGui::SameLine();
+        ImGui::SetNextItemWidth(70.0f); ImGui::InputFloat("最大Z", &m_testRect[3], 0.0f, 0.0f, "%.1f");
+        if (ImGui::SmallButton("今見ている住民の周り(±3)"))
+        {
+            const ResidentDebugView view = demand.GetResidentDebugView(m_target, objects);
+            if (view.found) { m_testRect[0] = view.position.x - 3.0f; m_testRect[1] = view.position.z - 3.0f; m_testRect[2] = view.position.x + 3.0f; m_testRect[3] = view.position.z + 3.0f; }
+        }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("広い範囲(±50)")) { m_testRect[0] = -50.0f; m_testRect[1] = -50.0f; m_testRect[2] = 50.0f; m_testRect[3] = 50.0f; }
+        targetCount = demand.CountResidentsInRect(m_testRect[0], m_testRect[1], m_testRect[2], m_testRect[3], objects);
+        ImGui::Text("今、範囲の中にいる住民: %d 人", targetCount);
+    }
+    else if (m_testTarget == static_cast<int>(SimTestTarget::All))
+    {
+        targetCount = static_cast<int>(residentCount);
+        ImGui::Text("全住民: %d 人", targetCount);
+    }
+    else
+    {
+        targetCount = (m_target != 0) ? 1 : 0;
+    }
+    ImGui::SetNextItemWidth(120.0f);
+    ImGui::InputInt("一度に実行する人数の上限", &m_testMaxCount);
+    m_testMaxCount = (std::max)(1, (std::min)(m_testMaxCount, kSimTestMaxBatch));
+    const int effectiveCount = (std::min)(targetCount, m_testMaxCount);
+    if (targetCount > m_testMaxCount)
+    {
+        ImGui::TextColored(kColorWarning, "対象が %d 人いますが、上限の %d 人にだけ実行します(残りには、実行しません)。", targetCount, m_testMaxCount);
+    }
+
+    // ---- 4. 実行 ----
+    Heading("4. 実行");
+    const bool needFacility = usesFacility && (m_testMode == static_cast<int>(SimTestMode::ForceFacility) || action == SimTestAction::Redirect);
+    const bool canSubmit = effectiveCount > 0 && (!needFacility || m_testFacilityId != 0);
+    auto submit = [&]()
+    {
+        SimTestCommand command;
+        command.action = action;
+        command.mode = (action == SimTestAction::ForceOuting || action == SimTestAction::ForceStopover) ? static_cast<SimTestMode>(m_testMode) : SimTestMode::Normal;
+        command.target = static_cast<SimTestTarget>(m_testTarget);
+        command.rectMinX = m_testRect[0]; command.rectMinZ = m_testRect[1]; command.rectMaxX = m_testRect[2]; command.rectMaxZ = m_testRect[3];
+        command.maxCount = m_testMaxCount;
+        command.facilityId = m_testFacilityId;
+        command.forcedStopovers = m_testForcedStopovers;
+        command.staminaValue = m_testStamina;
+        m_testLastSubmit = demand.SubmitTestCommand(command, m_target, objects);
+        m_testSubmitted = true;
+    };
+    if (!canSubmit)
+    {
+        ImGui::BeginDisabled();
+    }
+    if (ImGui::Button("実行"))
+    {
+        if (effectiveCount > 10) { m_testConfirmOpen = true; } else { submit(); }
+    }
+    if (!canSubmit)
+    {
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::TextDisabled(effectiveCount <= 0 ? "(対象の住民が、いません)" : "(施設を選んでください)");
+    }
+    if (m_testConfirmOpen)
+    {
+        ImGui::OpenPopup("行動テストの確認");
+        m_testConfirmOpen = false;
+    }
+    if (ImGui::BeginPopupModal("行動テストの確認", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        ImGui::Text("%d 人に、「%s」を実行します。よろしいですか?", effectiveCount, TestActionJa(action));
+        NoteWrapped("(実行後は、下の「取消」で、待機中・実行中の指示を外せます。済んだ行動は、戻りません)");
+        if (ImGui::Button("実行する")) { submit(); ImGui::CloseCurrentPopup(); }
+        ImGui::SameLine();
+        if (ImGui::Button("やめる")) { ImGui::CloseCurrentPopup(); }
+        ImGui::EndPopup();
+    }
+    if (m_testSubmitted)
+    {
+        ImGui::Text("直近の実行: 対象 %d 人 → 待機中 %d 人、その場で拒否 %d 人%s", m_testLastSubmit.targeted, m_testLastSubmit.created, m_testLastSubmit.rejectedNow,
+            m_testLastSubmit.truncated ? "(人数の上限で切り詰めました)" : "");
+    }
+    const int activeCount = demand.CountActiveTestPlans();
+    ImGui::TextDisabled("待機中・実行中: %d 件", activeCount);
+    if (activeCount > 0)
+    {
+        if (ImGui::Button("直近の実行を取り消す"))
+        {
+            demand.CancelTestBatch(m_testLastSubmit.batchId);
+        }
+        ImGui::SameLine();
+        NoteWrapped("(待機中は、実行されなくなります。実行中は、強制を外します。済んだ行動は、戻りません)");
+    }
+
+    // ---- 5. 結果 ----
+    Heading("5. 結果(新しい順)");
+    const std::vector<SimTestPlan>& plans = demand.GetTestPlans();
+    int succeeded = 0, rejected = 0, cancelled = 0, expired = 0;
+    for (const SimTestPlan& plan : plans)
+    {
+        succeeded += (plan.status == SimTestStatus::Succeeded) ? 1 : 0;
+        rejected += (plan.status == SimTestStatus::Rejected) ? 1 : 0;
+        cancelled += (plan.status == SimTestStatus::Cancelled) ? 1 : 0;
+        expired += (plan.status == SimTestStatus::Expired) ? 1 : 0;
+    }
+    NoteWrapped("成功 %d / 拒否 %d / 取消 %d / 期限切れ %d / 待機中・実行中 %d  (拒否は、普通のルールの結果で、異常ではありません)", succeeded, rejected, cancelled, expired, activeCount);
+    if (ImGui::SmallButton("終わった結果を消す")) { demand.ClearFinishedTestPlans(); }
+    if (plans.empty())
+    {
+        ImGui::TextDisabled("まだ、テストを実行していません。");
+    }
+    else if (ImGui::BeginTable("##testresults", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollX | ImGuiTableFlags_SizingFixedFit, ImVec2(0.0f, 220.0f)))
+    {
+        ImGui::TableSetupScrollFreeze(0, 1);
+        ImGui::TableSetupColumn("テスト");
+        ImGui::TableSetupColumn("住民");
+        ImGui::TableSetupColumn("行動");
+        ImGui::TableSetupColumn("状態");
+        ImGui::TableSetupColumn("立ち寄り");
+        ImGui::TableSetupColumn("理由・内容");
+        ImGui::TableHeadersRow();
+        int shown = 0;
+        for (auto it = plans.rbegin(); it != plans.rend() && shown < 200; ++it, ++shown)
+        {
+            const SimTestPlan& plan = *it;
+            ImGui::PushID(static_cast<int>(plan.testId));
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            if (plan.firstEventId != 0 && demand.GetDebugRecorder().FindEvent(plan.firstEventId))
+            {
+                if (ImGui::SmallButton(Fmt("#%u 履歴", plan.testId).c_str())) { SeekToEvent(plan.residentId, plan.firstEventId); }
+            }
+            else
+            {
+                ImGui::Text("#%u", plan.testId);
+            }
+            ImGui::TableNextColumn(); ImGui::Text("#%u", plan.residentId);
+            ImGui::TableNextColumn(); ImGui::TextUnformatted(TestActionJa(plan.action));
+            ImGui::TableNextColumn(); ImGui::TextColored(TestStatusColor(plan.status), "%s", TestStatusJa(plan.status));
+            ImGui::TableNextColumn();
+            if (plan.stopoversRequested > 0) { ImGui::Text("%d / %d", plan.stopoversStarted, plan.stopoversRequested); } else { ImGui::TextDisabled("-"); }
+            ImGui::TableNextColumn();
+            if (plan.status == SimTestStatus::Rejected)
+            {
+                ImGui::TextColored(kColorNotMet, "%s", TestRejectJa(plan.reject, plan.rejectDetail).c_str());
+            }
+            else if (plan.status == SimTestStatus::Cancelled && plan.reject != SimTestReject::None)
+            {
+                ImGui::TextDisabled("%s", TestRejectJa(plan.reject, plan.rejectDetail).c_str());
+            }
+            else if (plan.status == SimTestStatus::Pending)
+            {
+                ImGui::TextDisabled("次の安全なタイミングを待っています(週%d に作成)", plan.createdWeek);
+            }
+            else if (plan.status == SimTestStatus::Expired)
+            {
+                ImGui::TextDisabled("%s", plan.reject == SimTestReject::WorldChanged ? TestRejectJa(plan.reject, 0).c_str() : "次の週までに、実行するタイミングが来ませんでした");
+            }
+            else if (plan.facilityId != 0)
+            {
+                ImGui::TextUnformatted(FacilityLabel(objects, plan.facilityId).c_str());
+            }
+            else
+            {
+                ImGui::TextDisabled("-");
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+    ImGui::EndChild();
 }

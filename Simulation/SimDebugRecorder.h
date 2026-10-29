@@ -40,7 +40,8 @@ enum class SimEventKind : uint8_t
     BecameHomeless,     // 帰る家が無くなった(住居なし)
     HomeDemolished,     // 住んでいた住宅が解体された
     Anomaly,            // 異常を検出した(不変条件の違反)。anomalyに種類。a=問題の値
-    MovedIn             // 住居なしの住民が、新しい住宅(facilityId)への入居を決めた(プレイヤーが選んだ)
+    MovedIn,            // 住居なしの住民が、新しい住宅(facilityId)への入居を決めた(プレイヤーが選んだ)
+    TestCommand         // 行動テストの指示を、消化した(適用した/拒否した)。a=テストの番号 b=引いた乱数 c=その確率。reasonがTestApplied/TestRejected。拒否の理由は、SimTestPlan側
 };
 
 // 結果の区別(表示の色分けに使う)。普通の不成立と、本当の異常を混ぜない。
@@ -79,7 +80,9 @@ enum class SimReason : uint8_t
     NoRouteHome,            // 家への経路が無い
     RoadReconnected,        // 道がつながった
     DetourReturn,           // 迂回して帰る
-    FacilityMissingOnArrival// 着いたが、施設が無くなっていた
+    FacilityMissingOnArrival,// 着いたが、施設が無くなっていた
+    TestApplied,            // (行動テスト)指示を適用した(確率の抽選を、当選にした・施設を指定した・帰宅させた など)
+    TestRejected            // (行動テスト)指示を、条件に合わず、拒否した(普通のルールの結果。異常ではない)
 };
 
 // 異常(不変条件の違反)の種類。ビットマスクで持つ(1u << 値)。値は、後から足すだけにする。
@@ -123,6 +126,7 @@ struct SimEvent
     uint32_t runId = 0;             // 何回目の「世界」か(ロード・リセットで増える。古い番号の記録は残らない)
     uint32_t residentId = 0;        // 住民の見た目のオブジェクトのid(ResidentAgent::objectId。この世界の中で、変わらない)
     uint32_t outingId = 0;          // 外出の通し番号(0=外出に属さない、または、記録を始める前から続いていた外出)
+    uint32_t testId = 0;            // 行動テストの番号(0=通常のプレイ。0でなければ、このイベントは、テストで強制した流れの中で起きた)
     int week = 0;                   // 通算の週
     float hour = 0.0f;              // 時刻(ゲーム内)
     SimEventKind kind = SimEventKind::OutingRoll;
@@ -168,6 +172,8 @@ struct SimDecisionDetail
     uint64_t detailId = 0;
     uint32_t residentId = 0;
     uint32_t outingId = 0;
+    uint32_t testId = 0;                        // 行動テストの番号(0=通常)。0でなければ、確率の抽選・施設の選択を、テストで強制している可能性がある
+    bool forcedFacility = false;                // 施設を、抽選ではなく、テストで指定した物に決めたか(chosenIndexは、その施設)
     int week = 0;
     float hour = 0.0f;
     int stopIndex = 0;                          // 立ち寄りの何回目か(0=主目的)
@@ -224,6 +230,7 @@ struct SimOutingRollSummary
 struct SimResidentRecord
 {
     uint32_t currentOutingId = 0;   // 今の外出の通し番号(外出中でなければ0)
+    uint32_t activeTestId = 0;      // 今、この住民に強制している行動テストの番号(0=無し)。この間のイベントに、番号が付く
     SimOutingRollSummary roll;      // 外出判定の集計
     uint32_t activeAnomalies = 0;   // 今、違反している異常のビット(同じ異常を、毎回記録しないために覚える)
 };
@@ -319,6 +326,10 @@ public:
 
     // 新しく外出を考える条件(就寝中・遅い時刻など)を、記録する。
     void NoteTickGate(const SimTickGate& gate);
+
+    // 行動テストの番号を、住民に付ける(0で外す)。付いている間に記録するイベント・判断の内訳に、その番号が付く。OFFの間は、何もしない。
+    void SetActiveTest(uint32_t residentId, uint32_t testId);
+    uint32_t ActiveTestId(uint32_t residentId) const;
 
     // 住民の、今違反している異常のビットを渡す。新しく違反になったビット(前回は違反していなかったもの)を返す。
     uint32_t UpdateAnomalyState(uint32_t residentId, uint32_t currentMask);
