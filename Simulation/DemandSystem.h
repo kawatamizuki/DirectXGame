@@ -99,6 +99,10 @@ struct DecisionLogEntry
     float activityNeed = 0.0f;
     std::vector<CandidateEvaluation> evaluations; // 全ての候補の評価(除外の理由・重み・確率・選ばれたか)
     int chosenIndex = -1;                       // 選ばれた候補の添字(-1=選べなかった)
+    bool stopover = false;                      // 立ち寄りの選択か(falseなら、外出の主目的の施設選び)
+    int stopIndex = 0;                          // 立ち寄りの何回目か(1から。stopoverがtrueの時だけ)
+    float stopChance = 0.0f;                    // 立ち寄りを考える確率(判定の時の値。stopoverがtrueの時だけ)
+    std::string note;                           // 補足(「食事系が続くので、寄らなかった」など)
 };
 
 // 解体された建物1棟ぶんの情報。建物を消す前に、呼び出し側が集めて渡す(消した後は、位置も種類も分からなくなるため)。
@@ -193,7 +197,16 @@ public:
 private:
     // 施設の利用が終わって、帰り始める前に、今の道路で、施設から自宅への経路を作り直す(道路が切り取られて、行きの経路が使えなくなっていることがあるため)。
     // 経路が見つかれば、その経路で帰る(元より長ければ、迂回なので、体力を消費し、満足度が下がる)。見つからなければ、立ち往生にして、falseを返す。
-    bool ReplanReturnRoute(ResidentAgent& agent, GameContext& context);
+    // applyDetourPenalty: 元の経路(今の保存してある経路)より長ければ、迂回の体力の消費・満足度の低下を与えるか。
+    // 立ち寄りの途中では、保存してある経路が「前の施設→今の施設」の短い経路なので、falseにする(家までの道のりと比べられない)。
+    bool ReplanReturnRoute(ResidentAgent& agent, GameContext& context, bool applyDetourPenalty = true);
+
+    // 主目的の施設を使い終わった住民が、低い確率で、近くの施設に立ち寄る(P1)。立ち寄るなら、その施設へ歩き始めて、trueを返す。
+    // 範囲(今いる施設から)・体力(立ち寄り先 + 家までの帰り)・時刻・食事系の連続は、設定とResidentLogicの関数で判定する。currentFacilityは、今いる施設。
+    bool TryStartStopover(ResidentAgent& agent, GameContext& context, const GameObject& currentFacility);
+
+    // 外出の途中(立ち寄りへ向かう途中など)で、行き先が無くなった時に、今の位置から家へ帰り始める(道が無ければ立ち往生)。位置は飛ばさない。
+    void StartReturnFromHere(ResidentAgent& agent, GameContext& context);
 
     // 立ち往生している住民が、道がつながって帰れるようになったかを調べ、帰れるなら、帰り始めさせる(RunDemandTickが、毎回呼ぶ)。
     // 今の位置の近くの道路から、自宅(家が無ければ、元の家の位置)への経路を探す。見つかれば、その経路で歩いて帰る(帰り着けば、家にいる・住居なしになる)。

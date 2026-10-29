@@ -160,6 +160,60 @@ float RequiredStamina(const FacilityDefinition& facility, float pathLength, cons
     return facility.staminaCost + 2.0f * (std::max)(0.0f, legacyDistance) * settings.staminaPerLegacyCell;
 }
 
+float RequiredStaminaForWalk(const FacilityDefinition& facility, float totalWalkLength, const ResidentSimSettings& settings)
+{
+    const float legacyDistance = totalWalkLength / WorldScale::FromLegacy(1.0f);
+    return facility.staminaCost + (std::max)(0.0f, legacyDistance) * settings.staminaPerLegacyCell;
+}
+
+float ComputeRepeatVisitFactor(const ResidentAgent& agent, uint32_t facilityObjectId, bool needDrivenDaily, const ResidentSimSettings& settings)
+{
+    const int window = (std::max)(1, settings.repeatVisitWindow);
+    const float base = Clamp(settings.repeatVisitWeightFactor, 0.0f, 1.0f);
+    float factor = 1.0f;
+    const size_t count = (std::min)(agent.history.size(), static_cast<size_t>(window));
+    for (size_t i = 0; i < count; ++i)
+    {
+        if (agent.history[i].facilityObjectId != facilityObjectId)
+        {
+            continue;
+        }
+        // 直前(i=0)は base。window回前に近づくほど、1に近づく。
+        const float t = static_cast<float>(i) / static_cast<float>(window);
+        factor = (std::min)(factor, Lerp(base, 1.0f, t));
+    }
+    if (needDrivenDaily)
+    {
+        // 不足による日用品の外出は、必要な買い物なので、下げ幅を弱める。
+        factor = Lerp(1.0f, factor, Clamp(settings.needDrivenDailyRepeatStrength, 0.0f, 1.0f));
+    }
+    return factor;
+}
+
+bool CanConsiderStopover(const ResidentAgent& agent, float hour, const ResidentSimSettings& settings)
+{
+    return agent.homeObjectId != 0
+        && agent.outingStopCount < settings.maxStopovers
+        && hour < settings.stopoverLatestHour
+        && agent.stamina >= settings.stopoverMinStamina;
+}
+
+float ComputeStopoverChance(const ResidentAgent& agent, const ResidentSimSettings& settings)
+{
+    const float decay = Clamp(settings.stopoverChanceDecay, 0.0f, 1.0f);
+    const float chance = settings.stopoverBaseChance * std::pow(decay, static_cast<float>((std::max)(0, agent.outingStopCount)));
+    return Clamp(chance, 0.0f, 1.0f);
+}
+
+float ComputeFoodChainAcceptChance(const ResidentAgent& agent, const FacilityDefinition& candidate, const ResidentSimSettings& settings)
+{
+    if (candidate.foodLike && agent.usedFoodLikeFacilityThisOuting)
+    {
+        return Clamp(settings.foodChainAcceptChance, 0.0f, 1.0f);
+    }
+    return 1.0f;
+}
+
 int PickWeightedIndex(const std::vector<float>& weights, float unit)
 {
     float total = 0.0f;
@@ -181,12 +235,16 @@ int PickWeightedIndex(const std::vector<float>& weights, float unit)
 }
 
 int ChooseFacility(const ResidentAgent& agent, const std::vector<FacilityCandidate>& candidates, const OutingPurposeChoice& purpose,
-                   const ResidentSimSettings& settings, SimRandom& random, std::vector<CandidateEvaluation>& evaluations)
+                   const ResidentSimSettings& settings, SimRandom& random, std::vector<CandidateEvaluation>& evaluations,
+                   int visitsThisOuting)
 {
     evaluations.clear();
     evaluations.reserve(candidates.size());
     std::vector<float> weights;
     weights.reserve(candidates.size());
+
+    // 不足による日用品の外出は、必要な買い物を妨げないよう、利用履歴による下げ幅を弱める。
+    const bool needDrivenDaily = purpose.needDriven && purpose.category == FacilityCategory::Daily;
 
     for (const FacilityCandidate& candidate : candidates)
     {
@@ -194,21 +252,41 @@ int ChooseFacility(const ResidentAgent& agent, const std::vector<FacilityCandida
         evaluation.candidate = candidate;
         const FacilityDefinition* facility = FindFacilityDefinition(candidate.type);
 
+        // 今の外出で、もう使った施設か(履歴の新しい方から、visitsThisOuting件)。
+        bool visitedThisOuting = false;
+        for (size_t i = 0; i < agent.history.size() && static_cast<int>(i) < visitsThisOuting; ++i)
+        {
+            if (agent.history[i].facilityObjectId == candidate.objectId) { visitedThisOuting = true; break; }
+        }
+
         if (facility == nullptr || facility->category != purpose.category)
         {
             evaluation.reject = CandidateReject::WrongCategory;
+        }
+        else if (visitedThisOuting)
+        {
+            evaluation.reject = CandidateReject::VisitedThisOuting;
+        }
+        else if (candidate.outOfRange)
+        {
+            evaluation.reject = CandidateReject::OutOfRange;
         }
         else if (!candidate.reachable)
         {
             evaluation.reject = CandidateReject::Unreachable;
         }
-        else if (agent.stamina < RequiredStamina(*facility, candidate.pathLength, settings))
+        else if (agent.stamina < ((candidate.walkLength >= 0.0f)
+                     ? RequiredStaminaForWalk(*facility, candidate.walkLength, settings)
+                     : RequiredStamina(*facility, candidate.pathLength, settings)))
         {
             evaluation.reject = CandidateReject::NotEnoughStamina;
         }
         else
         {
-            evaluation.weight = ComputeFacilityWeight(agent, *facility, purpose.purpose, candidate.pathLength, settings);
+            evaluation.repeatFactor = ComputeRepeatVisitFactor(agent, candidate.objectId, needDrivenDaily, settings);
+            const float baseWeight = ComputeFacilityWeight(agent, *facility, purpose.purpose, candidate.pathLength, settings);
+            // 履歴で下げても、到達できる候補を、無条件に0にはしない(下限を守る)。
+            evaluation.weight = (std::max)(baseWeight * evaluation.repeatFactor, settings.minimumWeight);
         }
         weights.push_back(evaluation.weight);
         evaluations.push_back(evaluation);

@@ -692,13 +692,20 @@ void DemandSystem::FinishVisit(ResidentAgent& agent, GameContext& context, GameO
             const int share = static_cast<int>(std::lround(static_cast<float>(facility->pricePerVisit) * m_settings.salesShareToFunds));
             context.economy->Earn(share);
         }
+
+        // 立ち寄り(P1): 主目的(や前の立ち寄り)を使い終わった後、低い確率で、近くの施設に寄る。寄るなら、そこへ歩き始める。
+        if (TryStartStopover(agent, context, *facilityObj))
+        {
+            return;
+        }
     }
 
     // 帰宅を始める。経路が無い(壊れている)時は、その場で家にいる扱いにする。
     if (agent.waypoints.size() >= 2)
     {
         // 道路が切り取られていても、歩き抜けないように、今の道路で、帰りの経路を作り直す。帰れなければ、立ち往生。
-        if (!ReplanReturnRoute(agent, context))
+        // 立ち寄りの後は、保存してある経路が短い(前の施設から今の施設まで)ので、迂回の判定はしない。
+        if (!ReplanReturnRoute(agent, context, agent.outingStopCount == 0))
         {
             return;
         }
@@ -713,6 +720,191 @@ void DemandSystem::FinishVisit(ResidentAgent& agent, GameContext& context, GameO
         agent.state = ResidentAgentState::AtHome;
         agent.targetFacilityId = 0;
     }
+}
+
+bool DemandSystem::TryStartStopover(ResidentAgent& agent, GameContext& context, const GameObject& currentFacility)
+{
+    if (!m_roads || m_roads->empty() || !m_pathfinder || !context.clock || !context.objects)
+    {
+        return false;
+    }
+    const float hour = context.clock->GetTimeOfDayHours();
+    if (!CanConsiderStopover(agent, hour, m_settings))
+    {
+        return false;
+    }
+    const float stopChance = ComputeStopoverChance(agent, m_settings);
+    if (!(m_random.Next01() < stopChance))
+    {
+        return false; // 寄らずに帰る(多くの外出は、ここ)
+    }
+
+    // ---- ここから先は、寄ると決めた時だけ(経路探索を使うので、重い) ----
+    const RoadGraph graph = RoadGraph::BuildFromSegments(*m_roads);
+    PathCache cache;
+
+    const GameObject* home = GameObjectFactory::FindById(*context.objects, agent.homeObjectId);
+    if (!home)
+    {
+        return false;
+    }
+    const RouteEndpoint homeEndpoint = ToEndpoint(MakeBuildingSnapshot(home->id, home->transform.position, *m_roads, graph));
+    const RouteEndpoint hereEndpoint = ToEndpoint(MakeBuildingSnapshot(currentFacility.id, currentFacility.transform.position, *m_roads, graph));
+    if (!homeEndpoint.hasRoadConnection || !hereEndpoint.hasRoadConnection)
+    {
+        return false;
+    }
+
+    // 目的(不足している需要があれば、その充足を優先。無ければ自発的)と、候補(今の目的のカテゴリの、他の施設)。
+    const OutingPurposeChoice purpose = ChoosePurpose(agent, m_settings, m_random);
+    const float maxLeg = WorldScale::FromLegacy(m_settings.stopoverMaxDistanceLegacyCells);
+
+    std::vector<FacilityCandidate> candidates;
+    std::vector<RoutePlan> legPlans;
+    for (const GameObject& other : *context.objects)
+    {
+        if (other.kind != ObjectKind::Building || other.id == currentFacility.id)
+        {
+            continue;
+        }
+        const FacilityDefinition* definition = FindFacilityDefinition(other.buildingType);
+        if (!definition || definition->category != purpose.category)
+        {
+            continue;
+        }
+
+        FacilityCandidate candidate;
+        candidate.objectId = other.id;
+        candidate.type = other.buildingType;
+
+        const RouteEndpoint candidateEndpoint = ToEndpoint(MakeBuildingSnapshot(other.id, other.transform.position, *m_roads, graph));
+        RoutePlan leg = PlanRoute(hereEndpoint, candidateEndpoint, *m_roads, graph, *m_pathfinder, cache);
+        if (leg.valid)
+        {
+            // 立ち寄り先から家へ帰る道のりも、体力の判定に入れる(帰れなくなる立ち寄りはしない)。
+            const RoutePlan back = PlanRoute(candidateEndpoint, homeEndpoint, *m_roads, graph, *m_pathfinder, cache);
+            if (back.valid)
+            {
+                candidate.reachable = true;
+                candidate.pathLength = leg.length;
+                candidate.walkLength = leg.length + back.length;
+                candidate.outOfRange = leg.length > maxLeg;
+            }
+        }
+        candidates.push_back(candidate);
+        legPlans.push_back(std::move(leg));
+    }
+    if (candidates.empty())
+    {
+        return false;
+    }
+
+    std::vector<CandidateEvaluation> evaluations;
+    const int visitsThisOuting = agent.outingStopCount + 1; // 主目的 + これまでの立ち寄り(履歴の先頭から、この数)
+    const int chosen = ChooseFacility(agent, candidates, purpose, m_settings, m_random, evaluations, visitsThisOuting);
+
+    DecisionLogEntry entry;
+    entry.homeObjectId = agent.homeObjectId;
+    entry.weekCount = context.clock->GetWeekCount();
+    entry.hour = hour;
+    entry.needDriven = purpose.needDriven;
+    entry.category = purpose.category;
+    entry.purpose = purpose.purpose;
+    entry.stamina = agent.stamina;
+    entry.lifeNeed = agent.lifeNeed;
+    entry.activityNeed = agent.activityNeed;
+    entry.evaluations = evaluations;
+    entry.chosenIndex = chosen;
+    entry.stopover = true;
+    entry.stopIndex = agent.outingStopCount + 1;
+    entry.stopChance = stopChance;
+
+    if (chosen < 0)
+    {
+        entry.note = "寄ろうとしたが、寄れる施設が無い(範囲外・体力不足・到達不可・使用済み)";
+        PushDecisionLog(std::move(entry));
+        return false;
+    }
+
+    // 食事系の連続は、ハードルを上げる(同じ外出で食事系を使った後に、別の食事系へは、めったに寄らない)。
+    const FacilityDefinition* chosenDefinition = FindFacilityDefinition(candidates[static_cast<size_t>(chosen)].type);
+    if (chosenDefinition)
+    {
+        const float accept = ComputeFoodChainAcceptChance(agent, *chosenDefinition, m_settings);
+        if (accept < 1.0f && !(m_random.Next01() < accept))
+        {
+            entry.note = "食事系が続くので、寄らなかった(受け入れ確率 " + std::to_string(accept) + ")";
+            entry.evaluations[static_cast<size_t>(chosen)].chosen = false;
+            entry.chosenIndex = -1;
+            PushDecisionLog(std::move(entry));
+            return false;
+        }
+    }
+    PushDecisionLog(std::move(entry));
+
+    // 今いる施設 → 立ち寄り先 の経路で歩き始める。行き先の側が「施設」の向き(帰りは、立ち寄り先から家へ、作り直す)。
+    const RoutePlan& leg = legPlans[static_cast<size_t>(chosen)];
+    GameObject* marker = GameObjectFactory::FindById(*context.objects, agent.objectId);
+    agent.targetFacilityId = candidates[static_cast<size_t>(chosen)].objectId;
+    agent.purpose = purpose.purpose;
+    agent.outingStopCount += 1;
+    agent.waypoints = leg.waypoints;
+    agent.segmentIndices = leg.segmentIndices;
+    agent.waypointsHomeToTarget = true;
+    StartMove(agent, true, marker);
+
+    std::ostringstream note;
+    note << "立ち寄り" << agent.outingStopCount << "回目 → " << (chosenDefinition ? chosenDefinition->name : "?")
+         << "(" << UsagePurposeName(purpose.purpose) << "、重み " << evaluations[static_cast<size_t>(chosen)].weight << ")";
+    agent.lastDecisionNote = note.str();
+    return true;
+}
+
+void DemandSystem::StartReturnFromHere(ResidentAgent& agent, GameContext& context)
+{
+    GameObject* marker = GameObjectFactory::FindById(*context.objects, agent.objectId);
+    agent.targetFacilityId = 0;
+    agent.visitHoursLeft = 0.0f;
+    if (!marker)
+    {
+        return;
+    }
+
+    if (!m_roads || m_roads->empty() || !m_pathfinder)
+    {
+        // 道路の情報が無い(テストなど)時は、その場で家にいる(家が無ければ、住居なし)扱いにする。
+        agent.waypoints.clear();
+        agent.segmentIndices.clear();
+        agent.currentWaypointIndex = 0;
+        if (agent.homeObjectId == 0) { BecomeHomeless(agent, context); }
+        else { agent.state = ResidentAgentState::AtHome; marker->visible = false; }
+        return;
+    }
+
+    XMFLOAT3 homePosition = agent.homePosition;
+    if (agent.homeObjectId != 0)
+    {
+        const GameObject* home = GameObjectFactory::FindById(*context.objects, agent.homeObjectId);
+        if (home) { homePosition = home->transform.position; }
+    }
+
+    const RoadGraph graph = RoadGraph::BuildFromSegments(*m_roads);
+    PathCache cache;
+    const RouteEndpoint from = ToEndpoint(MakeBuildingSnapshot(0, marker->transform.position, *m_roads, graph));
+    const RouteEndpoint to = ToEndpoint(MakeBuildingSnapshot(0, homePosition, *m_roads, graph));
+    const RoutePlan plan = PlanRoute(from, to, *m_roads, graph, *m_pathfinder, cache);
+    if (!plan.valid)
+    {
+        BecomeStranded(agent, context, *m_roads);
+        return;
+    }
+
+    // 位置は今のまま(経路の先頭が、今の位置)。「今の位置 → 自宅」の向き(帰りの向き)に並んでいる。
+    agent.waypoints = plan.waypoints;
+    agent.waypointsHomeToTarget = false;
+    agent.currentWaypointIndex = 0;
+    agent.segmentIndices = plan.segmentIndices;
+    agent.state = ResidentAgentState::ReturningHome;
 }
 
 void DemandSystem::BecomeHomeless(ResidentAgent& agent, GameContext& context)
@@ -754,6 +946,8 @@ void DemandSystem::BecomeHomeless(ResidentAgent& agent, GameContext& context)
 void DemandSystem::AbortOutingToDemolishedFacility(ResidentAgent& agent, GameContext& context)
 {
     GameObject* obj = GameObjectFactory::FindById(*context.objects, agent.objectId);
+    // 立ち寄りへ向かう途中・立ち寄り先の中だったか。その時の経路は「前の施設 → 立ち寄り先」なので、逆向きに戻ると、家ではなく前の施設へ着いてしまう。
+    const bool onStopLeg = agent.outingStopCount > 0;
     agent.targetFacilityId = 0;                 // 向かう施設は、もう無い。利用も売上も、起きない
     agent.visitHoursLeft = 0.0f;
     agent.outingStopCount = 0;
@@ -763,6 +957,25 @@ void DemandSystem::AbortOutingToDemolishedFacility(ResidentAgent& agent, GameCon
     if (agent.state == ResidentAgentState::ReturningHome)
     {
         return; // 帰宅中は、そのまま帰る(行き先の記録を消しただけ)
+    }
+
+    if (onStopLeg)
+    {
+        if (agent.state == ResidentAgentState::Visiting && agent.waypoints.size() >= 2)
+        {
+            // 立ち寄り先の中: 施設の位置から、今の道路で、家への経路を作って帰り始める(迂回の判定はしない)。
+            if (ReplanReturnRoute(agent, context, false))
+            {
+                StartMove(agent, false, obj);
+            }
+            return;
+        }
+        if (agent.state == ResidentAgentState::GoingOut && obj)
+        {
+            // 立ち寄り先へ歩いている途中: その場から、家へ帰り始める。位置は、飛ばさない。
+            StartReturnFromHere(agent, context);
+            return;
+        }
     }
 
     if (agent.state == ResidentAgentState::Visiting && agent.waypoints.size() >= 2)
@@ -799,7 +1012,7 @@ void DemandSystem::AbortOutingToDemolishedFacility(ResidentAgent& agent, GameCon
     }
 }
 
-bool DemandSystem::ReplanReturnRoute(ResidentAgent& agent, GameContext& context)
+bool DemandSystem::ReplanReturnRoute(ResidentAgent& agent, GameContext& context, bool applyDetourPenalty)
 {
     if (!m_roads || m_roads->empty() || !m_pathfinder || agent.waypoints.size() < 2)
     {
@@ -842,7 +1055,7 @@ bool DemandSystem::ReplanReturnRoute(ResidentAgent& agent, GameContext& context)
     agent.waypoints = plan.waypoints;
     agent.waypointsHomeToTarget = false;    // この経路は、「施設→自宅」の向き(帰りの向き)に並んでいる
     agent.segmentIndices = plan.segmentIndices;
-    if (plan.length > oldLength + 1e-3f)
+    if (applyDetourPenalty && plan.length > oldLength + 1e-3f)
     {
         // 元の道のりより長い: 道路が無くなって、迂回して帰ることになった。
         agent.stamina = (std::max)(0.0f, agent.stamina - RoadLossStaminaCost(plan.length - oldLength, m_settings));
@@ -1127,6 +1340,13 @@ void DemandSystem::UpdateAgentMovement(float deltaTime, GameContext& context)
                 if (!facility)
                 {
                     // 施設が無くなっていた(将来、削除に対応した時のため): 利用せずに帰る。
+                    if (agent.outingStopCount > 0)
+                    {
+                        // 立ち寄りへの途中だった: 経路が「前の施設 → 立ち寄り先」なので、逆向きに戻らず、今の位置から家へ帰る。
+                        agent.outingStopCount = 0;
+                        StartReturnFromHere(agent, context);
+                        return;
+                    }
                     StartMove(agent, false, obj);
                     return;
                 }

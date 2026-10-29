@@ -51,7 +51,9 @@ struct FacilityCandidate
     uint32_t objectId = 0;          // 施設のGameObject::id
     BuildingType type = BuildingType::Shop;
     bool reachable = false;         // 道路でつながっていて、経路が見つかったか
-    float pathLength = 0.0f;        // 自宅から施設までの道のり(ワールド単位)。reachableの時だけ意味を持つ
+    float pathLength = 0.0f;        // 今いる所(自宅、立ち寄りの時は今いる施設)から施設までの道のり(ワールド単位)。reachableの時だけ意味を持つ。距離の重みに使う
+    float walkLength = -1.0f;       // 体力の判定に使う、この先に歩く道のりの合計(行き + 家までの帰り)。負なら、往復(pathLengthの2倍)として扱う
+    bool outOfRange = false;        // 立ち寄りの範囲(今いる施設からの道のりの上限)の外か
 };
 
 // 候補を選ばれなかった理由。
@@ -60,7 +62,9 @@ enum class CandidateReject
     None,               // 抽選の対象になった
     Unreachable,        // 道路でつながっていない・経路が無い(利用・売上を発生させない)
     NotEnoughStamina,   // 往復の移動と利用に必要な体力が足りない
-    WrongCategory       // 今の目的のカテゴリではない
+    WrongCategory,      // 今の目的のカテゴリではない
+    VisitedThisOuting,  // 今の外出で、もう使った施設(立ち寄りで、同じ施設に戻らない)
+    OutOfRange          // 立ち寄りの範囲の外(遠すぎる)
 };
 
 // 候補1つの評価の結果(デバッグ表示・ログ用。抽選の根拠が、全て追えるようにする)。
@@ -68,7 +72,8 @@ struct CandidateEvaluation
 {
     FacilityCandidate candidate;
     CandidateReject reject = CandidateReject::None;
-    float weight = 0.0f;            // 選択の重み(rejectがNoneの時だけ、0より大きい)
+    float repeatFactor = 1.0f;      // 利用履歴による重みの倍率(1=下がらない。直近に同じ施設を使っていると、1未満)
+    float weight = 0.0f;            // 選択の重み(rejectがNoneの時だけ、0より大きい)。repeatFactorを掛けた後の値
     float chance = 0.0f;            // 選ばれる確率(重み / 重みの合計)
     bool chosen = false;
 };
@@ -81,10 +86,30 @@ float ComputeFacilityWeight(const ResidentAgent& agent, const FacilityDefinition
 // 外出と利用に必要な体力(往復の移動 + 利用)。
 float RequiredStamina(const FacilityDefinition& facility, float pathLength, const ResidentSimSettings& settings);
 
+// 歩く道のりの合計(行き + 帰り)に必要な体力 = 施設の利用の分 + 移動の分。
+float RequiredStaminaForWalk(const FacilityDefinition& facility, float totalWalkLength, const ResidentSimSettings& settings);
+
+// 利用履歴による重みの倍率(0より大きく、1以下)。直近repeatVisitWindow回の利用に、同じ施設があれば下がる。
+// 直前の利用 = repeatVisitWeightFactor、古くなるほど1に近づく(複数あれば、一番下がる物)。完全には禁止しない。
+// needDrivenDaily: 不足による日用品の外出か。trueなら、必要な買い物を妨げないよう、下げ幅を弱める(needDrivenDailyRepeatStrength)。
+float ComputeRepeatVisitFactor(const ResidentAgent& agent, uint32_t facilityObjectId, bool needDrivenDaily, const ResidentSimSettings& settings);
+
 // 候補を評価し、重み付き抽選で1つ選ぶ。選ばれた候補の添字(evaluationsの添字)を返す。1つも選べなければ-1。
 // evaluationsには、全ての候補の評価(除外の理由・重み・確率・選ばれたか)を入れて返す。
+// visitsThisOuting: 今の外出で、もう使った施設の数(立ち寄りの時だけ。履歴の新しい方から、この数の施設は、候補から外す)。通常の施設選びは0。
 int ChooseFacility(const ResidentAgent& agent, const std::vector<FacilityCandidate>& candidates, const OutingPurposeChoice& purpose,
-                   const ResidentSimSettings& settings, SimRandom& random, std::vector<CandidateEvaluation>& evaluations);
+                   const ResidentSimSettings& settings, SimRandom& random, std::vector<CandidateEvaluation>& evaluations,
+                   int visitsThisOuting = 0);
+
+// ---- 立ち寄り(主目的の施設を使った後、近くの施設に寄る) ----
+// 立ち寄りを考えてよいか(回数の上限・時刻・体力・帰る家があるか)。確率の判定は別(ComputeStopoverChance)。
+bool CanConsiderStopover(const ResidentAgent& agent, float hour, const ResidentSimSettings& settings);
+
+// 立ち寄る確率 = 基本の確率 × 減衰^(今までの立ち寄りの回数)。主目的の施設の利用より低く、回数が増えるほど下がる。
+float ComputeStopoverChance(const ResidentAgent& agent, const ResidentSimSettings& settings);
+
+// 同じ外出で食事系を使った後に、別の食事系の施設へ寄る時の、実際に寄る確率(それ以外は1)。
+float ComputeFoodChainAcceptChance(const ResidentAgent& agent, const FacilityDefinition& candidate, const ResidentSimSettings& settings);
 
 // 重みの列から、0以上1未満のunitに対応する添字を選ぶ(重みの比で選ぶ)。重みが全て0以下なら-1。
 int PickWeightedIndex(const std::vector<float>& weights, float unit);

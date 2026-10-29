@@ -29,6 +29,8 @@ namespace
         case CandidateReject::Unreachable:      return "到達不可";
         case CandidateReject::NotEnoughStamina: return "体力不足";
         case CandidateReject::WrongCategory:    return "カテゴリ違い";
+        case CandidateReject::VisitedThisOuting:return "今回使用済み";
+        case CandidateReject::OutOfRange:       return "範囲外(遠い)";
         }
         return "?";
     }
@@ -180,18 +182,23 @@ void DemandSystem::DrawDecisionsTab()
     for (int i = static_cast<int>(m_decisionLog.size()) - 1; i >= 0; --i)
     {
         const DecisionLogEntry& entry = m_decisionLog[static_cast<size_t>(i)];
-        char title[160];
-        std::snprintf(title, sizeof(title), "week %d %05.2fh  home #%u  %s / %s (%s)  %s###decision%d",
-            entry.weekCount, entry.hour, entry.homeObjectId,
+        char stopTag[24] = "";
+        if (entry.stopover) { std::snprintf(stopTag, sizeof(stopTag), "[stop #%d] ", entry.stopIndex); }
+        char title[200];
+        std::snprintf(title, sizeof(title), "week %d %05.2fh  home #%u  %s%s / %s (%s)  %s###decision%d",
+            entry.weekCount, entry.hour, entry.homeObjectId, stopTag,
             entry.needDriven ? "need" : "spontaneous", FacilityCategoryName(entry.category), UsagePurposeName(entry.purpose),
             entry.chosenIndex >= 0 ? "" : "[no pick]", i);
         if (ImGui::TreeNode(title))
         {
             ImGui::Text("life %.0f  activity %.0f  stamina %.0f", entry.lifeNeed, entry.activityNeed, entry.stamina);
-            if (ImGui::BeginTable("##candidates", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg))
+            if (entry.stopover) { ImGui::Text("立ち寄りの確率(判定の時): %.1f%%", entry.stopChance * 100.0f); }
+            if (!entry.note.empty()) { ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.4f, 1.0f), "%s", entry.note.c_str()); }
+            if (ImGui::BeginTable("##candidates", 7, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg))
             {
                 ImGui::TableSetupColumn("facility");
                 ImGui::TableSetupColumn("path");
+                ImGui::TableSetupColumn("repeat x");
                 ImGui::TableSetupColumn("weight");
                 ImGui::TableSetupColumn("chance");
                 ImGui::TableSetupColumn("excluded");
@@ -203,6 +210,8 @@ void DemandSystem::DrawDecisionsTab()
                     ImGui::TableNextColumn(); ImGui::Text("#%u %s", evaluation.candidate.objectId, FacilityNameOf(evaluation.candidate.type));
                     ImGui::TableNextColumn();
                     if (evaluation.candidate.reachable) { ImGui::Text("%.1f", evaluation.candidate.pathLength); } else { ImGui::TextDisabled("-"); }
+                    ImGui::TableNextColumn();
+                    if (evaluation.reject == CandidateReject::None) { ImGui::Text("%.2f", evaluation.repeatFactor); } else { ImGui::TextDisabled("-"); }
                     ImGui::TableNextColumn(); ImGui::Text("%.4f", evaluation.weight);
                     ImGui::TableNextColumn(); ImGui::Text("%.1f%%", evaluation.chance * 100.0f);
                     ImGui::TableNextColumn(); ImGui::TextUnformatted(RejectName(evaluation.reject));
@@ -265,6 +274,22 @@ void DemandSystem::DrawSettingsTab()
         ImGui::SliderFloat("値段の効き方", &s.priceStrength, 0.0f, 4.0f, "%.2f");
         ImGui::SliderFloat("距離の目安(マス)", &s.distanceScaleLegacyCells, 1.0f, 60.0f, "%.1f");
         ImGui::SliderFloat("重みの下限", &s.minimumWeight, 0.0f, 0.1f, "%.4f");
+    }
+    if (ImGui::CollapsingHeader("利用履歴(P1)"))
+    {
+        ImGui::SliderInt("直近の何回まで見るか", &s.repeatVisitWindow, 1, 8);
+        ImGui::SliderFloat("直前と同じ施設の重みの倍率", &s.repeatVisitWeightFactor, 0.0f, 1.0f, "%.2f");
+        ImGui::SliderFloat("不足による日用品の下げ幅の割合", &s.needDrivenDailyRepeatStrength, 0.0f, 1.0f, "%.2f");
+    }
+    if (ImGui::CollapsingHeader("立ち寄り(P1)"))
+    {
+        ImGui::SliderInt("最大の立ち寄り回数", &s.maxStopovers, 0, 5);
+        ImGui::SliderFloat("1回目の立ち寄り確率", &s.stopoverBaseChance, 0.0f, 1.0f, "%.2f");
+        ImGui::SliderFloat("回数ごとの確率の倍率", &s.stopoverChanceDecay, 0.0f, 1.0f, "%.2f");
+        ImGui::SliderFloat("立ち寄りに必要な体力", &s.stopoverMinStamina, 0.0f, 100.0f, "%.0f");
+        ImGui::SliderFloat("これ以降は立ち寄らない(時)", &s.stopoverLatestHour, 6.0f, 22.0f, "%.1f");
+        ImGui::SliderFloat("今の施設からの上限(マス)", &s.stopoverMaxDistanceLegacyCells, 1.0f, 40.0f, "%.1f");
+        ImGui::SliderFloat("食事系が続く時に寄る確率", &s.foodChainAcceptChance, 0.0f, 1.0f, "%.2f");
     }
     if (ImGui::CollapsingHeader("お金"))
     {

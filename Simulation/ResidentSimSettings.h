@@ -42,6 +42,20 @@ struct ResidentSimSettings
     float distanceScaleLegacyCells = 14.0f;     // 距離で重みが約1/e(37%)になる道のり(マス基準)。住民ごとの係数がかかる
     float minimumWeight = 0.001f;               // 重みの下限(到達できる候補を、無条件に0にしない)
 
+    // ---- 利用履歴(P1。同じ施設への連続利用の重みを下げる。完全には禁止しない) ----
+    int repeatVisitWindow = 3;                  // 直近の何回の利用まで見るか(履歴の新しい方から数える)
+    float repeatVisitWeightFactor = 0.5f;       // 直前の利用と同じ施設の重みの倍率(1回前=この値。古い履歴ほど1に近づく)
+    float needDrivenDailyRepeatStrength = 0.25f;// 不足による日用品の外出では、下げ幅をこの割合に弱める(必要な買い物を妨げないため。0=下げない、1=同じ)
+
+    // ---- 立ち寄り(P1。主目的の施設を使った後、低い確率で近くの施設に寄る。回数が増えるほど確率が下がる) ----
+    int maxStopovers = 2;                       // 1回の外出での立ち寄りの最大回数
+    float stopoverBaseChance = 0.25f;           // 1回目の立ち寄りの確率(主目的を使った後)
+    float stopoverChanceDecay = 0.4f;           // 立ち寄りが1回増えるごとに、確率にかける倍率(2回目= 基本 × この値)
+    float stopoverMinStamina = 30.0f;           // 立ち寄りを考えるのに必要な、今の体力
+    float stopoverLatestHour = 19.0f;           // この時刻以降は、立ち寄らない(帰宅できなくなるのを避ける)
+    float stopoverMaxDistanceLegacyCells = 8.0f;// 今いる施設から、立ち寄り先までの道のりの上限(マス基準)
+    float foodChainAcceptChance = 0.2f;         // 同じ外出で、食事系の施設を使った後、別の食事系の施設に寄る時に、実際に寄る確率(通常は1)
+
     // ---- 満足度・道路が無くなった時の扱い(暫定。後で、救済の方法・ペナルティを見直す) ----
     float satisfactionMax = 100.0f;                     // 満足度の上限(初期値でもある)
     float roadLossRerouteSatisfactionPenalty = 5.0f;    // 道路が無くなって、迂回して帰ることになった時に、下がる満足度
