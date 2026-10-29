@@ -98,3 +98,6 @@ Settings/
 
 # 提出用の実行環境(tools/make_release_package.ps1 が作る)
 dist/
+
+# カフェのモデル(CGTrader Royalty Free License)の派生物。元の素材を、元の形で渡してはいけない条件のため、Gitに入れない(THIRD_PARTY_LICENSES.md)
+Assets/Models/Stores/cafe/*.png

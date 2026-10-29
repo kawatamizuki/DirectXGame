@@ -258,6 +258,7 @@ BuildController::PlacementPreview BuildController::ComputePlacement(const XMFLOA
             float scaleForWidth = rawFootprintWidth / modelWidth;
             float scaleForDepth = rawFootprintDepth / modelDepth;
             float fitScale = (scaleForWidth < scaleForDepth) ? scaleForWidth : scaleForDepth;
+            fitScale *= def.modelScale; // 見た目の拡大率(1より大きいと、敷地からはみ出して大きく見える。占有は変わらない)
 
             // モデルのローカル中心(XZ)を、実際に描画で使う回転量(基準角度+90度刻み)で
             // 回してからfootprint中心に合わせる。自前の符号計算をせず、エンジンの
@@ -266,18 +267,28 @@ BuildController::PlacementPreview BuildController::ComputePlacement(const XMFLOA
             float centerX = (boundsMin.x + boundsMax.x) * 0.5f;
             float centerZ = (boundsMin.z + boundsMax.z) * 0.5f;
             XMVECTOR localCenterVec = XMVectorSet(centerX * fitScale, 0.0f, centerZ * fitScale, 0.0f);
+
+            // モデルの中心を置きたい位置(モデルの向きでの、敷地の中心からのずれ)。既定は、敷地の中心。
+            // alignFrontToFootprint: モデルの前面(ローカル-Zの端 = boundsMin.z)を、敷地の前面の辺(ローカルz = -奥行き/2)にそろえる。
+            float desiredCenterZ = 0.0f;
+            if (def.alignFrontToFootprint)
+            {
+                desiredCenterZ = -rawFootprintDepth * 0.5f + modelDepth * fitScale * 0.5f;
+            }
+            XMVECTOR desiredCenterVec = XMVectorSet(0.0f, 0.0f, desiredCenterZ, 0.0f);
+
             XMVECTOR rotationQuat = XMQuaternionRotationRollPitchYaw(0.0f, yawRadians, 0.0f);
-            XMVECTOR rotatedCenterVec = XMVector3Rotate(localCenterVec, rotationQuat);
-            XMFLOAT3 rotatedCenter;
-            XMStoreFloat3(&rotatedCenter, rotatedCenterVec);
+            XMVECTOR rotatedOffsetVec = XMVector3Rotate(desiredCenterVec - localCenterVec, rotationQuat);
+            XMFLOAT3 rotatedOffset;
+            XMStoreFloat3(&rotatedOffset, rotatedOffsetVec);
 
             result.transform.scale = { fitScale, fitScale, fitScale };
             result.transform.position =
             {
-                footprintCenter.x - rotatedCenter.x,
+                footprintCenter.x + rotatedOffset.x,
                 // Y軸回転はYを変えないため、Y方向のオフセットは回転前と同じ計算でよい
                 m_field->GetHeightAt(footprintCenter.x, footprintCenter.z) - boundsMin.y * fitScale,
-                footprintCenter.z - rotatedCenter.z
+                footprintCenter.z + rotatedOffset.z
             };
         }
     }

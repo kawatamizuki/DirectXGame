@@ -3,7 +3,7 @@
 このプロジェクトが使っている(または使う予定の)外部の素材・ライブラリの出所とライセンスの一覧です。
 **新しい素材やライブラリを入れる時は、入れる前にこのファイルへ追記します**(末尾の「追加する時のチェックリスト」参照)。
 
-最終更新: 2026-10-26
+最終更新: 2026-10-29
 ※ 内容は取得元のページ・同梱のライセンス文書で確認した範囲です。法的な助言ではありません。提出・配布の前に、各ライセンスの原文を確認してください。
 
 ---
@@ -21,7 +21,21 @@
 | `Models/RoadModels/` | City Kit (Roads) と推定(ページ上の最新版は 2.2) | Kenney | CC0 1.0 | https://kenney.nl/assets/city-kit-roads | **推定**: ファイル名(`road-*`、`electricity-pole*`、`dumpster` など)と一致。取得したバージョンは未確認。同梱のライセンス文書は無い。ページ(2026-10-20 確認)で CC0 を確認 |
 | `Models/cube.obj` | 単純な立方体 | 不明 | 不明 | - | **要確認**: 出所の記録なし。自作の単純な形状なら「自作」に変更する。今はどこでも使っていない(Shop の仮モデルから `building-d` に変更済み) |
 
+| `Assets/Models/Stores/convenience/`(コンビニ) | "Mini Market" | Elbolillo (https://sketchfab.com/Elbolilloduro) | **CC BY 4.0** | https://sketchfab.com/3d-models/mini-market-725af75672704fc599a692d64e946475 (2021-04-15 公開) | **2026-10-29 に確認**: ファイル内のメタデータと、Sketchfab の公開API(`api.sketchfab.com/v3/models/<id>`)のライセンス欄が、どちらも CC BY 4.0(作者の表示が必要・商用可)。説明文に追加の制限は無い。Sketchfab のダウンロード可(downloadable)。GLB から変換して使用(下記) |
+| `Assets/Models/Stores/supermarket/`(スーパー) | "Lowpoly Supermarket" | Klieg3D (https://sketchfab.com/Klieg3D) | **CC BY 4.0** | https://sketchfab.com/3d-models/lowpoly-supermarket-80f32e7d620147dda44445f79bba4281 (2020-09-13 公開) | 同上(2026-10-29 に確認)。元は、道路・駐車場・車を含む敷地全体。店舗と前の歩道だけを切り出して使用 |
+| `Assets/Models/Stores/cinema/`(映画館) | "Cinema" | TRYFIELD (https://sketchfab.com/tryfield) | **CC BY 4.0** | https://sketchfab.com/3d-models/cinema-c74081d273324d409cb2350a2a349a80 (2020-10-18 公開) | 同上(2026-10-29 に確認)。元に付いていた巨大な地面を削除し、壁を両面描画にして使用 |
+
+| `Assets/Models/Stores/cafe/`(カフェ。**手元のみ。配布物には入れない**) | "Coffee Store" | w-murderface (https://www.cgtrader.com/designers/w-murderface) | CGTrader の **Royalty Free License (no AI)**(**無料**ダウンロード) | https://www.cgtrader.com/free-3d-models/exterior/cityscape/coffee-store (Model ID #2129997、公開日 2019-10-17) | **2026-10-29 に CGTrader のページと規約(21A)で確認**: ゲームへの組み込みは可(素材が独自形式で、ゲームの中で表示される形であること)。**エンドユーザーが元の素材を取り出せないよう、合理的な対策を取る**条件がある・元の形での再配布(譲渡)は不可・AI学習への利用は不可。クレジットはライセンス上は必須でないが、ダウンロードページで作者へのクレジットが求められているので、**w-murderface** をクレジットに入れる。FBX(材質入り)から変換して使用。元に付いていた600x600の地面を削除。**配布物には、このモデルを入れない**(`tools/make_release_package.ps1` が、同じ場所に、Kenney(CC0)の建物を置く。手元のモデルをそのまま入れる(読めるOBJ・PNG)と、条件に合わない)。GitHubにも、OBJ・MTLは入れない(`.gitignore`) |
+
 Kenney の素材は、公式サイトの方針として CC0(パブリックドメイン)で配布されており、個人・教育・商用に使えます。
+
+#### CC BY 4.0 の素材(Sketchfab の3つ: コンビニ・スーパー・映画館)の条件
+- **作者の表示が必須**(下記「クレジット表記」と、配布物の README.txt、各フォルダの `CREDITS.txt` に書いた)。**ライセンス(CC BY 4.0)へのリンクを付ける**。
+- **加工した場合は、加工した旨を表示する**。これらは、GLB → OBJ の変換、頂点への変形の焼き込み、材質を1枚のテクスチャ(アトラス)に統合、テクスチャの縮小(繰り返す模様は、平均の色に置き換え)、一部の切り出し・地面の削除をしている(`tools/convert_model.py`、`tools/convert_store_models.ps1`。各 `CREDITS.txt` に記載)。
+- 追加の制限(DRM・再配布を妨げる技術的な制限など)を、素材そのものに付けてはいけない。変換後のファイルは、元のライセンス(CC BY 4.0)のまま。
+- 商用利用・再配布・改変は、表示を守れば可。AI学習の禁止などの条項は、無い(ライセンス欄は、表示のみを求めている)。
+- **Git の扱い**: 元の GLB は、`.gitignore`(`*.glb`)で、入れない。変換後の OBJ・MTL も、他のモデルと同じく `.gitignore`(`*.obj`、`*.mtl`)の対象。アトラスの PNG と `CREDITS.txt` は、入る。再現は `tools/convert_store_models.ps1`。
+- 注意: 元のモデルの質感(特に、コンビニの壁の暗さ)は、元のまま。見た目の確認は、docs/study/glb_conversion.md。
 クレジットは必須ではありませんが、**「Kenney (www.kenney.nl)」** と書くことを推奨されているので、下記「クレジット表記」に入れています。
 
 ### 音声(BGM・効果音)
@@ -89,6 +103,11 @@ Kenney の素材は、公式サイトの方針として CC0(パブリックド�
 
 ```
 3D models: Kenney (www.kenney.nl) — CC0
+Store models (CC BY 4.0, converted/modified for this game; originals on Sketchfab):
+  "Mini Market" by Elbolillo — https://sketchfab.com/3d-models/mini-market-725af75672704fc599a692d64e946475
+  "Lowpoly Supermarket" by Klieg3D — https://sketchfab.com/3d-models/lowpoly-supermarket-80f32e7d620147dda44445f79bba4281
+  "Cinema" by TRYFIELD — https://sketchfab.com/3d-models/cinema-c74081d273324d409cb2350a2a349a80
+  License: http://creativecommons.org/licenses/by/4.0/
 Low-poly city models: TRiMA29 (SimplePoly City, CGTrader)   ※使う場合
 Building models: Quaternius (quaternius.com) — CC0           ※使う場合
 Libraries: Dear ImGui (MIT), stb (public domain / MIT), DirectX Tool Kit (MIT), ufbx (Unlicense / public domain), miniaudio (public domain)

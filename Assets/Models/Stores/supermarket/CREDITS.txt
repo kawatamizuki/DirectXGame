@@ -1,0 +1,8 @@
+Lowpoly Supermarket
+Author : Klieg3D (https://sketchfab.com/Klieg3D)
+Source : https://sketchfab.com/3d-models/lowpoly-supermarket-80f32e7d620147dda44445f79bba4281
+License: CC BY 4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+Modified: converted from GLB to OBJ, geometry transformed and merged, materials merged into one texture atlas
+(textures reduced in size; repeating textures replaced by an average colour; part of the original scene cut out).
+Conversion script: tools/convert_model.py

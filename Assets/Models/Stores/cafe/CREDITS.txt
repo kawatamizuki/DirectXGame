@@ -1,0 +1,8 @@
+Coffee Store
+Author : w-murderface (https://www.cgtrader.com/designers/w-murderface)
+Source : https://www.cgtrader.com/free-3d-models/exterior/cityscape/coffee-store
+License: CGTrader Royalty Free License (no AI). In-game use only: do NOT redistribute these files as-is or make them extractable by end users
+
+Modified: converted from FBX to OBJ, geometry transformed and merged, materials merged into one texture atlas
+(textures reduced in size; repeating textures replaced by an average colour; ground removed).
+Conversion script: tools/convert_model.py

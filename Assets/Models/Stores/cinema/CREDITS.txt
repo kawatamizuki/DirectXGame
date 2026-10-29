@@ -1,0 +1,8 @@
+Cinema
+Author : TRYFIELD (https://sketchfab.com/tryfield)
+Source : https://sketchfab.com/3d-models/cinema-c74081d273324d409cb2350a2a349a80
+License: CC BY 4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+Modified: converted from GLB to OBJ, geometry transformed and merged, materials merged into one texture atlas
+(textures reduced in size; repeating textures replaced by an average colour; ground removed).
+Conversion script: tools/convert_model.py

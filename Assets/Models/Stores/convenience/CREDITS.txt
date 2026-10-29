@@ -1,0 +1,8 @@
+Mini Market
+Author : Elbolillo (https://sketchfab.com/Elbolilloduro)
+Source : https://sketchfab.com/3d-models/mini-market-725af75672704fc599a692d64e946475
+License: CC BY 4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+Modified: converted from GLB to OBJ, geometry transformed and merged, materials merged into one texture atlas
+(textures reduced in size; repeating textures replaced by an average colour).
+Conversion script: tools/convert_model.py

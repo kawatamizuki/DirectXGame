@@ -56,10 +56,10 @@ if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) { throw "音のパック�
 $models = @(
     'CityKitSuburban\Models\OBJ format\building-type-a',
     'CityKitCommercial\Models\OBJ format\building-a',
-    'CityKitCommercial\Models\OBJ format\building-d',
-    'CityKitCommercial\Models\OBJ format\building-e',     # スーパー(暫定の見た目)
-    'CityKitCommercial\Models\OBJ format\building-i',     # 映画館(暫定の見た目)
-    'CityKitCommercial\Models\OBJ format\building-j',     # カフェ(暫定の見た目)
+    'Assets\Models\Stores\convenience\convenience',       # コンビニ(Sketchfab、CC BY 4.0。tools\convert_store_models.ps1 で変換)
+    'Assets\Models\Stores\supermarket\supermarket',       # スーパー(同上)
+    'Assets\Models\Stores\cinema\cinema',                 # 映画館(同上)
+    # カフェ(CGTraderの Royalty Free License)は、ここに入れない。下の「配布物のカフェ」を参照。
     'Models\character-female-f',
     'RoadTiles\Models\roadTile_163'
 )
@@ -69,12 +69,28 @@ foreach ($m in $models) {
 }
 foreach ($t in 'CityKitSuburban\Models\OBJ format\Textures\colormap.png',
                'CityKitCommercial\Models\OBJ format\Textures\colormap.png',
-               'Models\Textures\colormap.png') {
+               'Models\Textures\colormap.png',
+               'Assets\Models\Stores\convenience\convenience_atlas.png',
+               'Assets\Models\Stores\supermarket\supermarket_atlas.png',
+               'Assets\Models\Stores\cinema\cinema_atlas.png') {
     Copy-Required $t
 }
 
-# ライセンス(使った素材・ライブラリの表記)
-foreach ($l in 'THIRD_PARTY_LICENSES.md', 'CityKitSuburban\License.txt', 'CityKitCommercial\License.txt', 'RoadTiles\License.txt') {
+# 配布物のカフェ: ゲームは、Assets\Models\Stores\cafe\cafe.obj を読む。手元のカフェ(CGTraderの無料モデル "Coffee Store")は、
+# ライセンス(Royalty Free License)が、「素材を、エンドユーザーが、元の形で取り出せない形で、ゲームに入れること」を求めている。
+# 配布物のOBJ・PNGは、誰でも取り出せるので、手元のカフェは入れない。代わりに、同じ場所・同じ名前で、Kenney(CC0)の建物を置く。
+# (手元のカフェを配布物に入れるには、モデルを、専用の形式にまとめる仕組み(音のパックと同じ)が要る。まだ無い)
+$cafeOut = Join-Path $out 'Assets\Models\Stores\cafe'
+[IO.Directory]::CreateDirectory((Join-Path $cafeOut 'Textures')) | Out-Null
+$kenney = Join-Path $root 'CityKitCommercial\Models\OBJ format'
+$cafeObj = [IO.File]::ReadAllText((Join-Path $kenney 'building-j.obj')) -replace 'mtllib building-j\.mtl', 'mtllib cafe.mtl'
+[IO.File]::WriteAllText((Join-Path $cafeOut 'cafe.obj'), $cafeObj, (New-Object System.Text.UTF8Encoding($false)))
+Copy-Item -LiteralPath (Join-Path $kenney 'building-j.mtl') -Destination (Join-Path $cafeOut 'cafe.mtl') -Force
+Copy-Item -LiteralPath (Join-Path $kenney 'Textures\colormap.png') -Destination (Join-Path $cafeOut 'Textures\colormap.png') -Force
+
+# ライセンス(使った素材・ライブラリの表記)。CC BY の素材は、作者の表示が必要なので、モデルごとの CREDITS.txt も入れる。
+foreach ($l in 'THIRD_PARTY_LICENSES.md', 'CityKitSuburban\License.txt', 'CityKitCommercial\License.txt', 'RoadTiles\License.txt',
+               'Assets\Models\Stores\convenience\CREDITS.txt', 'Assets\Models\Stores\supermarket\CREDITS.txt', 'Assets\Models\Stores\cinema\CREDITS.txt') {
     Copy-Required $l
 }
 
@@ -111,9 +127,17 @@ $readme = @'
   GAME.exe          ゲーム本体
   *.hlsl, *.hlsli   描画のシェーダー(消さないでください)
   CityKit* / Models / RoadTiles   建物・住民・地面のモデル(消さないでください)
+  Assets            コンビニ・スーパー・映画館・カフェのモデル(消さないでください)。カフェは、配布版では、Kenney(CC0)の建物です
   Scenarios         最初の街のデータ
   Sounds            BGM・効果音(sounds.pak にまとめてあります)と、音の一覧(sounds.json)
   THIRD_PARTY_LICENSES.md、各 License.txt   使用した素材・ライブラリのライセンス
+
+■ 素材のクレジット(CC BY 4.0 の3Dモデル。いずれも Sketchfab で公開されている物を、このゲーム用に変換・加工して使っています)
+  コンビニ   "Mini Market" by Elbolillo   https://sketchfab.com/3d-models/mini-market-725af75672704fc599a692d64e946475
+  スーパー   "Lowpoly Supermarket" by Klieg3D(店舗部分だけを切り出し)   https://sketchfab.com/3d-models/lowpoly-supermarket-80f32e7d620147dda44445f79bba4281
+  映画館     "Cinema" by TRYFIELD   https://sketchfab.com/3d-models/cinema-c74081d273324d409cb2350a2a349a80
+  ライセンス: CC BY 4.0  http://creativecommons.org/licenses/by/4.0/
+  加工の内容は、Assets\Models\Stores\*\CREDITS.txt を参照してください。
 '@
 [IO.File]::WriteAllText((Join-Path $out 'README.txt'), $readme, (New-Object System.Text.UTF8Encoding($true)))
 
