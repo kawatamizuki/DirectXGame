@@ -295,15 +295,16 @@ void EditorUi::BuildDefaultLayout(unsigned int dockId, float width, float height
     ImGui::DockBuilderSetNodeSize(dockId, ImVec2(width, height));
 
     // 中央(ゲームの画面)を残して、左・右・下を順に切り出す。
-    //  ┌ 左(Hierarchy / ツール) ┬ 中央(ゲームの画面) ┬ 右(Inspector) ┐
+    //  ┌ 左(上: Hierarchy / 住民デバッグ、下: ツール) ┬ 中央(ゲームの画面) ┬ 右(Inspector) ┐
     //  │                       ├ 下(Assets / Log / Profiler / City Stats) ┤
     ImGuiID center = dockId;
-    ImGuiID left = ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.19f, nullptr, &center);
+    ImGuiID left = ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.25f, nullptr, &center);
     ImGuiID right = ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.24f, nullptr, &center);
     ImGuiID bottom = ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.36f, nullptr, &center);
-    ImGuiID leftBottom = ImGui::DockBuilderSplitNode(left, ImGuiDir_Down, 0.52f, nullptr, &left);
+    ImGuiID leftBottom = ImGui::DockBuilderSplitNode(left, ImGuiDir_Down, 0.30f, nullptr, &left);
 
     ImGui::DockBuilderDockWindow(kPanelHierarchy, left);
+    ImGui::DockBuilderDockWindow(kPanelResidentDebug, left);   // 住民デバッグは縦に長く使うので、Hierarchy と同じ上の段(タブ)に入れる
 
     ImGui::DockBuilderDockWindow(kPanelDebug, leftBottom);
     ImGui::DockBuilderDockWindow(kPanelBuild, leftBottom);
@@ -318,7 +319,6 @@ void EditorUi::BuildDefaultLayout(unsigned int dockId, float width, float height
     ImGui::DockBuilderDockWindow(kPanelLog, bottom);
     ImGui::DockBuilderDockWindow(kPanelProfiler, bottom);
     ImGui::DockBuilderDockWindow(kPanelCityStats, bottom);
-    ImGui::DockBuilderDockWindow(kPanelResidentDebug, bottom);
     ImGui::DockBuilderDockWindow(kPanelAudio, bottom);
 
     ImGui::DockBuilderFinish(dockId);
