@@ -250,21 +250,28 @@ void ResidentDebugPanel::NotifySelection(uint32_t residentId)
         m_lastSelection = residentId;
         if (residentId != 0 && !m_pinned)
         {
-            m_target = residentId;
-            m_targetRunId = 0; // 次のDrawで、今の世界に結びつける
-            m_selectedDetailId = 0;
-            m_selectedCandidate = -1;
+            SetTarget(residentId);
         }
     }
 }
 
-void ResidentDebugPanel::ClearTarget()
+void ResidentDebugPanel::SetTarget(uint32_t residentId)
 {
-    m_target = 0;
-    m_targetRunId = 0;
-    m_lastSelection = 0;
+    m_target = residentId;
+    m_targetRunId = 0; // 次のDrawで、今の世界に結びつける
     m_selectedDetailId = 0;
     m_selectedCandidate = -1;
+    m_decisionManual = false;
+    m_live = true;     // 別の住民へ切り替えたら、ライブ(最新を追う)に戻す
+    m_cursorEventId = 0;
+    m_cursorIndex = -1;
+    m_timeline.clear();
+}
+
+void ResidentDebugPanel::ClearTarget()
+{
+    SetTarget(0);
+    m_lastSelection = 0;
 }
 
 void ResidentDebugPanel::Draw(DemandSystem& demand, const std::vector<GameObject>& objects)
@@ -282,21 +289,42 @@ void ResidentDebugPanel::Draw(DemandSystem& demand, const std::vector<GameObject
     }
     if (m_target != 0 && m_targetRunId != runId)
     {
-        m_target = 0;
-        m_targetRunId = 0;
-        m_selectedDetailId = 0;
-        m_selectedCandidate = -1;
+        SetTarget(0);
+    }
+    if (m_bookmarksRunId != runId)
+    {
+        // 別の世界になった: ブックマークも、止まった印も、前の世界の物。
+        m_bookmarks.clear();
+        m_bookmarksRunId = runId;
+        m_lastPausedSeen = 0;
+    }
+
+    // 一時停止の条件に当てはまって、ゲームが止まった(新しい停止)時は、そのイベントを、履歴として見せる(止まった理由を、すぐ読めるように)。
+    // 固定(Pin)中は、別の住民へは切り替えない(「このイベントを見る」ボタンで、切り替えられる)。
+    {
+        SimDebugRecorder& recorder = demand.GetDebugRecorder();
+        if (recorder.IsPauseActive() && recorder.PausedEventId() != m_lastPausedSeen)
+        {
+            m_lastPausedSeen = recorder.PausedEventId();
+            if (const SimEvent* paused = recorder.FindEvent(m_lastPausedSeen))
+            {
+                if (!m_pinned || m_target == paused->residentId || m_target == 0)
+                {
+                    SeekToEvent(paused->residentId, paused->eventId);
+                }
+            }
+        }
     }
 
     ImGui::SetNextWindowPos(ImVec2(330.0f, 220.0f), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(820.0f, 600.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(900.0f, 740.0f), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("住民デバッグ", m_open))
     {
         ImGui::End();
         return;
     }
 
-    DrawHeader(demand);
+    DrawHeader(demand, objects);
 
     if (m_target == 0)
     {
@@ -327,11 +355,24 @@ void ResidentDebugPanel::Draw(DemandSystem& demand, const std::vector<GameObject
         ImGui::TextColored(kColorViolation, "!! この住民は、今、不変条件に違反しています(「異常」タブを見てください)");
     }
 
+    // 履歴のナビゲーション(ライブ/履歴・シークバー・絞り込み・一時停止の条件・ブックマーク)。
+    BuildNavigation(demand, objects);
+    DrawNavigator(demand, objects);
+
     if (ImGui::BeginTabBar("##residentdebugtabs"))
     {
         if (ImGui::BeginTabItem("現在"))
         {
-            DrawCurrentTab(demand, objects);
+            // 履歴を見ている時は、カーソルのイベントに記録された、その時点の状態を出す(今の値で、上書きしない)。
+            const SimEvent* cursorEvent = (!m_live && m_cursorIndex >= 0) ? m_timeline[static_cast<size_t>(m_cursorIndex)] : nullptr;
+            if (cursorEvent)
+            {
+                DrawSnapshotView(*cursorEvent, demand, objects);
+            }
+            else
+            {
+                DrawCurrentTab(demand, objects);
+            }
             ImGui::EndTabItem();
         }
         const ImGuiTabItemFlags decisionFlags = m_jumpToDetailTab ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
@@ -356,9 +397,39 @@ void ResidentDebugPanel::Draw(DemandSystem& demand, const std::vector<GameObject
     ImGui::End();
 }
 
-void ResidentDebugPanel::DrawHeader(DemandSystem& demand)
+void ResidentDebugPanel::DrawHeader(DemandSystem& demand, const std::vector<GameObject>& objects)
 {
     SimDebugRecorder& recorder = demand.GetDebugRecorder();
+
+    // 一時停止の条件に当てはまって、ゲームが止まっている間は、一番上に出す(ゲームを止めたのは、このパネルの条件)。
+    if (recorder.IsPauseActive())
+    {
+        const SimEvent* paused = recorder.FindEvent(recorder.PausedEventId());
+        ImGui::PushStyleColor(ImGuiCol_Text, kColorWarning);
+        if (paused)
+        {
+            ImGui::Text("一時停止中: 住民 #%u のイベント #%llu で、止まりました — [%s] %s", paused->residentId,
+                static_cast<unsigned long long>(paused->eventId), EventKindJa(paused->kind), DescribeEvent(*paused, objects).c_str());
+        }
+        else
+        {
+            ImGui::TextUnformatted("一時停止中(止めたイベントの記録は、上限で捨てられました)");
+        }
+        ImGui::PopStyleColor();
+        if (ImGui::Button("再開"))
+        {
+            recorder.ClearPause(); // 次のフレームで、時間が元の倍率に戻る(Game側)
+        }
+        if (paused)
+        {
+            ImGui::SameLine();
+            if (ImGui::Button("このイベントを見る"))
+            {
+                SeekToEvent(paused->residentId, paused->eventId);
+            }
+        }
+        ImGui::Separator();
+    }
 
     bool enabled = recorder.IsEnabled();
     if (ImGui::Checkbox("記録する", &enabled))
@@ -388,10 +459,8 @@ void ResidentDebugPanel::DrawHeader(DemandSystem& demand)
                                           item.homeObjectId != 0 ? Fmt("#%u", item.homeObjectId).c_str() : "なし", StateJa(item.state));
             if (ImGui::Selectable(label.c_str(), item.residentId == m_target))
             {
-                m_target = item.residentId;
+                SetTarget(item.residentId);
                 m_targetRunId = recorder.GetRunId();
-                m_selectedDetailId = 0;
-                m_selectedCandidate = -1;
             }
             ImGui::PopID();
         }
@@ -418,6 +487,391 @@ void ResidentDebugPanel::DrawHeader(DemandSystem& demand)
             ImGui::TextColored(kColorWarning, "容量の上限で、古い記録を捨てました: %s", dropped.c_str());
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// 履歴のナビゲーション(段階2)
+// ---------------------------------------------------------------------------
+void ResidentDebugPanel::GoLive()
+{
+    m_live = true;
+    m_scrollToCursor = false;
+    m_decisionManual = false; // 判断の詳細も、また最新を追う
+}
+
+void ResidentDebugPanel::SeekToIndex(int index)
+{
+    if (m_timeline.empty())
+    {
+        return;
+    }
+    index = (std::max)(0, (std::min)(index, static_cast<int>(m_timeline.size()) - 1));
+    m_cursorIndex = index;
+    m_cursorEventId = m_timeline[static_cast<size_t>(index)]->eventId;
+    m_live = false;
+    m_scrollToCursor = true;
+    m_syncDecisionPending = true;
+}
+
+void ResidentDebugPanel::SeekToEvent(uint32_t residentId, uint64_t eventId)
+{
+    if (residentId != m_target)
+    {
+        SetTarget(residentId);
+    }
+    m_live = false;
+    m_cursorEventId = eventId;
+    m_cursorIndex = -1;          // 次の BuildNavigation で、時間軸の中の位置を求める
+    m_scrollToCursor = true;
+    m_syncDecisionPending = true;
+}
+
+void ResidentDebugPanel::SyncDecisionToCursor(const SimDebugRecorder& recorder)
+{
+    // カーソルの時点(そのイベントを含む)より前で、一番新しい「目的選択」を探す。絞り込みで隠れていても、記録全体から探す。
+    const std::deque<SimEvent>& events = recorder.Events();
+    for (auto it = events.rbegin(); it != events.rend(); ++it)
+    {
+        if (it->residentId != m_target || it->eventId > m_cursorEventId)
+        {
+            continue;
+        }
+        if (it->kind == SimEventKind::PurposeChoice && it->detailId != 0)
+        {
+            m_selectedDetailId = it->detailId;
+            m_selectedCandidate = -1;
+            m_decisionManual = true; // カーソルの時点の判断を、見る(ライブで、最新へ自動で切り替わらない)
+            return;
+        }
+    }
+}
+
+void ResidentDebugPanel::BuildNavigation(DemandSystem& demand, const std::vector<GameObject>& objects)
+{
+    const SimDebugRecorder& recorder = demand.GetDebugRecorder();
+
+    // 捨てられたイベントのブックマークは、外す(記録に無いので、移れない)。
+    if (!recorder.Events().empty())
+    {
+        const uint64_t oldest = recorder.Events().front().eventId;
+        m_bookmarks.erase(m_bookmarks.begin(), m_bookmarks.lower_bound(oldest));
+    }
+    else
+    {
+        m_bookmarks.clear();
+    }
+
+    // 時間軸 = この住民の、絞り込みを通ったイベント。ブックマークしたイベントは、絞り込みで隠さない。
+    const std::string search = m_search;
+    const bool onlyProblems = m_onlyProblems;
+    const bool showNotMet = m_showNotMet;
+    auto pass = [&](const SimEvent& e)
+    {
+        if (m_bookmarks.count(e.eventId) != 0)
+        {
+            return true;
+        }
+        if (onlyProblems && e.result != SimEventResult::Warning && e.result != SimEventResult::Violation)
+        {
+            return false;
+        }
+        if (!showNotMet && e.result == SimEventResult::NotMet)
+        {
+            return false;
+        }
+        if (!search.empty())
+        {
+            const std::string text = std::string(EventKindJa(e.kind)) + " " + DescribeEvent(e, objects);
+            if (text.find(search) == std::string::npos)
+            {
+                return false;
+            }
+        }
+        return true;
+    };
+    m_timeline = BuildTimeline(recorder, m_target, pass);
+
+    // カーソル。ライブなら、いつも最新。履歴なら、見ているイベント(絞り込みで外れた時は、それより前の一番近いイベント)。
+    m_cursorClamped = false;
+    if (m_timeline.empty())
+    {
+        m_cursorIndex = -1;
+    }
+    else if (m_live)
+    {
+        m_cursorIndex = static_cast<int>(m_timeline.size()) - 1;
+        m_cursorEventId = m_timeline.back()->eventId;
+    }
+    else
+    {
+        m_cursorIndex = FindTimelineIndex(m_timeline, m_cursorEventId, &m_cursorClamped);
+    }
+
+    if (m_syncDecisionPending)
+    {
+        m_syncDecisionPending = false;
+        SyncDecisionToCursor(recorder);
+    }
+}
+
+void ResidentDebugPanel::DrawNavigator(DemandSystem& demand, const std::vector<GameObject>& objects)
+{
+    SimDebugRecorder& recorder = demand.GetDebugRecorder();
+    const int count = static_cast<int>(m_timeline.size());
+    const SimEvent* cursor = (m_cursorIndex >= 0 && m_cursorIndex < count) ? m_timeline[static_cast<size_t>(m_cursorIndex)] : nullptr;
+
+    ImGui::Separator();
+
+    // ---- ライブ / 履歴 ----
+    if (m_live)
+    {
+        ImGui::TextColored(kColorSuccess, "ライブ: 最新のイベントを追っています");
+    }
+    else
+    {
+        ImGui::TextColored(kColorWarning, "履歴を表示中(記録の閲覧です)。現在の街は巻き戻っていません。ゲームは、そのまま進んでいます");
+        ImGui::SameLine();
+        if (ImGui::SmallButton("ライブに戻る"))
+        {
+            GoLive();
+        }
+        if (cursor)
+        {
+            ImGui::TextColored(kColorWarning, "見ているイベント: #%llu  週%d %s  [%s]", static_cast<unsigned long long>(cursor->eventId), cursor->week,
+                HourText(cursor->hour).c_str(), EventKindJa(cursor->kind));
+            if (m_cursorClamped)
+            {
+                ImGui::TextColored(kColorWarning, "(見ていたイベントは、上限で捨てられた・絞り込みで外れたので、一番古い物に寄せました)");
+            }
+        }
+        else
+        {
+            ImGui::TextColored(kColorWarning, "(この住民の記録は、見つかりません)");
+        }
+    }
+
+    // ---- 絞り込み・検索(時間軸と、処理履歴の両方に効く) ----
+    ImGui::SetNextItemWidth(220.0f);
+    ImGui::InputTextWithHint("##resdbgsearch", "検索(種類・説明の文字)", m_search, sizeof(m_search));
+    ImGui::SameLine();
+    ImGui::Checkbox("不成立(灰)も出す", &m_showNotMet);
+    ImGui::SameLine();
+    ImGui::Checkbox("注意(黄)と異常(赤)だけ", &m_onlyProblems);
+
+    if (count == 0)
+    {
+        ImGui::TextDisabled("時間軸に出せるイベントが、ありません(まだ記録が無い・絞り込みで、全て外れた)");
+    }
+    else
+    {
+        // ---- シークバー(記録されたイベントの並びを、ドラッグで選ぶ。街の状態は、動かさない) ----
+        int index = m_cursorIndex;
+        ImGui::SetNextItemWidth((std::max)(120.0f, ImGui::GetContentRegionAvail().x - 200.0f));
+        if (ImGui::SliderInt("##resdbgseek", &index, 0, (std::max)(0, count - 1), ""))
+        {
+            SeekToIndex(index);
+        }
+        // 目印: 注意(黄)・異常(赤)・ブックマーク(黄の星の位置)を、バーの上に重ねる。
+        {
+            const ImVec2 pmin = ImGui::GetItemRectMin();
+            const ImVec2 pmax = ImGui::GetItemRectMax();
+            ImDrawList* draw = ImGui::GetWindowDrawList();
+            const float grab = ImGui::GetStyle().GrabMinSize;
+            const float span = (pmax.x - pmin.x) - grab;
+            const ImU32 yellow = ImGui::GetColorU32(kColorWarning);
+            const ImU32 red = ImGui::GetColorU32(kColorViolation);
+            for (int i = 0; i < count; ++i)
+            {
+                const SimEvent& e = *m_timeline[static_cast<size_t>(i)];
+                const bool mark = e.result == SimEventResult::Warning || e.result == SimEventResult::Violation;
+                const bool booked = m_bookmarks.count(e.eventId) != 0;
+                if (!mark && !booked)
+                {
+                    continue;
+                }
+                const float x = pmin.x + grab * 0.5f + (count > 1 ? span * static_cast<float>(i) / static_cast<float>(count - 1) : 0.0f);
+                if (mark)
+                {
+                    draw->AddLine(ImVec2(x, pmin.y), ImVec2(x, pmin.y + 5.0f), e.result == SimEventResult::Violation ? red : yellow, 2.0f);
+                }
+                if (booked)
+                {
+                    draw->AddTriangleFilled(ImVec2(x, pmax.y - 1.0f), ImVec2(x - 4.0f, pmax.y + 5.0f), ImVec2(x + 4.0f, pmax.y + 5.0f), yellow);
+                }
+            }
+        }
+        ImGui::SameLine();
+        ImGui::Text("%d / %d", m_cursorIndex + 1, count);
+        ImGui::SameLine();
+        ImGui::TextDisabled("(目印: 上の黄=注意、上の赤=異常、下の黄の三角=ブックマーク)");
+
+        // カーソルのイベントの説明。
+        if (cursor)
+        {
+            ImGui::PushStyleColor(ImGuiCol_Text, ColorOf(cursor->result));
+            ImGui::TextWrapped("週%d %s  [%s] %s", cursor->week, HourText(cursor->hour).c_str(), EventKindJa(cursor->kind), DescribeEvent(*cursor, objects).c_str());
+            ImGui::PopStyleColor();
+        }
+
+        // ---- 移動ボタン ----
+        auto isProblem = [](const SimEvent& e) { return e.result == SimEventResult::Warning || e.result == SimEventResult::Violation; };
+        auto isBookmark = [&](const SimEvent& e) { return m_bookmarks.count(e.eventId) != 0; };
+        const int at = m_cursorIndex;
+        if (ImGui::SmallButton("先頭")) { SeekToIndex(0); }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("前")) { SeekToIndex(at - 1); }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("次")) { SeekToIndex(at + 1); }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("最新(ライブ)")) { GoLive(); }
+        ImGui::SameLine();
+        ImGui::TextDisabled("|");
+        ImGui::SameLine();
+        if (ImGui::SmallButton("前の外出")) { const int i = PreviousOutingIndex(m_timeline, at); if (i >= 0) { SeekToIndex(i); } }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("次の外出")) { const int i = NextOutingIndex(m_timeline, at); if (i >= 0) { SeekToIndex(i); } }
+        ImGui::SameLine();
+        ImGui::TextDisabled("|");
+        ImGui::SameLine();
+        if (ImGui::SmallButton("前の注意・異常")) { const int i = PreviousMatchIndex(m_timeline, at, isProblem); if (i >= 0) { SeekToIndex(i); } }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("次の注意・異常")) { const int i = NextMatchIndex(m_timeline, at, isProblem); if (i >= 0) { SeekToIndex(i); } }
+
+        // ---- ブックマーク ----
+        if (cursor)
+        {
+            const bool booked = m_bookmarks.count(cursor->eventId) != 0;
+            if (ImGui::SmallButton(booked ? "ブックマークを外す" : "ブックマークする"))
+            {
+                if (booked) { m_bookmarks.erase(cursor->eventId); } else { m_bookmarks.insert(cursor->eventId); }
+            }
+            ImGui::SameLine();
+        }
+        if (ImGui::SmallButton("前のブックマーク")) { const int i = PreviousMatchIndex(m_timeline, at, isBookmark); if (i >= 0) { SeekToIndex(i); } }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("次のブックマーク")) { const int i = NextMatchIndex(m_timeline, at, isBookmark); if (i >= 0) { SeekToIndex(i); } }
+    }
+
+    // ブックマークの一覧(全住民。クリックで、その住民・そのイベントへ)。
+    if (ImGui::CollapsingHeader(Fmt("ブックマーク一覧 (%zu)###resdbgbookmarks", m_bookmarks.size()).c_str()))
+    {
+        if (m_bookmarks.empty())
+        {
+            ImGui::TextDisabled("まだありません。イベントを選んで「ブックマークする」を押すと、ここに並びます(捨てられた記録のブックマークは、消えます)");
+        }
+        for (uint64_t id : m_bookmarks)
+        {
+            const SimEvent* e = recorder.FindEvent(id);
+            if (!e) { continue; }
+            ImGui::PushID(static_cast<int>(id));
+            const std::string label = Fmt("住民#%u  週%d %s  [%s] %s", e->residentId, e->week, HourText(e->hour).c_str(), EventKindJa(e->kind), DescribeEvent(*e, objects).c_str());
+            if (ImGui::Selectable(label.c_str(), !m_live && m_cursorEventId == id && m_target == e->residentId))
+            {
+                SeekToEvent(e->residentId, e->eventId);
+            }
+            ImGui::PopID();
+        }
+    }
+
+    // ---- 一時停止の条件(条件に合うイベントが起きたら、ゲームを自動で止める) ----
+    if (ImGui::CollapsingHeader("一時停止の条件(イベントが起きたら、ゲームを自動で止める)"))
+    {
+        SimBreakpoints& bp = recorder.Breakpoints();
+        ImGui::TextDisabled("止まるのは、シミュレーションの更新が終わった後です(途中では止まりません)。止まると、そのイベントを、履歴として開きます。");
+        ImGui::Checkbox("確認された異常(赤)で止める", &bp.onViolation);
+        ImGui::Checkbox("注意(黄)以上で止める", &bp.onWarning);
+
+        // 対象の住民。
+        int scope = (bp.residentId == 0) ? 0 : 1;
+        ImGui::TextUnformatted("対象:");
+        ImGui::SameLine();
+        bool changed = ImGui::RadioButton("全住民", &scope, 0);
+        ImGui::SameLine();
+        const std::string thisLabel = (bp.residentId != 0) ? Fmt("住民 #%u だけ", bp.residentId) : (m_target != 0 ? Fmt("今の住民 #%u だけ", m_target) : std::string("今の住民だけ"));
+        changed = ImGui::RadioButton(thisLabel.c_str(), &scope, 1) || changed;
+        if (changed)
+        {
+            bp.residentId = (scope == 0) ? 0 : m_target;
+        }
+
+        // 種類で止める。
+        ImGui::TextUnformatted("止めるイベントの種類:");
+        constexpr int kKindCount = static_cast<int>(SimEventKind::MovedIn) + 1;
+        for (int k = 0; k < kKindCount; ++k)
+        {
+            bool on = (bp.kindMask & (1u << k)) != 0;
+            if (ImGui::Checkbox(EventKindJa(static_cast<SimEventKind>(k)), &on))
+            {
+                bp.kindMask = on ? (bp.kindMask | (1u << k)) : (bp.kindMask & ~(1u << k));
+            }
+            if ((k % 6) != 5 && k + 1 < kKindCount) { ImGui::SameLine(); }
+        }
+        static const char* const kResultLabels[] = { "結果を問わない", "成功のとき", "不成立(灰)のとき", "注意(黄)のとき", "異常(赤)のとき", "経過のとき" };
+        static const uint32_t kResultMasks[] = { 0u, 1u << static_cast<uint32_t>(SimEventResult::Success), 1u << static_cast<uint32_t>(SimEventResult::NotMet),
+            1u << static_cast<uint32_t>(SimEventResult::Warning), 1u << static_cast<uint32_t>(SimEventResult::Violation), 1u << static_cast<uint32_t>(SimEventResult::Info) };
+        int resultIndex = 0;
+        for (int r = 0; r < 6; ++r) { if (bp.resultMask == kResultMasks[r]) { resultIndex = r; } }
+        ImGui::SetNextItemWidth(200.0f);
+        if (ImGui::Combo("上の種類のうち", &resultIndex, kResultLabels, 6))
+        {
+            bp.resultMask = kResultMasks[resultIndex];
+        }
+        ImGui::TextDisabled("例: 種類=立ち寄り判定 + 成功のとき → 立ち寄りの抽選に当選した瞬間に止まる");
+        if (!recorder.IsEnabled() && bp.AnyEnabled())
+        {
+            ImGui::TextColored(kColorWarning, "記録がOFFなので、条件は働きません");
+        }
+        else if (bp.AnyEnabled())
+        {
+            ImGui::TextColored(kColorSuccess, "条件が有効です。当てはまるイベントが記録されると、ゲームが止まります");
+        }
+    }
+    ImGui::Separator();
+}
+
+void ResidentDebugPanel::DrawSnapshotView(const SimEvent& event, DemandSystem& demand, const std::vector<GameObject>& objects)
+{
+    const ResidentSimSettings& settings = demand.GetSettings();
+    const SimResidentSnapshot& s = event.snapshot;
+    ImGui::BeginChild("##snapshot", ImVec2(0.0f, 0.0f), false);
+
+    Heading(Fmt("このイベント(#%llu)の時点で、記録されていた状態", static_cast<unsigned long long>(event.eventId)).c_str());
+    ImGui::TextDisabled("今の値ではなく、イベントに残した写しです。写しに無い物(位置・経路・滞在の残り)は、記録していないので、出せません。");
+    Row("いつ", Fmt("週%d %s  外出#%u  [%s]", event.week, HourText(event.hour).c_str(), event.outingId, EventKindJa(event.kind)));
+    Row("状態", StateJa(s.state));
+    Row("住宅", s.homeObjectId != 0 ? Fmt("#%u", s.homeObjectId) : std::string("なし(住居なし)"));
+    if (s.targetFacilityId != 0)
+    {
+        Row("行き先", FacilityLabel(objects, s.targetFacilityId));
+    }
+    Row("立ち寄り", Fmt("%d / %d 回", s.outingStopCount, settings.maxStopovers));
+
+    Heading("需要・体力(その時点)");
+    Row("生活の需要", Fmt("%.1f%s", s.lifeNeed, s.lifeNeed < settings.needSatisfiedThreshold ? "  不足" : ""));
+    Row("アクティビティの需要", Fmt("%.1f%s", s.activityNeed, s.activityNeed < settings.needSatisfiedThreshold ? "  不足" : ""));
+    Row("体力", Fmt("%.1f / %.1f", s.stamina, s.staminaCap));
+    Row("ペナルティ", Fmt("%d 段階", s.penaltyLevel));
+    Row("満足度", Fmt("%.1f / %.0f", s.satisfaction, settings.satisfactionMax));
+
+    Heading("このイベントの内容");
+    ImGui::PushStyleColor(ImGuiCol_Text, ColorOf(event.result));
+    ImGui::TextWrapped("%s", DescribeEvent(event, objects).c_str());
+    ImGui::PopStyleColor();
+    if (event.detailId != 0)
+    {
+        ImGui::TextDisabled("判断の内訳は、「判断の詳細」タブで見られます(カーソルの時点の判断に、合わせてあります)。");
+    }
+
+    const ResidentDebugView live = demand.GetResidentDebugView(m_target, objects);
+    if (live.found)
+    {
+        Heading("この住民の特徴(生まれた時から、変わりません)");
+        Row("品質重視度", Fmt("%.2f", live.traits.qualityWeight));
+        Row("価格感度", Fmt("%.2f", live.traits.priceSensitivity));
+        Row("距離許容度", Fmt("%.2f", live.traits.distanceTolerance));
+        Row("自発性", Fmt("%.2f", live.traits.spontaneity));
+    }
+    ImGui::EndChild();
 }
 
 void ResidentDebugPanel::DrawCurrentTab(DemandSystem& demand, const std::vector<GameObject>& objects)
@@ -582,11 +1036,19 @@ void ResidentDebugPanel::DrawDecisionTab(DemandSystem& demand, const std::vector
         return;
     }
 
-    // 選択中の判断を決める(0か、無くなっていれば、最新)。
-    const SimEvent* selected = decisions.front();
-    for (const SimEvent* event : decisions)
+    // 選択中の判断を決める。ライブで、自分で選んでいない間は、いつも最新。履歴のカーソル・コンボ・[詳細]で選んだ時は、その判断
+    // (コンボの一覧に無い、古い判断も、記録全体から探して見られる)。見つからなければ、最新。
+    const SimEvent* selected = nullptr;
+    if (!(m_live && !m_decisionManual) && m_selectedDetailId != 0)
     {
-        if (event->detailId == m_selectedDetailId) { selected = event; break; }
+        for (const SimEvent* event : recorder.RecentEventsOf(m_target, 100000))
+        {
+            if (event->kind == SimEventKind::PurposeChoice && event->detailId == m_selectedDetailId) { selected = event; break; }
+        }
+    }
+    if (!selected)
+    {
+        selected = decisions.front();
     }
     m_selectedDetailId = selected->detailId;
 
@@ -605,6 +1067,7 @@ void ResidentDebugPanel::DrawDecisionTab(DemandSystem& demand, const std::vector
             {
                 m_selectedDetailId = event->detailId;
                 m_selectedCandidate = -1;
+                m_decisionManual = true;
                 selected = event;
             }
             ImGui::PopID();
@@ -825,91 +1288,104 @@ void ResidentDebugPanel::DrawHistoryTab(DemandSystem& demand, const std::vector<
         return;
     }
 
-    ImGui::Checkbox("不成立(灰)も出す", &m_showNotMet);
-    ImGui::SameLine();
-    ImGui::Checkbox("注意(黄)と異常(赤)だけ", &m_onlyProblems);
-    ImGui::TextDisabled("色: 灰=普通の不成立(確率・条件)、黄=注意(設計上ありえる)、赤=確認された異常。意外な抽選結果は赤になりません。");
+    ImGui::TextDisabled("色: 灰=普通の不成立(確率・条件)、黄=注意(設計上ありえる)、赤=確認された異常。意外な抽選結果は赤になりません。行をクリックすると、そのイベントを履歴として見られます。");
 
-    // この住民のイベント(新しい順)。同じ外出ごとにまとめる。
-    const std::vector<const SimEvent*> events = recorder.RecentEventsOf(m_target, 500);
+    // 時間軸(この住民の、絞り込み後のイベント。古い順)を、同じ外出ごとにまとめて出す。絞り込み・検索は、上のナビゲーションで行う。
+    const SimTimelineEvents& events = m_timeline;
     if (events.empty())
     {
-        ImGui::TextDisabled("この住民の記録は、まだありません。");
+        ImGui::TextDisabled("この住民の記録は、まだありません(または、絞り込みで、全て外れています)。");
         return;
     }
 
-    auto visible = [&](const SimEvent& e)
-    {
-        if (m_onlyProblems) { return e.result == SimEventResult::Warning || e.result == SimEventResult::Violation; }
-        if (!m_showNotMet && e.result == SimEventResult::NotMet) { return false; }
-        return true;
-    };
-
     ImGui::BeginChild("##history", ImVec2(0.0f, 0.0f), false);
+    // ライブで、一番下まで読んでいる時だけ、増えたイベントを追って、下へスクロールする。履歴を見ている間・上を読んでいる間は、動かさない。
+    const bool wasAtBottom = ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 8.0f;
+    const size_t total = events.size();
     size_t begin = 0;
-    bool firstGroup = true;
-    while (begin < events.size())
+    while (begin < total)
     {
-        // 同じ外出の番号が続く範囲を、1つのグループにする(新しい順に並んでいるので、範囲の最後が一番古い)。
+        // 同じ外出の番号が続く範囲を、1つのグループにする。
         size_t end = begin;
-        while (end < events.size() && events[end]->outingId == events[begin]->outingId) { ++end; }
+        while (end < total && events[end]->outingId == events[begin]->outingId) { ++end; }
 
-        bool anyVisible = false, anyWarning = false, anyViolation = false;
+        bool anyWarning = false, anyViolation = false;
+        int visits = 0;
         for (size_t i = begin; i < end; ++i)
         {
-            anyVisible = anyVisible || visible(*events[i]);
             anyWarning = anyWarning || events[i]->result == SimEventResult::Warning;
             anyViolation = anyViolation || events[i]->result == SimEventResult::Violation;
+            visits += (events[i]->kind == SimEventKind::VisitFinished && events[i]->result == SimEventResult::Success) ? 1 : 0;
         }
-        if (anyVisible)
-        {
-            const SimEvent& oldest = *events[end - 1];
-            const SimEvent& newest = *events[begin];
-            int visits = 0;
-            for (size_t i = begin; i < end; ++i) { visits += (events[i]->kind == SimEventKind::VisitFinished && events[i]->result == SimEventResult::Success) ? 1 : 0; }
-            std::string title = (oldest.outingId != 0)
-                ? Fmt("外出 #%u  週%d %s〜  施設 %d 回利用  [%s]", oldest.outingId, oldest.week, HourText(oldest.hour).c_str(), visits, EventKindJa(newest.kind))
-                : Fmt("外出に属さない記録  週%d %s〜", oldest.week, HourText(oldest.hour).c_str());
-            title += Fmt("###outing%u_%llu", oldest.outingId, static_cast<unsigned long long>(oldest.eventId));
+        const SimEvent& oldest = *events[begin];
+        const SimEvent& newest = *events[end - 1];
+        const bool hasCursor = m_cursorIndex >= static_cast<int>(begin) && m_cursorIndex < static_cast<int>(end);
+        std::string title = (oldest.outingId != 0)
+            ? Fmt("外出 #%u  週%d %s〜  施設 %d 回利用  [%s]", oldest.outingId, oldest.week, HourText(oldest.hour).c_str(), visits, EventKindJa(newest.kind))
+            : Fmt("外出に属さない記録  週%d %s〜", oldest.week, HourText(oldest.hour).c_str());
+        title += Fmt("###outing%u_%llu", oldest.outingId, static_cast<unsigned long long>(oldest.eventId));
 
-            ImGui::PushStyleColor(ImGuiCol_Text, anyViolation ? kColorViolation : (anyWarning ? kColorWarning : kColorNormal));
-            const bool open = ImGui::TreeNodeEx(title.c_str(), firstGroup ? ImGuiTreeNodeFlags_DefaultOpen : ImGuiTreeNodeFlags_None);
-            ImGui::PopStyleColor();
-            if (open)
+        // カーソルへ移った時は、そのグループを開く。ライブでは、最新のグループを、既定で開く。
+        if (hasCursor && m_scrollToCursor)
+        {
+            ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+        }
+        else if (end == total)
+        {
+            ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+        }
+        ImGui::PushStyleColor(ImGuiCol_Text, anyViolation ? kColorViolation : (anyWarning ? kColorWarning : kColorNormal));
+        const bool open = ImGui::TreeNodeEx(title.c_str(), ImGuiTreeNodeFlags_None);
+        ImGui::PopStyleColor();
+        if (open)
+        {
+            for (size_t i = begin; i < end; ++i)
             {
-                for (size_t i = end; i > begin; --i) // 古い順に
+                const SimEvent& e = *events[i];
+                const bool isCursor = (static_cast<int>(i) == m_cursorIndex);
+                ImGui::PushID(static_cast<int>(e.eventId));
+                ImGui::PushStyleColor(ImGuiCol_Text, ColorOf(e.result));
+                const std::string text = Fmt("%s  [%s] %s", HourText(e.hour).c_str(), EventKindJa(e.kind), DescribeEvent(e, objects).c_str());
+                const float textWidth = ImGui::CalcTextSize(text.c_str()).x + 8.0f;
+                // 履歴モードの時だけ、見ているイベントの行を強調する(ライブでは、最新の行が、いつも「カーソル」なので、強調しない)。
+                if (ImGui::Selectable(text.c_str(), isCursor && !m_live, 0, ImVec2(textWidth, 0.0f)))
                 {
-                    const SimEvent& e = *events[i - 1];
-                    if (!visible(e)) { continue; }
-                    ImGui::PushID(static_cast<int>(e.eventId));
-                    ImGui::PushStyleColor(ImGuiCol_Text, ColorOf(e.result));
-                    ImGui::Text("%s  [%s] %s", HourText(e.hour).c_str(), EventKindJa(e.kind), DescribeEvent(e, objects).c_str());
-                    ImGui::PopStyleColor();
-                    if (e.detailId != 0 && (e.kind == SimEventKind::PurposeChoice || e.kind == SimEventKind::FacilitySelect))
+                    SeekToIndex(static_cast<int>(i));
+                }
+                ImGui::PopStyleColor();
+                if (isCursor && m_scrollToCursor)
+                {
+                    ImGui::SetScrollHereY(0.5f);
+                }
+                if (e.detailId != 0 && (e.kind == SimEventKind::PurposeChoice || e.kind == SimEventKind::FacilitySelect))
+                {
+                    ImGui::SameLine();
+                    if (recorder.FindDetail(e.detailId))
                     {
-                        ImGui::SameLine();
-                        if (recorder.FindDetail(e.detailId))
+                        if (ImGui::SmallButton("詳細"))
                         {
-                            if (ImGui::SmallButton("詳細"))
-                            {
-                                m_selectedDetailId = e.detailId;
-                                m_selectedCandidate = -1;
-                                m_jumpToDetailTab = true;
-                            }
-                        }
-                        else
-                        {
-                            ImGui::TextDisabled("(内訳は捨てられた)");
+                            m_selectedDetailId = e.detailId;
+                            m_selectedCandidate = -1;
+                            m_decisionManual = true;
+                            m_jumpToDetailTab = true;
                         }
                     }
-                    ImGui::PopID();
+                    else
+                    {
+                        ImGui::TextDisabled("(内訳は捨てられた)");
+                    }
                 }
-                ImGui::TreePop();
+                ImGui::PopID();
             }
-            firstGroup = false;
+            ImGui::TreePop();
         }
         begin = end;
     }
+    if (m_live && wasAtBottom)
+    {
+        ImGui::SetScrollHereY(1.0f);
+    }
+    m_scrollToCursor = false;
     ImGui::EndChild();
 }
 
@@ -954,11 +1430,9 @@ void ResidentDebugPanel::DrawAnomalyTab(DemandSystem& demand, const std::vector<
         if (it->residentId != m_target)
         {
             ImGui::SameLine();
-            if (ImGui::SmallButton("この住民を見る"))
+            if (ImGui::SmallButton("このイベントを見る"))
             {
-                m_target = it->residentId;
-                m_targetRunId = recorder.GetRunId();
-                m_selectedDetailId = 0;
+                SeekToEvent(it->residentId, it->eventId); // その住民へ切り替えて、履歴として開く
             }
         }
         ImGui::PopID();

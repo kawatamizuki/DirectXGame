@@ -1,7 +1,9 @@
 ﻿#pragma once
 #include <cstdint>
+#include <set>
 #include <string>
 #include <vector>
+#include "SimTimeline.h"
 
 class DemandSystem;
 class GameObject;
@@ -35,7 +37,27 @@ public:
     void Draw(DemandSystem& demand, const std::vector<GameObject>& objects);
 
 private:
-    void DrawHeader(DemandSystem& demand);
+    // 表示対象を切り替える(ライブに戻し、選んでいた判断・候補・カーソルを捨てる)。
+    void SetTarget(uint32_t residentId);
+
+    void DrawHeader(DemandSystem& demand, const std::vector<GameObject>& objects);
+
+    // ---- 履歴のナビゲーション(段階2) ----
+    // この住民の時間軸(絞り込み後のイベント)と、カーソルの位置を、今のフレームの記録から作る。タブを描く前に呼ぶ。
+    void BuildNavigation(DemandSystem& demand, const std::vector<GameObject>& objects);
+    // シークバー・移動ボタン・絞り込み・一時停止の条件・ブックマーク。
+    void DrawNavigator(DemandSystem& demand, const std::vector<GameObject>& objects);
+    // 時間軸の index 番目を、見る位置(カーソル)にする。履歴モードに切り替わる。
+    void SeekToIndex(int index);
+    // イベント(番号)を、見る位置にする。別の住民のイベントなら、その住民へ切り替える。履歴モードに切り替わる。
+    void SeekToEvent(uint32_t residentId, uint64_t eventId);
+    // ライブ(最新のイベントを追う)に戻る。
+    void GoLive();
+    // カーソルの時点で、直近の「判断」(目的選択)を、「判断の詳細」タブで見るものにする。
+    void SyncDecisionToCursor(const SimDebugRecorder& recorder);
+    // カーソルのイベントのスナップショット(その時点の、記録された住民の状態)を、「現在」タブの代わりに出す(履歴モードの時)。
+    void DrawSnapshotView(const SimEvent& event, DemandSystem& demand, const std::vector<GameObject>& objects);
+
     void DrawCurrentTab(DemandSystem& demand, const std::vector<GameObject>& objects);
     void DrawDecisionTab(DemandSystem& demand, const std::vector<GameObject>& objects);
     void DrawHistoryTab(DemandSystem& demand, const std::vector<GameObject>& objects);
@@ -50,9 +72,24 @@ private:
 
     uint64_t m_selectedDetailId = 0;    // 「判断の詳細」タブで見ている判断(0=最新)
     int m_selectedCandidate = -1;       // 計算式を出す候補の添字(-1=選ばれた候補)
+    bool m_decisionManual = false;      // 「判断の詳細」の判断を、自分で選んだか(falseでライブなら、いつも最新の判断)
     bool m_jumpToDetailTab = false;     // 次のフレームで、「判断の詳細」タブへ切り替える
 
-    // 処理履歴の絞り込み。
+    // 時間軸と処理履歴の絞り込み。
     bool m_showNotMet = true;           // 不成立(灰)を出すか
     bool m_onlyProblems = false;        // 注意(黄)と異常(赤)だけ出すか
+    char m_search[64] = "";             // 文字での検索(イベントの種類・説明に含まれる文字。空なら、絞り込まない)
+
+    // ---- 履歴のナビゲーション(段階2) ----
+    // ライブ=最新のイベントを追う。履歴=過去のイベント(m_cursorEventId)を固定して読む(街は、巻き戻らない。記録の閲覧位置だけ)。
+    bool m_live = true;
+    uint64_t m_cursorEventId = 0;       // 履歴モードで見ているイベントの番号
+    SimTimelineEvents m_timeline;       // この住民の、絞り込み後のイベント(古い順)。毎フレーム作り直す
+    int m_cursorIndex = -1;             // m_timeline の中の、カーソルの添字(-1=時間軸が空)
+    bool m_cursorClamped = false;       // カーソルが時間軸の先頭より古く(捨てられた・絞り込まれた)、先頭に寄せたか
+    bool m_scrollToCursor = false;      // 次に描く時に、処理履歴の、カーソルの行へスクロールする
+    bool m_syncDecisionPending = false; // 次の BuildNavigation で、「判断の詳細」を、カーソルの時点の判断に合わせる
+    std::set<uint64_t> m_bookmarks;     // ブックマークしたイベントの番号(全住民ぶん。世界が変わったら消す)
+    uint32_t m_bookmarksRunId = 0;      // m_bookmarks が属する、記録の世界
+    uint64_t m_lastPausedSeen = 0;      // 最後に見た、一時停止のイベント番号(新しい停止に、自動で切り替えるため)
 };

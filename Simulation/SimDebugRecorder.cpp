@@ -92,6 +92,30 @@ uint32_t CheckResidentInvariants(const ResidentAgent& agent, const SimInvariantI
 }
 
 // ---------------------------------------------------------------------------
+// 一時停止の条件
+// ---------------------------------------------------------------------------
+bool SimBreakpoints::Matches(const SimEvent& event) const
+{
+    if (residentId != 0 && event.residentId != residentId)
+    {
+        return false;
+    }
+    if (onViolation && event.result == SimEventResult::Violation)
+    {
+        return true;
+    }
+    if (onWarning && (event.result == SimEventResult::Warning || event.result == SimEventResult::Violation))
+    {
+        return true;
+    }
+    if (kindMask != 0 && (kindMask & (1u << static_cast<uint32_t>(event.kind))) != 0)
+    {
+        return resultMask == 0 || (resultMask & (1u << static_cast<uint32_t>(event.result))) != 0;
+    }
+    return false;
+}
+
+// ---------------------------------------------------------------------------
 // 記録
 // ---------------------------------------------------------------------------
 void SimDebugRecorder::SetCapacity(size_t eventCapacity, size_t detailCapacity)
@@ -109,6 +133,7 @@ void SimDebugRecorder::StartNewRun()
     m_details.clear();
     m_residents.clear();
     m_tickGate = SimTickGate{};
+    ClearPause(); // 別の世界になるので、止める印は外す(止める条件は、残す)
     m_eventsRecordedTotal = 0;
     m_eventsDropped = 0;
     m_detailsRecordedTotal = 0;
@@ -161,6 +186,12 @@ uint64_t SimDebugRecorder::AddEvent(SimEvent event)
     if (event.kind == SimEventKind::Anomaly)
     {
         ++m_anomaliesRaised;
+    }
+    // 止める条件に当てはまれば、止める印を立てる(最初の1件だけ。実際に止めるのは、呼び出し側)。
+    if (!m_pauseActive && m_breakpoints.Matches(event))
+    {
+        m_pauseActive = true;
+        m_pausedEventId = id;
     }
     m_events.push_back(std::move(event));
     ++m_eventsRecordedTotal;
@@ -253,6 +284,21 @@ const SimDecisionDetail* SimDebugRecorder::FindDetail(uint64_t detailId) const
     auto it = std::lower_bound(m_details.begin(), m_details.end(), detailId,
         [](const SimDecisionDetail& detail, uint64_t id) { return detail.detailId < id; });
     if (it == m_details.end() || it->detailId != detailId)
+    {
+        return nullptr;
+    }
+    return &*it;
+}
+
+const SimEvent* SimDebugRecorder::FindEvent(uint64_t eventId) const
+{
+    if (eventId == 0 || m_events.empty())
+    {
+        return nullptr;
+    }
+    auto it = std::lower_bound(m_events.begin(), m_events.end(), eventId,
+        [](const SimEvent& event, uint64_t id) { return event.eventId < id; });
+    if (it == m_events.end() || it->eventId != eventId)
     {
         return nullptr;
     }

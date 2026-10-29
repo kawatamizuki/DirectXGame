@@ -500,6 +500,13 @@ void Game::Update()
 
         // 住民の移動・需要更新は、ゲーム内時間の倍率(停止/倍速)に従って進める。
         m_demandSystem.Update(m_gameClock.GetScaledDeltaSeconds(), m_context, m_roadSystem.GetSegments());
+
+        // 一時停止の条件に当てはまるイベントが記録されていたら、シミュレーションの更新が済んだ、この安全な所で、すぐ時間を止める
+        // (次のフレームを待つと、倍速では、1フレームで大きく進んでしまうため)。
+        if (m_demandSystem.GetDebugRecorder().IsPauseActive())
+        {
+            SyncMenuTimeScale();
+        }
     }
     else
     {
@@ -1091,7 +1098,10 @@ void Game::SyncMenuTimeScale()
     // ゲーム画面を出していない時(タイトルなど)に、ツールの選択が残っていても止めない。
     const bool toolActive = IsGameUIVisible() && (m_context.mode == GameMode::Playing)
         && (m_context.placementTool != PlacementTool::None);
-    const bool paused = open || toolActive;
+    // 「住民デバッグ」の一時停止の条件に当てはまって止まっている間も、止める(止める印は、記録部が持つ。解除は、パネルの「再開」)。
+    // 元の倍率の記憶・復帰は、メニュー・ツールの停止と同じ仕組みで行うので、重なっても(メニューを開閉しても)、倍率は正しく戻る。
+    const bool debugPause = IsGameUIVisible() && (m_context.mode == GameMode::Playing) && m_demandSystem.GetDebugRecorder().IsPauseActive();
+    const bool paused = open || toolActive || debugPause;
     if (paused && !m_timePausedByUi)
     {
         // 止める: 元の倍率を覚える(閉じたら戻す)。

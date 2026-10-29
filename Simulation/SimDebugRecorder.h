@@ -139,6 +139,26 @@ struct SimEvent
 };
 
 // ---------------------------------------------------------------------------
+// 一時停止の条件(段階2)
+// ---------------------------------------------------------------------------
+
+// 「このイベントが起きたら、ゲームを止める」条件。記録(AddEvent)の中で、イベントごとに調べる。
+// 止める処理そのものは、記録部はしない(止める印を立てるだけ。Game が、シミュレーションの更新が済んだ安全な所で、時間を止める)。
+struct SimBreakpoints
+{
+    bool onViolation = false;       // 確認された異常(赤)で止める
+    bool onWarning = false;         // 注意(黄)以上(黄・赤)で止める
+    uint32_t kindMask = 0;          // 止めるイベントの種類(1u << SimEventKind のビット)。0なら、種類では止めない
+    uint32_t resultMask = 0;        // kindMask の種類のうち、この結果のものだけ止める(1u << SimEventResult のビット)。0なら、結果を問わない
+    uint32_t residentId = 0;        // 0=全住民のイベント。0以外=その住民のイベントだけ(上の全ての条件に掛かる)
+
+    // いずれかの条件に当てはまるか(条件が1つも無ければ、false)。
+    bool Matches(const struct SimEvent& event) const;
+    // 条件が1つでも有効か。
+    bool AnyEnabled() const { return onViolation || onWarning || kindMask != 0; }
+};
+
+// ---------------------------------------------------------------------------
 // 判断の内訳
 // ---------------------------------------------------------------------------
 
@@ -265,9 +285,18 @@ public:
     static constexpr size_t kDefaultEventCapacity = 20000;  // 全住民の重要イベントの上限
     static constexpr size_t kDefaultDetailCapacity = 2000;  // 判断の内訳(候補ごとの計算)の上限(1件は、候補が数軒で約1KB。実測は学習メモ)
 
-    // 記録のON/OFF。OFFの間は、何も記録しない(値を渡されても、すぐ戻る)。既定はOFF。
-    void SetEnabled(bool enabled) { m_enabled = enabled; }
+    // 記録のON/OFF。OFFの間は、何も記録しない(値を渡されても、すぐ戻る)。既定はOFF。OFFにすると、一時停止の印も外す。
+    void SetEnabled(bool enabled) { m_enabled = enabled; if (!enabled) { ClearPause(); } }
     bool IsEnabled() const { return m_enabled; }
+
+    // ---- 一時停止(段階2) ----
+    // 条件(SimBreakpoints)に当てはまるイベントが記録されたら、「止める印」を立てる(最初の1件だけ。解除するまで、次の印は立てない)。
+    // 印を見て、実際に時間を止めるのは Game(シミュレーションの更新が済んだ後の、安全な所)。ここは、乱数も、住民の状態も、触らない。
+    SimBreakpoints& Breakpoints() { return m_breakpoints; }
+    const SimBreakpoints& Breakpoints() const { return m_breakpoints; }
+    bool IsPauseActive() const { return m_pauseActive; }
+    uint64_t PausedEventId() const { return m_pausedEventId; }   // 止める印を立てたイベントの番号(印が無ければ0)
+    void ClearPause() { m_pauseActive = false; m_pausedEventId = 0; }
 
     // 容量を変える(今より小さくしたら、古いものを捨てる)。
     void SetCapacity(size_t eventCapacity, size_t detailCapacity);
@@ -297,6 +326,9 @@ public:
     // ---- 読み取り(UI用) ----
     const std::deque<SimEvent>& Events() const { return m_events; }
     const SimDecisionDetail* FindDetail(uint64_t detailId) const;
+
+    // 番号(eventId)でイベントを探す(捨てられていれば nullptr)。番号は追加した順に増えるので、二分探索。
+    const SimEvent* FindEvent(uint64_t eventId) const;
     const SimResidentRecord* FindResident(uint32_t residentId) const;
     const SimTickGate& GetTickGate() const { return m_tickGate; }
     uint32_t GetRunId() const { return m_runId; }
@@ -311,6 +343,9 @@ private:
     void TrimDetails();
 
     bool m_enabled = false;
+    SimBreakpoints m_breakpoints;       // 止める条件(世界を作り直しても、残す)
+    bool m_pauseActive = false;         // 止める印が立っているか
+    uint64_t m_pausedEventId = 0;
     size_t m_eventCapacity = kDefaultEventCapacity;
     size_t m_detailCapacity = kDefaultDetailCapacity;
 

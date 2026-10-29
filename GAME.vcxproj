@@ -200,6 +200,7 @@
     <ClCompile Include="Simulation\FacilityLedger.cpp" />
     <ClCompile Include="Simulation\ResidentLogic.cpp" />
     <ClCompile Include="Simulation\SimDebugRecorder.cpp" />
+    <ClCompile Include="Simulation\SimTimeline.cpp" />
     <ClCompile Include="Simulation\RoutePlanner.cpp" />
     <ClCompile Include="Simulation\GameEconomy.cpp" />
     <ClCompile Include="DebugTools\Profiler.cpp" />
@@ -329,6 +330,7 @@
     <ClInclude Include="Simulation\FacilityLedger.h" />
     <ClInclude Include="Simulation\ResidentLogic.h" />
     <ClInclude Include="Simulation\SimDebugRecorder.h" />
+    <ClInclude Include="Simulation\SimTimeline.h" />
     <ClInclude Include="Simulation\RoutePlanner.h" />
     <ClInclude Include="Simulation\ResidentSimSettings.h" />
     <ClInclude Include="Simulation\GameEconomy.h" />
