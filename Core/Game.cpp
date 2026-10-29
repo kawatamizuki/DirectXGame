@@ -278,6 +278,16 @@ bool Game::Initialize(HWND hwnd)
     m_buildController.SetModel(BuildingType::Supermarket, &m_supermarketModel);
     m_buildController.SetModel(BuildingType::Cinema, &m_cinemaModel);
     m_buildController.SetModel(BuildingType::Cafe, &m_cafeModel);
+    m_buildController.SetOnBuildingPlaced([this](uint32_t buildingId, BuildingType type)
+    {
+        // 住宅を建てた時に、住居が無い住民がいたら、その住宅を「入居者を選ぶ」待ちにする。
+        // (待ちの間は、新しい住民を生まれさせない。選び終わったら、選んだ住民が入居する/誰も選ばなければ、新しい住民が生まれる)
+        if (type == BuildingType::House && m_demandSystem.CountHomelessResidents() > 0)
+        {
+            m_demandSystem.ReserveHouse(buildingId);
+            m_moveInQueue.push_back(buildingId);
+        }
+    });
 
     m_roadSystem.Initialize(
         &m_context, &m_field, &m_occupancyGrid,
@@ -321,6 +331,7 @@ bool Game::Initialize(HWND hwnd)
     {
         m_debugEditor.ClearSelection();
         m_demolition.Cancel(); // ロード中(F9)に、解体の選びかけがあれば、やめる(選んだ位置は、前の街の物)
+        CancelMoveIn();        // 入居者を選ぶ待ちも、前の街の物なので、やめる(住宅・住民が入れ替わる)
     });
 
     // 「Editor > エディタ機能のON/OFF」に出すスイッチ。全て登録し終えてから、保存してある設定を読む。
@@ -648,6 +659,10 @@ HudState Game::BuildHudState() const
     if (m_gameUI.IsResidentPanelOpen())
     {
         state.residentInfo = BuildResidentInfoModel();
+    }
+    if (m_gameUI.IsMoveInOpen())
+    {
+        state.moveIn = BuildMoveInModel();
     }
     if (m_followAgentId != 0)
     {
@@ -1002,6 +1017,17 @@ void Game::HandleMenuKeys()
     const bool escape = m_inputManager.IsKeyPressed(VK_ESCAPE);
     const bool cancel = escape || (m_inputManager.IsActionPressed(InputAction::Cancel) && !overImGui);
 
+    // 「入居者を選ぶ」パネルが開いている: Esc・右クリックは、「新しい住民を迎える」と同じ(誰も選ばずに、閉じる)。
+    if (m_gameUI.IsMoveInOpen())
+    {
+        if (cancel)
+        {
+            ResolveMoveIn(0);
+            m_context.inputConsumed = true;
+        }
+        return;
+    }
+
     // 「住民の情報」パネルが開いている: Esc・右クリックで、パネルだけを閉じる(メニューは開かない)。
     if (m_gameUI.IsResidentPanelOpen())
     {
@@ -1060,7 +1086,7 @@ void Game::HandleMenuKeys()
 
 void Game::SyncMenuTimeScale()
 {
-    const bool open = m_gameUI.IsMenuOpen() || m_gameUI.IsResidentPanelOpen();
+    const bool open = m_gameUI.IsMenuOpen() || m_gameUI.IsResidentPanelOpen() || m_gameUI.IsMoveInOpen();
     // 建物・道路・解体のツールを選んでいる間(画面を動かして置き場所を探している間)も、時間を止める。
     // ゲーム画面を出していない時(タイトルなど)に、ツールの選択が残っていても止めない。
     const bool toolActive = IsGameUIVisible() && (m_context.mode == GameMode::Playing)
@@ -1433,7 +1459,7 @@ void Game::UpdateBuildingSelection()
         return;
     }
     // メニュー・パネルが開いている間は、選択を触らない。
-    if (m_gameUI.IsMenuOpen() || m_gameUI.IsResidentPanelOpen())
+    if (m_gameUI.IsMenuOpen() || m_gameUI.IsResidentPanelOpen() || m_gameUI.IsMoveInOpen())
     {
         m_leftGesture.Reset(); m_leftDragActive = m_leftDragJustStarted = false;
         return;
@@ -1667,6 +1693,7 @@ void Game::UpdateGameUI()
         // タイトル画面などでは、メニュー・住民の情報パネルを開いたままにしない(止めた時間も戻す)。
         m_gameUI.CloseMenu();
         m_gameUI.CloseResidentPanel();
+        CancelMoveIn();
         m_selectedBuildingId = 0;
         SyncMenuTimeScale();
         return;
@@ -1676,11 +1703,15 @@ void Game::UpdateGameUI()
     if (m_context.mode != GameMode::Playing)
     {
         m_gameUI.CloseResidentPanel();
+        CancelMoveIn();
         m_selectedBuildingId = 0;
     }
 
     // Esc・右クリック(メニューを閉じる/配置をやめる/メニューを開く)は、メニューの更新より先に処理する。
     HandleMenuKeys();
+
+    // 新しく建てた住宅で、入居者を選ぶ待ちがあれば、パネルを開く(他のパネルが開いていない時だけ)。
+    ProcessMoveInQueue();
 
     HudInput input;
     input.screenW = static_cast<float>(m_renderer.GetViewWidth());
@@ -1738,7 +1769,97 @@ void Game::UpdateGameUI()
     {
         m_audio.PlaySe("ui_open");      // 左のタブ(建築・情報・研究・システム)を開いた時。中の項目(建物の選択など)では鳴らさない
     }
+    // 「入居者を選ぶ」: 住民が選ばれた・「新しい住民を迎える」が押された。
+    if (result.moveInChosenResidentId != 0)
+    {
+        ResolveMoveIn(result.moveInChosenResidentId);
+    }
+    else if (result.moveInDeclined)
+    {
+        ResolveMoveIn(0);
+    }
     SyncMenuTimeScale();
+}
+
+void Game::ProcessMoveInQueue()
+{
+    if (m_gameUI.IsMoveInOpen() || m_gameUI.IsMenuOpen() || m_gameUI.IsResidentPanelOpen() || m_context.mode != GameMode::Playing)
+    {
+        return;
+    }
+    while (m_moveInHouseId == 0 && !m_moveInQueue.empty())
+    {
+        const uint32_t houseId = m_moveInQueue.front();
+        m_moveInQueue.erase(m_moveInQueue.begin());
+        const GameObject* house = GameObjectFactory::FindById(m_objects, houseId);
+        if (!house || m_demandSystem.CountHomelessResidents() == 0)
+        {
+            // 住宅が、もう無い(解体された)・住居なしの住民が、もういない: 選ぶ必要が無い。待ちを解く(新しい住民が生まれる)。
+            m_demandSystem.ReleaseHouse(houseId);
+            continue;
+        }
+        m_moveInHouseId = houseId;
+        m_roadSystem.CancelPlacement();     // 置きかけの道路は、やめる(パネルを閉じた後に、中途半端な状態を残さない)
+        m_gameUI.OpenMoveIn();
+        m_audio.PlaySe("ui_open");
+    }
+}
+
+MoveInModel Game::BuildMoveInModel() const
+{
+    MoveInModel model;
+    model.title = "入居する住民を選ぶ";
+    model.subtitle = "新しい住宅 #" + std::to_string(m_moveInHouseId) + " に住む人を、家が無い住民から選びます";
+    model.declineLabel = "新しい住民を迎える";
+    for (const HomelessResidentInfo& info : m_demandSystem.ListHomelessResidents())
+    {
+        MoveInRow row;
+        row.residentId = info.residentId;
+        row.title = "住民 #" + std::to_string(info.residentId);
+        char text[160];
+        std::snprintf(text, sizeof(text), "満足度 %.0f / 体力 %.0f・%.0f / 生活 %.0f・アクティビティ %.0f%s",
+            info.satisfaction, info.stamina, info.staminaCap, info.lifeNeed, info.activityNeed, info.needUnmet ? "(不足あり)" : "");
+        row.detail = text;
+        row.warning = info.needUnmet || info.satisfaction < 50.0f;
+        model.rows.push_back(row);
+    }
+    return model;
+}
+
+void Game::ResolveMoveIn(uint32_t residentId)
+{
+    const uint32_t houseId = m_moveInHouseId;
+    m_moveInHouseId = 0;
+    m_gameUI.CloseMoveIn();
+    if (houseId == 0)
+    {
+        return;
+    }
+    if (residentId != 0 && m_demandSystem.MoveInResident(residentId, houseId, m_context))
+    {
+        m_noticeText = "住民 #" + std::to_string(residentId) + " が、新しい住宅に入居します";
+        m_noticeSecondsLeft = 4.0f;
+        return; // MoveInResident が、待ちの解除もする
+    }
+    // 誰も選ばない・入居できなかった: 待ちを解く(新しい住民が、今までどおり生まれる)。
+    m_demandSystem.ReleaseHouse(houseId);
+}
+
+void Game::CancelMoveIn()
+{
+    m_gameUI.CloseMoveIn();
+    // 今、選んでいた住宅(開いている間は、列から取り出してある)と、列に残っている住宅の待ちを、全て解く。
+    // (Reset/Loadでは、DemandSystem側が待ちを全て消すので、二重に解いても害は無い)
+    if (m_moveInHouseId != 0)
+    {
+        m_demandSystem.ReleaseHouse(m_moveInHouseId);
+        m_moveInHouseId = 0;
+    }
+    for (uint32_t houseId : m_moveInQueue)
+    {
+        m_demandSystem.ReleaseHouse(houseId);
+    }
+    m_moveInQueue.clear();
 }
 
 void Game::Draw()

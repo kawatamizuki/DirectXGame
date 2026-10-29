@@ -94,7 +94,7 @@ private:
     // Esc・右クリックの扱い: メニューを閉じる/配置をやめる/メニューを開く。メニューの更新より先に呼ぶ。
     void HandleMenuKeys();
 
-    // メニュー、または「住民の情報」パネルが開いている間は、ゲーム内の時間を止める(閉じたら元の倍率へ戻す)。UIの更新の後に呼ぶ。
+    // メニュー・「住民の情報」パネル・「入居者を選ぶ」パネルが開いている間は、ゲーム内の時間を止める(閉じたら元の倍率へ戻す)。UIの更新の後に呼ぶ。
     void SyncMenuTimeScale();
 
     // 建物・住民の選択: 何も置いていない時、
@@ -105,6 +105,20 @@ private:
 
     // 「住民の情報」パネルに出す内容(選択中の住宅に住む住民の内部パラメータ)を集める。
     ResidentInfoModel BuildResidentInfoModel() const;
+
+    // ---- 入居者を選ぶ(住居なしの住民を、新しい住宅へ入れる) ----
+    // 住宅を建てた時に、住居なしの住民がいたら、その住宅を待ちの列に入れる(DemandSystem::ReserveHouse で、新しい住民を、まだ生まれさせない)。
+    // 列の先頭の住宅から順に、「入居者を選ぶ」パネルを開く(開いている間は、ゲーム内の時間が止まる)。
+    void ProcessMoveInQueue();
+
+    // 「入居者を選ぶ」パネルに出す内容(住居なしの住民の一覧)を集める。
+    MoveInModel BuildMoveInModel() const;
+
+    // 入居者が選ばれた(residentId)・「新しい住民を迎える」(residentId==0)の結果を、世界に反映する。待ちの解除もする。
+    void ResolveMoveIn(uint32_t residentId);
+
+    // 入居者を選ぶ待ち(パネル・列)を全て取りやめる(新しい住民を迎える扱い。Esc・右クリック・タイトル画面・ロードなどで使う)。
+    void CancelMoveIn();
 
     // 音量(オプション)が変わっていたら、Settings/audio.json に保存する。スライダーをつかんでいる間・数字の入力中は待つ。
     void SaveAudioSettingsIfChanged();
@@ -200,6 +214,8 @@ private:
     bool m_timePausedByUi = false;     // メニュー・情報パネル・配置ツールの選択で、ゲーム内時間を止めているか(止める/戻す瞬間を見つけるため)
     float m_scaleBeforeMenu = 1.0f;    // 止める前の、ゲーム内時間の倍率(止めるUIが全て無くなったら戻す)
     std::string m_menuStatus;          // メニューのシステムタブに出す、直前のセーブ/ロードの結果
+    std::vector<uint32_t> m_moveInQueue; // 入居者を選ぶのを待っている新しい住宅のid(先頭から順に、パネルを開く)
+    uint32_t m_moveInHouseId = 0;      // 今、入居者を選んでいる住宅のid(0=なし。パネルが開いている間だけ)
 
     Camera m_camera;
 

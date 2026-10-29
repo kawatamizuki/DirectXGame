@@ -39,7 +39,8 @@ enum class SimEventKind : uint8_t
     StrandedRecovered,  // 道がつながって、帰り始めた
     BecameHomeless,     // 帰る家が無くなった(住居なし)
     HomeDemolished,     // 住んでいた住宅が解体された
-    Anomaly             // 異常を検出した(不変条件の違反)。anomalyに種類。a=問題の値
+    Anomaly,            // 異常を検出した(不変条件の違反)。anomalyに種類。a=問題の値
+    MovedIn             // 住居なしの住民が、新しい住宅(facilityId)への入居を決めた(プレイヤーが選んだ)
 };
 
 // 結果の区別(表示の色分けに使う)。普通の不成立と、本当の異常を混ぜない。

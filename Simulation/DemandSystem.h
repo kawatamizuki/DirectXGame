@@ -166,6 +166,19 @@ struct ResidentListItem
     ResidentAgentState state = ResidentAgentState::AtHome;
 };
 
+// 住居が無い(Homeless)住民1人の、入居先を選ぶ画面に出す情報(表示用のコピー)。
+struct HomelessResidentInfo
+{
+    uint32_t residentId = 0;        // 住民の見た目のオブジェクトのid(入居させる時に渡す)
+    float satisfaction = 0.0f;
+    float stamina = 0.0f;
+    float staminaCap = 0.0f;
+    float lifeNeed = 0.0f;
+    float activityNeed = 0.0f;
+    int penaltyLevel = 0;
+    bool needUnmet = false;         // 生活かアクティビティの需要が不足しているか
+};
+
 // 解体された建物1棟ぶんの情報。建物を消す前に、呼び出し側が集めて渡す(消した後は、位置も種類も分からなくなるため)。
 struct DemolishedBuilding
 {
@@ -249,6 +262,24 @@ public:
     // 住民の見た目のオブジェクト(Agent。GameObject::id)で探す版。画面で住民をクリックした時に使う。
     ResidentInfo GetResidentInfoForAgent(uint32_t agentObjectId) const;
 
+    // ---- 入居(住居が無い住民を、新しい住宅へ入れる) ----
+    // 住宅を解体された住民は、住居なし(Homeless)になる。新しい住宅を建てた時に、その中から、誰を入居させるかを、プレイヤーが選べる。
+
+    // 今、入居できる住民(住居なしで、元の位置に立っている住民)の一覧。外出中に家が解体された住民は、帰り着いて住居なしになってから、載る。
+    std::vector<HomelessResidentInfo> ListHomelessResidents() const;
+    int CountHomelessResidents() const;
+
+    // 新しい住宅を「入居者を選ぶ待ち」にする間、その住宅に、新しい住民を生まれさせない。選び終わったら ReleaseHouse(MoveInResident も、解除する)。
+    // 待ちの住宅は、リセット・ロード・解体で、自動的に外れる(セーブはしない)。
+    void ReserveHouse(uint32_t houseObjectId);
+    void ReleaseHouse(uint32_t houseObjectId);
+    bool IsHouseReserved(uint32_t houseObjectId) const;
+
+    // 住居なしの住民を、住宅に入居させる。住民は、今の位置から、道路を歩いて、新しい家へ向かう(位置は飛ばさない)。
+    // 道が無ければ、立ち往生(満足度は下げない)になり、道がつながれば、向かう。住宅の種類がHouseでない・既に住民がいる・
+    // 住民が住居なしでない時は、何もせずfalse。成功したら、待ちの解除(ReleaseHouse)もする。
+    bool MoveInResident(uint32_t residentObjectId, uint32_t houseObjectId, GameContext& context);
+
     // Inspector表示用: idで指定した住民の状態を文字列で返す(見つからなければ空文字)。
     std::string GetAgentDebugSummary(uint32_t objectId) const;
 
@@ -311,7 +342,8 @@ private:
     bool TryStartStopover(ResidentAgent& agent, GameContext& context, const GameObject& currentFacility);
 
     // 外出の途中(立ち寄りへ向かう途中など)で、行き先が無くなった時に、今の位置から家へ帰り始める(道が無ければ立ち往生)。位置は飛ばさない。
-    void StartReturnFromHere(ResidentAgent& agent, GameContext& context);
+    // strandedPenalty: 道が無くて立ち往生になる時に、満足度を下げるか(新しい住宅への入居では、下げない)。
+    void StartReturnFromHere(ResidentAgent& agent, GameContext& context, bool strandedPenalty = true);
 
     // 立ち往生している住民が、道がつながって帰れるようになったかを調べ、帰れるなら、帰り始めさせる(RunDemandTickが、毎回呼ぶ)。
     // 今の位置の近くの道路から、自宅(家が無ければ、元の家の位置)への経路を探す。見つかれば、その経路で歩いて帰る(帰り着けば、家にいる・住居なしになる)。
@@ -321,7 +353,8 @@ private:
     // 住民を、立ち往生にする(道路の上に立たせ、動かない・施設を使わない状態にして、満足度を下げる)。
     // 今の位置が、道路の上でない(切り取られた跡・施設の中など)時は、近くの、残った道路の上に寄せる(遠くへは、ワープさせない)。
     // reason: 立ち往生した理由(デバッグの記録用。動作には関わらない)。
-    void BecomeStranded(ResidentAgent& agent, GameContext& context, const std::vector<RoadSegment>& segments, SimReason reason = SimReason::NoRouteHome);
+    // applyPenalty: 満足度を下げるか(道路が無くなった時の罰。入居先の道が無い時は、住民のせいではないので、下げない)。
+    void BecomeStranded(ResidentAgent& agent, GameContext& context, const std::vector<RoadSegment>& segments, SimReason reason = SimReason::NoRouteHome, bool applyPenalty = true);
 
     // 住民を、住居が無い状態にする(元の住宅の位置に、見える状態で立たせる。同じ位置に何人もいる時は、少しずつずらす)。
     void BecomeHomeless(ResidentAgent& agent, GameContext& context);
@@ -387,6 +420,9 @@ private:
 
     // 施設選びの記録(新しいものが後ろ。デバッグ用。保存しない)。
     std::vector<DecisionLogEntry> m_decisionLog;
+
+    // 入居者を選ぶ待ちの住宅(新しい住民を、まだ生まれさせない)。保存しない。
+    std::vector<uint32_t> m_reservedHouses;
 
     // 判断・状態遷移・異常の記録(Editorの「住民デバッグ」用。既定は無効。保存しない)。
     SimDebugRecorder m_debugRecorder;

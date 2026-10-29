@@ -420,7 +420,11 @@ bool BuildController::PlaceBuilding(const PlacementPreview& placement)
 
     // originはComputePlacementFrameで実際に使ったものをそのまま渡す(ここで別途
     // 計算し直すと、プレビューと確定後でズレる可能性があるため)。
-    SpawnBuilding(m_selectedType, placement.transform, placementData, true);
+    const uint32_t newId = SpawnBuilding(m_selectedType, placement.transform, placementData, true);
+    if (newId != 0 && m_onBuildingPlaced)
+    {
+        m_onBuildingPlaced(newId, m_selectedType); // プレイヤーが置いた時だけ(セーブの復元では呼ばない)
+    }
     return true;
 }
 

@@ -231,6 +231,9 @@
     <ClCompile Include="UI\ResidentInfoPanel.cpp">
       <Filter>ソース ファイル\UI</Filter>
     </ClCompile>
+    <ClCompile Include="UI\MoveInPanel.cpp">
+      <Filter>ソース ファイル\UI</Filter>
+    </ClCompile>
     <ClCompile Include="UI\GameMenu.cpp">
       <Filter>ソース ファイル\UI</Filter>
     </ClCompile>
@@ -585,6 +588,9 @@
       <Filter>ヘッダー ファイル\UI</Filter>
     </ClInclude>
     <ClInclude Include="UI\ResidentInfoPanel.h">
+      <Filter>ヘッダー ファイル\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="UI\MoveInPanel.h">
       <Filter>ヘッダー ファイル\UI</Filter>
     </ClInclude>
     <ClInclude Include="UI\GameMenu.h">

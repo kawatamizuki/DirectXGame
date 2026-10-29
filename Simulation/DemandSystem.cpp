@@ -119,6 +119,7 @@ void DemandSystem::Reset()
     m_decisionLog.clear();
     m_debugRecorder.StartNewRun(); // 住民の入れ替わり(ロード・リセット)で、古い記録は意味を失う(別の世界になる)
     m_tickIndex = 0;
+    m_reservedHouses.clear();      // 入居者を選ぶ待ちの住宅も、新しい世界には持ち越さない
     m_random.Seed(m_settings.seed);
     m_lastRoadGraphNodeCount = 0;
     m_lastRoadGraphEdgeCount = 0;
@@ -927,7 +928,7 @@ bool DemandSystem::TryStartStopover(ResidentAgent& agent, GameContext& context, 
     return true;
 }
 
-void DemandSystem::StartReturnFromHere(ResidentAgent& agent, GameContext& context)
+void DemandSystem::StartReturnFromHere(ResidentAgent& agent, GameContext& context, bool strandedPenalty)
 {
     GameObject* marker = GameObjectFactory::FindById(*context.objects, agent.objectId);
     agent.targetFacilityId = 0;
@@ -962,7 +963,7 @@ void DemandSystem::StartReturnFromHere(ResidentAgent& agent, GameContext& contex
     const RoutePlan plan = PlanRoute(from, to, *m_roads, graph, *m_pathfinder, cache);
     if (!plan.valid)
     {
-        BecomeStranded(agent, context, *m_roads, SimReason::NoRouteHome);
+        BecomeStranded(agent, context, *m_roads, SimReason::NoRouteHome, strandedPenalty);
         return;
     }
 
@@ -1183,7 +1184,7 @@ bool DemandSystem::TryRecoverStranded(ResidentAgent& agent, GameContext& context
     return true;
 }
 
-void DemandSystem::BecomeStranded(ResidentAgent& agent, GameContext& context, const std::vector<RoadSegment>& segments, SimReason reason)
+void DemandSystem::BecomeStranded(ResidentAgent& agent, GameContext& context, const std::vector<RoadSegment>& segments, SimReason reason, bool applyPenalty)
 {
     GameObject* obj = GameObjectFactory::FindById(*context.objects, agent.objectId);
     RecordEvent(agent, context, SimEventKind::BecameStranded, SimEventResult::Warning, reason); // 状態を変える前の写し
@@ -1196,7 +1197,10 @@ void DemandSystem::BecomeStranded(ResidentAgent& agent, GameContext& context, co
     agent.outingStopCount = 0;
     agent.usedFoodLikeFacilityThisOuting = false;
     agent.lastDecisionNote = "道路が無くなり、帰れなくなった(立ち往生)";
-    ApplyRoadLossPenalty(agent, true, m_settings);
+    if (applyPenalty)
+    {
+        ApplyRoadLossPenalty(agent, true, m_settings);
+    }
 
     if (obj)
     {
@@ -1319,6 +1323,7 @@ void DemandSystem::OnBuildingDemolished(const DemolishedBuilding& building, Game
 {
     if (building.type == BuildingType::House)
     {
+        ReleaseHouse(building.id); // 入居者を選ぶ待ちの途中で解体された住宅は、待ちから外す
         for (ResidentAgent& agent : m_agents)
         {
             if (agent.homeObjectId != building.id)
@@ -1780,6 +1785,10 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
     // 1. 住宅に対して住民が不足していれば生成する(今は1軒に1人。内部パラメータは、住民ごとに種から決める)。
     for (const BuildingSnapshot& house : houses)
     {
+        if (IsHouseReserved(house.id))
+        {
+            continue; // 入居者を選んでいる最中の住宅。選び終わるまで、新しい住民は生まれさせない
+        }
         int existing = 0;
         for (const ResidentAgent& agent : m_agents)
         {
@@ -2374,6 +2383,101 @@ ResidentDebugView DemandSystem::GetResidentDebugView(uint32_t agentObjectId, con
         return view;
     }
     return view;
+}
+
+std::vector<HomelessResidentInfo> DemandSystem::ListHomelessResidents() const
+{
+    std::vector<HomelessResidentInfo> list;
+    for (const ResidentAgent& agent : m_agents)
+    {
+        // 住居なしで、元の位置に立っている住民だけ(外出中の住民は、帰り着いて、住居なしになってから)。
+        if (agent.state != ResidentAgentState::Homeless || agent.homeObjectId != 0)
+        {
+            continue;
+        }
+        HomelessResidentInfo info;
+        info.residentId = agent.objectId;
+        info.satisfaction = agent.satisfaction;
+        info.stamina = agent.stamina;
+        info.staminaCap = EffectiveStaminaCap(agent, m_settings);
+        info.lifeNeed = agent.lifeNeed;
+        info.activityNeed = agent.activityNeed;
+        info.penaltyLevel = agent.penaltyLevel;
+        info.needUnmet = IsLifeNeedUnmet(agent, m_settings) || IsActivityNeedUnmet(agent, m_settings);
+        list.push_back(info);
+    }
+    return list;
+}
+
+int DemandSystem::CountHomelessResidents() const
+{
+    int count = 0;
+    for (const ResidentAgent& agent : m_agents)
+    {
+        if (agent.state == ResidentAgentState::Homeless && agent.homeObjectId == 0)
+        {
+            ++count;
+        }
+    }
+    return count;
+}
+
+void DemandSystem::ReserveHouse(uint32_t houseObjectId)
+{
+    if (houseObjectId != 0 && !IsHouseReserved(houseObjectId))
+    {
+        m_reservedHouses.push_back(houseObjectId);
+    }
+}
+
+void DemandSystem::ReleaseHouse(uint32_t houseObjectId)
+{
+    m_reservedHouses.erase(std::remove(m_reservedHouses.begin(), m_reservedHouses.end(), houseObjectId), m_reservedHouses.end());
+}
+
+bool DemandSystem::IsHouseReserved(uint32_t houseObjectId) const
+{
+    return std::find(m_reservedHouses.begin(), m_reservedHouses.end(), houseObjectId) != m_reservedHouses.end();
+}
+
+bool DemandSystem::MoveInResident(uint32_t residentObjectId, uint32_t houseObjectId, GameContext& context)
+{
+    if (!context.objects)
+    {
+        return false;
+    }
+    const GameObject* house = GameObjectFactory::FindById(*context.objects, houseObjectId);
+    if (!house || house->kind != ObjectKind::Building || house->buildingType != BuildingType::House)
+    {
+        return false;
+    }
+    // 1軒に住める人数(今は1人)。既に満員なら、入れない。
+    const int capacity = (std::max)(1, GetBuildingDefinition(BuildingType::House).representativeAgentCount);
+    int occupants = 0;
+    ResidentAgent* target = nullptr;
+    for (ResidentAgent& agent : m_agents)
+    {
+        if (agent.homeObjectId == houseObjectId) { ++occupants; }
+        if (agent.objectId == residentObjectId) { target = &agent; }
+    }
+    if (!target || occupants >= capacity || target->state != ResidentAgentState::Homeless || target->homeObjectId != 0)
+    {
+        return false;
+    }
+
+    ResidentAgent& agent = *target;
+    RecordEvent(agent, context, SimEventKind::MovedIn, SimEventResult::Success, SimReason::None, houseObjectId); // 家のidを変える前の写し
+    agent.homeObjectId = houseObjectId;
+    agent.lastDecisionNote = "新しい住宅へ入居する";
+    // 今の位置から、新しい家へ、道路を歩いて向かう(位置は飛ばさない)。道が無ければ立ち往生(満足度は下げない)。
+    // 到着すれば、通常の帰宅と同じ処理で、家にいる状態になる(家のidが0でないので、住居なしにならない)。
+    StartReturnFromHere(agent, context, false);
+    if (agent.state == ResidentAgentState::Stranded)
+    {
+        agent.lastDecisionNote = "新しい住宅へ行く道が無い(道がつながれば、向かう)";
+    }
+    ReleaseHouse(houseObjectId);
+    return true;
 }
 
 ResidentInfo DemandSystem::GetResidentInfoForAgent(uint32_t agentObjectId) const

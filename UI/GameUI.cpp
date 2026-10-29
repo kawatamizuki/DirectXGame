@@ -210,8 +210,24 @@ HudResult GameUI::Update(const HudInput& input, const HudState& state)
     panelInput.pressed = input.pressed;
     panelInput.down = input.down;
     panelInput.blockedByOtherUI = input.blockedByOtherUI;
+
+    // 「入居者を選ぶ」パネル。開いている間は、一番手前(画面全体を受け持つ)。住民の情報パネル・メニューは反応しない。
+    MoveInInput moveInInput;
+    moveInInput.screenW = input.screenW;
+    moveInInput.screenH = input.screenH;
+    moveInInput.topInset = m_layout.bar.Bottom();
+    moveInInput.mouseX = input.mouseX;
+    moveInInput.mouseY = input.mouseY;
+    moveInInput.pressed = input.pressed;
+    moveInInput.down = input.down;
+    moveInInput.blockedByOtherUI = input.blockedByOtherUI;
+    const bool moveInWasOpen = m_moveInPanel.IsOpen();
+    const MoveInResult moveInResult = m_moveInPanel.Update(moveInInput, state.moveIn);
+    panelInput.pressed = input.pressed && !moveInWasOpen;
+    panelInput.blockedByOtherUI = input.blockedByOtherUI || moveInWasOpen;
+
     const ResidentPanelResult panelResult = m_residentPanel.Update(panelInput, state.residentInfo);
-    const bool panelWasOpen = m_residentPanel.IsOpen() || panelResult.closed;
+    const bool panelWasOpen = m_residentPanel.IsOpen() || panelResult.closed || moveInWasOpen;
 
     menuInput.blockedByOtherUI = input.blockedByOtherUI || panelWasOpen;
     menuInput.typedDigits = input.typedDigits;
@@ -225,10 +241,13 @@ HudResult GameUI::Update(const HudInput& input, const HudState& state)
 
     bool overBar = !input.blockedByOtherUI && m_layout.bar.Contains(input.mouseX, input.mouseY);
     result.residentPanelOpen = m_residentPanel.IsOpen();
-    result.mouseOverUI = overBar || menuResult.mouseOverUI || panelResult.mouseOverUI;
+    result.moveInOpen = m_moveInPanel.IsOpen();
+    result.moveInChosenResidentId = moveInResult.chosenResidentId;
+    result.moveInDeclined = moveInResult.declined;
+    result.mouseOverUI = overBar || menuResult.mouseOverUI || panelResult.mouseOverUI || moveInResult.mouseOverUI;
 
     // バーの上で押したクリックはHUDが受け取る(ワールドへ抜けない)。バーには、押せるものは無い。
-    if ((overBar && input.pressed) || menuResult.consumedClick || panelResult.consumedClick)
+    if ((overBar && input.pressed) || menuResult.consumedClick || panelResult.consumedClick || moveInResult.consumedClick)
     {
         result.consumedClick = true;
     }
@@ -406,8 +425,11 @@ void GameUI::Draw(const HudState& state)
     // 「住民の情報」パネル(開いている時だけ。メニューより手前)。
     m_residentPanel.Draw(*m_ui, skin, state.residentInfo);
 
+    // 「入居者を選ぶ」パネル(開いている時だけ。一番手前)。
+    m_moveInPanel.Draw(*m_ui, skin, state.moveIn);
+
     // 操作のヒント(左下の小さな箱)。メニュー・パネルが開いている間は出さない。
-    if (!state.hintText.empty() && !m_menu.IsOpen() && !m_residentPanel.IsOpen())
+    if (!state.hintText.empty() && !m_menu.IsOpen() && !m_residentPanel.IsOpen() && !m_moveInPanel.IsOpen())
     {
         const float hintFont = UIRoundFontSize(kChipFontSize * s);
         const float padX = 16.0f * s;

@@ -6,6 +6,7 @@
 #include "ProceduralUISkin.h"
 #include "GameMenu.h"
 #include "ResidentInfoPanel.h"
+#include "MoveInPanel.h"
 #include "DemandSystem.h"
 #include "CostPreview.h"
 
@@ -42,6 +43,9 @@ struct HudState
     // 「住民の情報」パネルに出す内容(開いている間だけ使う)。
     ResidentInfoModel residentInfo;
 
+    // 「入居者を選ぶ」パネルに出す内容(開いている間だけ使う)。
+    MoveInModel moveIn;
+
     // 世界の建物に付ける警告(建物の少し上に出す。ゲーム側が、画面の位置に直して渡す)。
     std::vector<HudWorldLabel> worldLabels;
 
@@ -77,6 +81,9 @@ struct HudResult
     bool menuOpen = false;                      // ゲーム内メニューが開いているか(開いている間は、ゲーム内の時間を止める)
     bool menuTabChanged = false;                // このフレームに、メニューのタブが切り替わったか(効果音を鳴らすのに使う)
     bool residentPanelOpen = false;             // 「住民の情報」パネルが開いているか(開いている間は、ゲーム内の時間を止める)
+    bool moveInOpen = false;                    // 「入居者を選ぶ」パネルが開いているか(開いている間は、ゲーム内の時間を止める)
+    uint32_t moveInChosenResidentId = 0;        // このフレームに、入居する住民が選ばれた(0=選ばれていない)
+    bool moveInDeclined = false;                // このフレームに、「新しい住民を迎える」が押された
 };
 
 // ゲームプレイ用の上部HUDバーと、ゲーム内メニュー。配置・入力をまとめて担当する(ImGuiは使わない)。
@@ -157,6 +164,13 @@ public:
     void CloseResidentPanel() { m_residentPanel.Close(); }
     const ResidentInfoPanel& GetResidentPanel() const { return m_residentPanel; }
 
+    // 「入居者を選ぶ」パネル(住宅を建てた時に、住居なしの住民がいたら開く)。開いている間は、ゲーム内の時間が止まる(止める処理はGame側)。
+    // 選ばれた・「新しい住民を迎える」が押された結果は、Updateの結果(HudResult)で受け取る。
+    bool IsMoveInOpen() const { return m_moveInPanel.IsOpen(); }
+    void OpenMoveIn() { m_moveInPanel.Open(); }
+    void CloseMoveIn() { m_moveInPanel.Close(); }
+    const MoveInPanel& GetMoveInPanel() const { return m_moveInPanel; }
+
     // 配置を計算し、マウスの当たり判定とクリック処理を行う。毎フレーム、ワールドへの入力処理より先に呼ぶ。
     HudResult Update(const HudInput& input, const HudState& state);
 
@@ -182,5 +196,6 @@ private:
     IUISkin* m_skin = &m_defaultSkin;   // 今使っている見た目。差し替えはSetSkin
     GameMenu m_menu;
     ResidentInfoPanel m_residentPanel;
+    MoveInPanel m_moveInPanel;
     Layout m_layout;
 };

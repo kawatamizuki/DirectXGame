@@ -119,6 +119,7 @@ namespace
         case SimEventKind::BecameHomeless:    return "住居なし";
         case SimEventKind::HomeDemolished:    return "住宅解体";
         case SimEventKind::Anomaly:           return "異常";
+        case SimEventKind::MovedIn:           return "入居";
         }
         return "?";
     }
@@ -212,6 +213,8 @@ namespace
             return Fmt("住んでいた住宅(#%u)が解体された", e.facilityId);
         case SimEventKind::Anomaly:
             return Fmt("異常: %s(値 %.3f)", AnomalyJa(e.anomaly), e.a);
+        case SimEventKind::MovedIn:
+            return Fmt("新しい住宅(#%u)への入居が決まった(プレイヤーが選んだ)。今の位置から歩いて向かう", e.facilityId);
         }
         return "?";
     }

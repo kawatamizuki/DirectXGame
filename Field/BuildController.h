@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include <functional>
 #include <vector>
 #include <DirectXMath.h>
 #include "GridCoord.h"
@@ -42,6 +43,10 @@ public:
     // falseなら登録しない(セーブデータの復元。青マスは保存した一覧を別に戻す)。
     // 戻り値は生成した建物のGameObject::id(失敗したら0)。
     uint32_t SpawnBuilding(BuildingType type, const Transform& transform, const BuildingPlacement& placement, bool claimOrientation);
+
+    // プレイヤーが建物を置いた直後に呼ばれる(引数: 建物のid・種類)。セーブデータの復元(SpawnBuildingだけ)では呼ばれない。
+    // 住宅を建てた時に、入居者を選ぶ画面を出すために使う(建物の配置は、住民のことを知らない)。
+    void SetOnBuildingPlaced(std::function<void(uint32_t, BuildingType)> callback) { m_onBuildingPlaced = std::move(callback); }
 
     // 今ある建物(GameObjectのObjectKind::Building)の敷地から、占有(矩形とマスの印)を登録し直す。呼ぶ前に、占有を空にしておくこと。
     // 建物の解体の後、占有を「道路と建物」から作り直す時に使う(占有は、1つだけを解除できないため)。
@@ -141,4 +146,7 @@ private:
     // GridOrientationRegistryで確定済みのチャンク境界・基準角度を可視化するデバッグ表示のON/OFF
     // (Buildウィンドウのチェックボックスで切り替える。既定OFF)。
     bool m_showOrientationDebug = false;
+
+    // プレイヤーが建物を置いた直後に呼ぶ関数(SetOnBuildingPlaced)。
+    std::function<void(uint32_t, BuildingType)> m_onBuildingPlaced;
 };
