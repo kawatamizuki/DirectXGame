@@ -1204,6 +1204,8 @@ void Game::UpdateCityCamera()
     }
     input.wheelNotches = cursorValid ? wheel : 0.0f; // UIの上のホイールは、ズームにしない
     input.dragging = m_cameraDragging || leftDragging;
+    // 感度: 左ボタンのドラッグだけ、倍率を下げる(中ボタンも押している時は、中ボタンの動き=1)。
+    input.dragScale = m_cameraDragging ? 1.0f : m_cityCamera.GetSettings().leftDragScale;
     input.cursorValid = cursorValid;
     input.cursorX = static_cast<float>(mouse.x);
     input.cursorY = static_cast<float>(mouse.y);

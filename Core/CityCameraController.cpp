@@ -153,8 +153,9 @@ void CityCameraController::Update(const CityCameraInput& input, Camera& camera)
         if (RaycastGround(visibleCamera, input.prevCursorX, input.prevCursorY, input.viewWidth, input.viewHeight, grabbed) &&
             RaycastGround(visibleCamera, input.cursorX, input.cursorY, input.viewWidth, input.viewHeight, now))
         {
-            const float deltaX = grabbed.x - now.x;
-            const float deltaZ = grabbed.z - now.z;
+            // dragScaleが1より小さいと、つかんだ点が、カーソルより少なく動く(感度を下げる)。
+            const float deltaX = (grabbed.x - now.x) * input.dragScale;
+            const float deltaZ = (grabbed.z - now.z) * input.dragScale;
             m_targetFocus.x += deltaX;
             m_targetFocus.z += deltaZ;
             m_focus.x += deltaX;

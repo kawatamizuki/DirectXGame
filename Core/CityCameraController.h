@@ -13,6 +13,7 @@ struct CityCameraSettings
     float panSpeedPerDistance = 0.9f;  // キーでの平行移動の速さ(1秒あたり。ズームの距離に掛ける。引くほど速い=画面での速さが一定)
     float fastMultiplier = 2.5f;       // Shiftを押している間の倍率
     float zoomPerNotch = 0.85f;        // ホイール1目盛りで、距離が何倍になるか(奥へ回すと近づく)
+    float leftDragScale = 0.75f;       // 左ボタンのドラッグでの、カメラの動きの倍率。1=つかんだ地面が、カーソルにぴったり付いてくる。小さいほど、同じ距離のドラッグで、カメラの動きが少ない(中ボタンのドラッグは、いつも1)
     float smoothing = 14.0f;           // 動きのなめらかさ(大きいほど、すぐ追いつく。1秒あたり)
     float boundsMargin = 2.0f;         // 注視点が、フィールドの外へ出られる幅
 };
@@ -28,7 +29,8 @@ struct CityCameraInput
 
     float wheelNotches = 0.0f;    // ホイールの回転量(ノッチ。奥へ回すと正=ズームイン)
 
-    bool dragging = false;        // 地面をつかんで動かしている最中か(中ボタンを押している)
+    bool dragging = false;        // 地面をつかんで動かしている最中か(中ボタン、または、左ボタンのドラッグ)
+    float dragScale = 1.0f;       // ドラッグでの、カメラの動きの倍率(1=つかんだ点が、カーソルに付いてくる。1より小さいと、動きが少ない)
     bool cursorValid = false;     // カーソルが、ゲームビューの中で、UIの上でもないか(ズームの中心・ドラッグに使える)
     float cursorX = 0.0f;         // カーソルの位置(ゲームビューの左上が原点のピクセル)
     float cursorY = 0.0f;
