@@ -12,6 +12,7 @@
 #include "RoadCutting.h"
 #include "RoutePlanner.h"
 #include "SimDebugRecorder.h"
+#include "SimStats.h"
 #include "SimTest.h"
 #include "ISaveable.h"
 
@@ -194,6 +195,11 @@ struct DemolishedBuilding
 class DemandSystem : public ISaveable
 {
 public:
+    // 記録部に、統計を観察者として付ける(メンバーの住所を渡すので、コピー・移動は禁止)。
+    DemandSystem() { m_debugRecorder.SetObserver(&m_stats); }
+    DemandSystem(const DemandSystem&) = delete;
+    DemandSystem& operator=(const DemandSystem&) = delete;
+
     // 使用する経路探索アルゴリズムと、住民の見た目に使うモデルを渡す
     // (経路探索アルゴリズムは差し替え可能にするため、具体的なアルゴリズムはここでは知らない)。
     void Initialize(IPathfinder* pathfinder, Model* agentModel);
@@ -292,6 +298,10 @@ public:
     // 判断・状態遷移の記録。ON/OFFの切り替え、容量の変更、読み取りに使う。既定は無効(Editorのビルドが有効にする)。
     SimDebugRecorder& GetDebugRecorder() { return m_debugRecorder; }
     const SimDebugRecorder& GetDebugRecorder() const { return m_debugRecorder; }
+
+    // 統計(段階4)。記録と同時に、軽いカウンターを足していく(記録がONの間だけ)。表示は DebugTools/SimStatsPanel。
+    SimStats& GetBehaviorStats() { return m_stats; }
+    const SimStats& GetBehaviorStats() const { return m_stats; }
 
     // 住民(見た目のオブジェクトのid)の、今の値のコピー。見つからなければ found==false。objectsは、家・施設・見た目の有無を調べるのに使う。
     ResidentDebugView GetResidentDebugView(uint32_t agentObjectId, const std::vector<GameObject>& objects) const;
@@ -465,6 +475,7 @@ private:
 
     // 判断・状態遷移・異常の記録(Editorの「住民デバッグ」用。既定は無効。保存しない)。
     SimDebugRecorder m_debugRecorder;
+    SimStats m_stats;                       // 統計。m_debugRecorder の観察者として、記録と同時に数える
     uint64_t m_tickIndex = 0;               // RunDemandTick を呼んだ回数(記録用。保存しない)
 
     // 最後に時計から読んだ、通算の週(デバッグ表示用)。

@@ -202,6 +202,8 @@
     <ClCompile Include="Simulation\SimDebugRecorder.cpp" />
     <ClCompile Include="Simulation\SimTimeline.cpp" />
     <ClCompile Include="Simulation\SimTest.cpp" />
+    <ClCompile Include="Simulation\SimStats.cpp" />
+    <ClCompile Include="DebugTools\SimStatsPanel.cpp" />
     <ClCompile Include="Simulation\RoutePlanner.cpp" />
     <ClCompile Include="Simulation\GameEconomy.cpp" />
     <ClCompile Include="DebugTools\Profiler.cpp" />
@@ -333,6 +335,8 @@
     <ClInclude Include="Simulation\SimDebugRecorder.h" />
     <ClInclude Include="Simulation\SimTimeline.h" />
     <ClInclude Include="Simulation\SimTest.h" />
+    <ClInclude Include="Simulation\SimStats.h" />
+    <ClInclude Include="DebugTools\SimStatsPanel.h" />
     <ClInclude Include="Simulation\RoutePlanner.h" />
     <ClInclude Include="Simulation\ResidentSimSettings.h" />
     <ClInclude Include="Simulation\GameEconomy.h" />

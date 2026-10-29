@@ -19,6 +19,7 @@
 #include "AssetViewer.h"
 #include "AudioPanel.h"
 #include "ResidentDebugPanel.h"
+#include "SimStatsPanel.h"
 #include "CityCameraController.h"
 #include "ClickDragGesture.h"
 #include "ModelCache.h"
@@ -268,4 +269,7 @@ private:
 
     // Editorの「住民デバッグ」パネル(選んだ住民の現在値・判断の計算・処理の履歴・異常)。Editorのビルドだけが描く。
     ResidentDebugPanel m_residentDebugPanel;
+
+    // Editorの「行動統計」パネル(外出・立ち寄りの件数と率。分母つき)。Editorのビルドだけが描く。
+    SimStatsPanel m_simStatsPanel;
 };
