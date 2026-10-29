@@ -5,6 +5,7 @@
 #include "RoadNode.h"
 #include "RoadNodeIndex.h"
 #include "GridCoord.h"
+#include "OrientedRectangleOverlap.h"
 #include "Model.h"
 #include "RoadDrawMode.h"
 #include "RoadCutting.h"
@@ -55,6 +56,10 @@ public:
     // 今の道路の区間から、占有(マスの集合と、道路の矩形)を登録し直す。呼ぶ前に、占有を空にしておくこと(IOccupancyGrid::Clear)。
     // 建物の解体の後、占有を「道路と建物」から作り直す時に使う(占有は、1つだけを解除できないため)。RestoreSegmentsの中でも使う。
     void ReregisterOccupancy();
+
+    // 道路ごとの「道路と、その両脇の青マスの帯(道路の縁から kFrontageDepthCells マス分)」の矩形を返す。
+    // 建物を解体した跡の青マスを消す時に、この帯の中のマス(道路が作った建物の置き場)を残すために使う。
+    std::vector<OrientedRect> BuildFrontageZones() const;
 
     // ---- 道路の部分解体(解体ツールが使う) ----
     // windows(道路に沿った、長さ×道幅の範囲)の中にある、全ての道路の中心線を切り取った時の結果を返す(何も変えない)。

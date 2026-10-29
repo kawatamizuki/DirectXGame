@@ -428,6 +428,29 @@ bool BuildController::PlaceBuilding(const PlacementPreview& placement)
     return true;
 }
 
+void BuildController::ReleaseOrientationCells(const std::vector<OrientedRect>& removedFootprints, const std::vector<OrientedRect>& roadZones)
+{
+    if (!m_context || !m_context->objects || !m_field || !m_orientationRegistry || removedFootprints.empty())
+    {
+        return;
+    }
+    const float cellSize = m_field->GetCellSize();
+
+    // 残す範囲: 道路の脇の帯 + 今も建っている建物の敷地。
+    std::vector<OrientedRect> keepRects = roadZones;
+    for (const GameObject& obj : *m_context->objects)
+    {
+        if (obj.kind == ObjectKind::Building)
+        {
+            keepRects.push_back(obj.placement.footprintRect);
+        }
+    }
+    for (const OrientedRect& footprint : removedFootprints)
+    {
+        m_orientationRegistry->RemoveCellsOverlappingExcept(footprint, keepRects, cellSize);
+    }
+}
+
 void BuildController::ReregisterOccupancy()
 {
     if (!m_context || !m_context->objects || !m_field || !m_occupancy)

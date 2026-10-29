@@ -444,6 +444,7 @@ int DemolitionController::DemolishBuildings(const std::vector<uint32_t>& ids)
 
     // 消す前に、住民・集計の処理に渡す情報(種類・位置)を集める。重複したidは、1回だけ。
     std::vector<DemolishedBuilding> infos;
+    std::vector<OrientedRect> footprints;
     for (uint32_t id : ids)
     {
         const GameObject* obj = GameObjectFactory::FindById(objects, id);
@@ -461,6 +462,7 @@ int DemolitionController::DemolishBuildings(const std::vector<uint32_t>& ids)
         info.type = obj->buildingType;
         info.position = obj->transform.position;
         infos.push_back(info);
+        footprints.push_back(obj->placement.footprintRect); // 消した後は分からなくなるので、先に控える(青マスを消すのに使う)
     }
     if (infos.empty())
     {
@@ -490,6 +492,12 @@ int DemolitionController::DemolishBuildings(const std::vector<uint32_t>& ids)
     }
 
     RebuildOccupancy();
+
+    // 建物が登録していた青マスのうち、道路の脇でも、他の建物の敷地でもない物は、消す(跡が青いまま残らないように)。
+    if (m_buildController && m_roadSystem)
+    {
+        m_buildController->ReleaseOrientationCells(footprints, m_roadSystem->BuildFrontageZones());
+    }
 
     if (m_onWorldChanged)
     {

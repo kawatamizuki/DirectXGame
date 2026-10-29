@@ -1634,6 +1634,28 @@ RoadCutResult RoadSystem::ApplyCut(const std::vector<RoadCutWindow>& windows)
     return result;
 }
 
+std::vector<OrientedRect> RoadSystem::BuildFrontageZones() const
+{
+    std::vector<OrientedRect> zones;
+    if (!m_field)
+    {
+        return zones;
+    }
+    // 道路の縁から、青マスの厚みぶん(kFrontageDepthCells マス)だけ、両脇へ広げた帯。端は、道路の端の延長ぶん(青マスが並ぶ範囲)まで。
+    const float sideExtent = m_field->GetCellSize() * static_cast<float>(WorldScale::kFrontageDepthCells);
+    zones.reserve(m_segments.size());
+    for (const RoadSegment& segment : m_segments)
+    {
+        OrientedRect rect = MakeRoadRect(segment, WorldScale::kRoadEndExtension);
+        // ローカル+Xは(cos, -sin)。原点を-X側へsideExtentだけずらし、幅を両脇ぶん増やす。
+        rect.origin.x -= std::cos(rect.yaw) * sideExtent;
+        rect.origin.z += std::sin(rect.yaw) * sideExtent;
+        rect.width += sideExtent * 2.0f;
+        zones.push_back(rect);
+    }
+    return zones;
+}
+
 void RoadSystem::ReregisterOccupancy()
 {
     if (!m_field || !m_occupancy)
