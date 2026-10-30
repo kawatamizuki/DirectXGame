@@ -20,6 +20,8 @@
 #include "AudioPanel.h"
 #include "ResidentDebugPanel.h"
 #include "SimStatsPanel.h"
+#include "SimReproController.h"
+#include "SimReproPanel.h"
 #include "CityCameraController.h"
 #include "ClickDragGesture.h"
 #include "ModelCache.h"
@@ -272,4 +274,8 @@ private:
 
     // Editorの「行動統計」パネル(外出・立ち寄りの件数と率。分母つき)。Editorのビルドだけが描く。
     SimStatsPanel m_simStatsPanel;
+
+    // 再現セッション(記録 → 再生 → 指紋の比較)の制御と、Editorの「乱数・再現」パネル。制御は、Editorのビルドの時だけ初期化する(Releaseでは何もしない)。
+    SimReproController m_repro;
+    SimReproPanel m_simReproPanel;
 };

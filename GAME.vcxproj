@@ -203,6 +203,9 @@
     <ClCompile Include="Simulation\SimTimeline.cpp" />
     <ClCompile Include="Simulation\SimTest.cpp" />
     <ClCompile Include="Simulation\SimStats.cpp" />
+    <ClCompile Include="Simulation\SimRunDigest.cpp" />
+    <ClCompile Include="DebugTools\SimReproController.cpp" />
+    <ClCompile Include="DebugTools\SimReproPanel.cpp" />
     <ClCompile Include="DebugTools\SimStatsPanel.cpp" />
     <ClCompile Include="Simulation\RoutePlanner.cpp" />
     <ClCompile Include="Simulation\GameEconomy.cpp" />
@@ -336,6 +339,9 @@
     <ClInclude Include="Simulation\SimTimeline.h" />
     <ClInclude Include="Simulation\SimTest.h" />
     <ClInclude Include="Simulation\SimStats.h" />
+    <ClInclude Include="Simulation\SimRunDigest.h" />
+    <ClInclude Include="DebugTools\SimReproController.h" />
+    <ClInclude Include="DebugTools\SimReproPanel.h" />
     <ClInclude Include="DebugTools\SimStatsPanel.h" />
     <ClInclude Include="Simulation\RoutePlanner.h" />
     <ClInclude Include="Simulation\ResidentSimSettings.h" />

@@ -22,6 +22,8 @@ public:
 
     // 内部状態(今の乱数列の位置)。デバッグ(記録のON/OFFで乱数の消費が変わらないことの確認)と、将来の再現用。
     uint32_t GetState() const { return m_state; }
+    // 内部状態を戻す(セーブした位置から、同じ乱数列を続ける。0は、この乱数では出ない値なので、種と同じ扱い)。
+    void SetState(uint32_t state) { m_state = (state == 0) ? 0x9E3779B9u : state; }
 
 private:
     uint32_t m_state = 1;

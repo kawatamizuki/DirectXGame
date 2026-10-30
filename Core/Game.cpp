@@ -129,6 +129,7 @@ bool Game::Initialize(HWND hwnd)
     m_audioPanel.SetOpenFlag(m_editorUi.PanelFlag("Audio"));
     m_residentDebugPanel.SetOpenFlag(m_editorUi.PanelFlag("住民デバッグ"));
     m_simStatsPanel.SetOpenFlag(m_editorUi.PanelFlag("行動統計"));
+    m_simReproPanel.SetOpenFlag(m_editorUi.PanelFlag("乱数・再現"));
 
     // 住民の判断・状態遷移の記録を有効にする(Editorのビルドだけ。Releaseでは無効のまま)。記録は、乱数・シミュレーションの結果を変えない。
     m_demandSystem.GetDebugRecorder().SetEnabled(true);
@@ -333,7 +334,9 @@ bool Game::Initialize(HWND hwnd)
         m_debugEditor.ClearSelection();
         m_demolition.Cancel(); // ロード中(F9)に、解体の選びかけがあれば、やめる(選んだ位置は、前の街の物)
         CancelMoveIn();        // 入居者を選ぶ待ちも、前の街の物なので、やめる(住宅・住民が入れ替わる)
+        m_repro.NotifyWorldReplaced(); // 記録・再生の途中で、街が読み込み直されたら、中止する
     });
+    m_repro.Initialize(&m_demandSystem, &m_scenarioManager, &m_gameClock, &m_objects);
 
     // 「Editor > エディタ機能のON/OFF」に出すスイッチ。全て登録し終えてから、保存してある設定を読む。
     m_buildController.RegisterEditorToggles(m_editorUi.Settings());
@@ -396,7 +399,15 @@ void Game::Update()
     m_timeManager.Update();
 
     // ゲーム内時刻を進める(Editing/Playingに関わらず進める。Editorで時刻を動かして見た目を確認できる)。
-    m_gameClock.Update(m_timeManager.GetDeltaTime());
+    // 再現セッションの記録・再生中は、実時間のフレーム間隔ではなく、固定の刻みで時計を進める(PCの速さに、結果が依存しないため)。
+    // それ以外の時は、これまでどおり、実時間。建物・道路の数の指紋は、記録中に変えられたら中止するための物。
+    const uint64_t structureSignature = static_cast<uint64_t>(m_objects.size()) * 1000003ull + static_cast<uint64_t>(m_roadSystem.GetSegments().size());
+    float clockDelta = m_repro.PrepareFrame(m_timeManager.GetDeltaTime(), IsInGameScene() && m_context.mode == GameMode::Playing, structureSignature);
+    if (IsInGameScene() && m_context.mode == GameMode::Editing)
+    {
+        clockDelta = 0.0f; // Stop(Editing)の間は、住民だけでなく、ゲーム内の時間も止める(時刻は、Timeパネルのスライダーで動かせる)
+    }
+    m_gameClock.Update(clockDelta);
 
     for (auto& obj : m_objects)
     {
@@ -513,6 +524,8 @@ void Game::Update()
     {
         // ゲームシーンでない(タイトルへ戻った)・Editingモードの間は、解体の選びかけを残さない(戻った時に、前の選択が、残らないように)。
         m_demolition.Cancel();
+        m_roadSystem.CancelPlacement();     // Editing(Stop)の間は、道路の置きかけ・カーソルのマーカーも、残さない
+        m_roadSystem.ClearHoverMarker();
     }
 
     // 音: 聞く位置はカメラ。時間は、ゲーム内の倍率に関係なく、実時間で進める(メニューで時間を止めても、曲のフェードは進む)。
@@ -1103,6 +1116,19 @@ void Game::SyncMenuTimeScale()
     // 元の倍率の記憶・復帰は、メニュー・ツールの停止と同じ仕組みで行うので、重なっても(メニューを開閉しても)、倍率は正しく戻る。
     const bool debugPause = IsGameUIVisible() && (m_context.mode == GameMode::Playing) && m_demandSystem.GetDebugRecorder().IsPauseActive();
     const bool paused = open || toolActive || debugPause;
+    if (m_repro.OwnsTimeScale())
+    {
+        // 再現セッションの再生中は、時間の倍率を、記録どおりに入れる(ここでは触らない)。メニューなどで時間を止める時は、
+        // 倍率ではなく、再生のフレームを止める(ふだんのプレイと同じく、メニューを開くと時間が止まり、再生の結果は変わらない)。
+        m_repro.SetUserPaused(paused);
+        if (open && !m_menuWasOpen)
+        {
+            m_roadSystem.CancelPlacement();
+            m_audio.PlaySe("ui_open");
+        }
+        m_menuWasOpen = open;
+        return;
+    }
     if (paused && !m_timePausedByUi)
     {
         // 止める: 元の倍率を覚える(閉じたら戻す)。
@@ -1965,10 +1991,11 @@ void Game::Draw()
         m_demandSystem.Draw(m_debugRenderer); // 建物と道路の接続線(デバッグ表示)。エディタが無いビルドでは出さない
 #endif
 
+        // 道路は、Editing(Stop)でも出す(置いた道路が、消えたように見えない)。建物の配置の表示・解体の表示は、Playingだけ。
+        m_roadSystem.Draw();
         if (m_context.mode == GameMode::Playing)
         {
             m_buildController.Draw(m_editorUi.PanelFlag("Build"));
-            m_roadSystem.Draw();
             m_demolition.Draw();
         }
     }
@@ -1983,6 +2010,7 @@ void Game::Draw()
     m_demandSystem.DrawDebugUI(m_editorUi.PanelFlag("City Stats"));
     m_residentDebugPanel.Draw(m_demandSystem, m_objects);
     m_simStatsPanel.Draw(m_demandSystem, m_objects);
+    m_simReproPanel.Draw(m_demandSystem, m_repro);
     m_gameClock.DrawDebugUI(m_editorUi.PanelFlag("Time"));
     m_gameEconomy.DrawDebugUI(m_editorUi.PanelFlag("Economy"));
     m_assetBrowser.DrawDebugUI();

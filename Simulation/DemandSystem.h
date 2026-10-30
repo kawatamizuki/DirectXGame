@@ -12,6 +12,8 @@
 #include "RoadCutting.h"
 #include "RoutePlanner.h"
 #include "SimDebugRecorder.h"
+#include <functional>
+#include "SimRunDigest.h"
 #include "SimStats.h"
 #include "SimTest.h"
 #include "ISaveable.h"
@@ -192,11 +194,26 @@ struct DemolishedBuilding
 // 住民の生成・外出・施設の利用・売上、需要と体力、週の処理を管理するクラス。
 // Game::Update/Drawから毎フレーム呼ばれる(BuildController/RoadSystemと同じ所有のされ方)。
 // 仕事(通勤)の概念は一旦停止中: 関連するコードは、消さずに、無効にして残してある(Office建物は建てられるが、何も起きない)。
+// 乱数の取り方(新しい世界を始める時 = ゲームの開始・ロード・リセット)。
+//  ・Reseed       通常のプレイ。新しい予測しにくい種で始める(同じセーブを読み直しても、その後の抽選結果が変わる)。既定。
+//  ・FixedSeed    再現テスト用。設定の種(settings.seed)で始める(同じ種・同じ配置なら、同じ選択が再現される)。
+//  ・RestoreState 再現テスト用。セーブに残した乱数の内部状態を復元する(セーブした位置から、同じ乱数列を続ける)。セーブに無ければ設定の種で始める。
+// 擬似乱数であり、「真の乱数」ではない(種が同じなら、同じ列になる)。
+enum class SimRandomMode : uint8_t
+{
+    Reseed,
+    FixedSeed,
+    RestoreState
+};
+
+// 通常プレイ用の、新しい種を作る(時刻・OSの乱数から。0にならない)。
+uint32_t MakeFreshRandomSeed();
+
 class DemandSystem : public ISaveable
 {
 public:
     // 記録部に、統計を観察者として付ける(メンバーの住所を渡すので、コピー・移動は禁止)。
-    DemandSystem() { m_debugRecorder.SetObserver(&m_stats); }
+    DemandSystem() { m_debugRecorder.AddObserver(&m_stats); m_debugRecorder.AddObserver(&m_digest); }
     DemandSystem(const DemandSystem&) = delete;
     DemandSystem& operator=(const DemandSystem&) = delete;
 
@@ -314,6 +331,22 @@ public:
 
     // 乱数の内部状態(記録のON/OFFで乱数の消費が変わらないことの確認に使う)。
     uint32_t GetRandomState() const { return m_random.GetState(); }
+
+    // ---- 乱数・再現(段階5) ----
+    // 新しい世界(ゲームの開始・ロード・リセット)を始める時の、乱数の取り方。既定は Reseed(ロードで、抽選の結果が変わる)。
+    void SetRandomMode(SimRandomMode mode) { m_randomMode = mode; }
+    SimRandomMode GetRandomMode() const { return m_randomMode; }
+    // 今の世界の乱数の種(世界を始めた時に決めた値。FixedSeed に入れれば、同じ列で始められる)。
+    uint32_t GetActiveSeed() const { return m_activeSeed; }
+    // 今の乱数の内部状態を、指定の値に戻す(再現テスト用)。
+    void RestoreRandomState(uint32_t state) { m_random.SetState(state); }
+    // 世界を始めてからの、イベント・外出判定の「指紋」(再現できたかの確認用)。
+    SimRunDigestResult GetRunDigest() const { return m_digest.Result(); }
+    const std::vector<SimDigestTraceEntry>& GetRunDigestTrace() const { return m_digest.Trace(); }
+    // 行動テストの指示を出した時(画面から)に呼ばれる。再現セッションの記録用。再生中の指示では、呼ばれない。
+    void SetOnTestCommandSubmitted(std::function<void(const SimTestCommand&, uint32_t)> callback) { m_onTestSubmitted = std::move(callback); }
+    // 再生用: 記録しないで、指示を出す。
+    SimTestSubmitResult SubmitTestCommandSilently(const SimTestCommand& command, uint32_t selectedResidentId, const std::vector<GameObject>& objects);
 
     // ---- 行動テスト(段階3。Editorの「住民デバッグ」の「行動テスト」タブ用。詳しくは SimTest.h) ----
     // 指示を、対象の住民ごとの「計画」にして、待機させる(ここでは、住民の状態を変えない)。計画は、次の安全なタイミング
@@ -476,6 +509,10 @@ private:
     // 判断・状態遷移・異常の記録(Editorの「住民デバッグ」用。既定は無効。保存しない)。
     SimDebugRecorder m_debugRecorder;
     SimStats m_stats;                       // 統計。m_debugRecorder の観察者として、記録と同時に数える
+    SimRunDigest m_digest;                  // 実行結果の指紋。同じく観察者
+    SimRandomMode m_randomMode = SimRandomMode::Reseed;
+    uint32_t m_activeSeed = 0;              // 今の世界の乱数の種
+    std::function<void(const SimTestCommand&, uint32_t)> m_onTestSubmitted;
     uint64_t m_tickIndex = 0;               // RunDemandTick を呼んだ回数(記録用。保存しない)
 
     // 最後に時計から読んだ、通算の週(デバッグ表示用)。

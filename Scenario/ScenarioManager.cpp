@@ -200,6 +200,11 @@ bool ScenarioManager::ApplySnapshot(const WorldSnapshot& snapshot, std::string& 
 bool ScenarioManager::ApplySnapshotImpl(const WorldSnapshot& snapshot, float spaceScale, std::string& message)
 {
     ClearWorld();
+    if (m_context && m_context->objects)
+    {
+        // 街を丸ごと入れ替えるので、idの連番を、残った物(環境など)の続きに戻す。同じセーブを読み直すと、同じidになる。
+        GameObjectFactory::ResetIdCounter(*m_context->objects);
+    }
 
     LoadContext loadContext;
     loadContext.game = m_context;

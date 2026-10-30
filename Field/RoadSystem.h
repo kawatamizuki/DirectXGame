@@ -83,6 +83,8 @@ public:
 
     // 置きかけの道路を全てやめる(Cancelキーと同じ処理)。ゲーム内メニューで別の物を選ぶ時などに呼ぶ。
     void CancelPlacement();
+    // カーソル位置の丸マーカー(置ける/置けない)を消す。Update が動かない間(Editingなど)に、前のマーカーが残らないようにする。
+    void ClearHoverMarker() { m_hasLastHit = false; }
 
     // 道路メッシュの頂点数(Profilerのメモリ内訳表示に使う)。
     // IRoadMeshGeneratorの完全な定義はRoadSystem.cpp側でしか見えていないため、実装は.cpp側に置く。
