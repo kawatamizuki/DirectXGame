@@ -19,6 +19,8 @@
 #include "WorldScale.h"
 #include "ScenarioFile.h"
 #include "Debug.h"
+#include <chrono>
+#include <random>
 
 using namespace DirectX;
 
@@ -111,11 +113,30 @@ namespace
     }
 }
 
+uint32_t MakeFreshRandomSeed()
+{
+    // OSの乱数と時刻を混ぜる(どちらかが弱くても、同じ値になりにくい)。0は乱数列が止まるので避ける。
+    std::random_device device;
+    const uint64_t now = static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
+    const uint32_t seed = device() ^ static_cast<uint32_t>(now) ^ (static_cast<uint32_t>(now >> 32) * 2654435761u);
+    return seed != 0 ? seed : 0x9E3779B9u;
+}
+
+namespace
+{
+    // 新しい世界(開始・ロード・リセット)の乱数の種を、モードに従って決める。
+    uint32_t ChooseWorldSeed(SimRandomMode mode, uint32_t settingsSeed)
+    {
+        return (mode == SimRandomMode::Reseed) ? MakeFreshRandomSeed() : settingsSeed;
+    }
+}
+
 void DemandSystem::Initialize(IPathfinder* pathfinder, Model* agentModel)
 {
     m_pathfinder = pathfinder;
     m_agentModel = agentModel;
-    m_random.Seed(m_settings.seed);
+    m_activeSeed = ChooseWorldSeed(m_randomMode, m_settings.seed);
+    m_random.Seed(m_activeSeed);
 }
 
 void DemandSystem::Reset()
@@ -141,7 +162,8 @@ void DemandSystem::Reset()
             plan.finishedHour = m_lastClockHour;
         }
     }
-    m_random.Seed(m_settings.seed);
+    m_activeSeed = ChooseWorldSeed(m_randomMode, m_settings.seed);
+    m_random.Seed(m_activeSeed);
     m_lastRoadGraphNodeCount = 0;
     m_lastRoadGraphEdgeCount = 0;
     m_buildingsWithoutRoad.clear();
@@ -256,6 +278,10 @@ void DemandSystem::Save(Json& section, const SaveContext& context) const
 {
     section.Set("tickTimer", m_tickTimer);
     section.Set("weeksEnded", m_weeksEnded);
+    // 乱数: この世界の種と、今の内部状態。再現テスト(RestoreState)で、セーブした位置から同じ乱数列を続けるために残す。
+    // 通常のプレイ(Reseed)では、読み込み時に使わない(ロードのたびに、抽選の結果が変わる)。
+    section.Set("randomSeed", static_cast<double>(m_activeSeed));
+    section.Set("randomState", static_cast<double>(m_random.GetState()));
 
     Json agents = Json::MakeArray();
     if (context.game && context.game->objects)
@@ -397,6 +423,13 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
         m_tickTimer = 0.0f;
     }
     m_weeksEnded = (std::max)(0, section.GetInt("weeksEnded", 0));
+
+    // 乱数: 再現テスト(RestoreState)の時だけ、セーブした内部状態を復元する。無ければ(古いセーブ)、Reset が決めた種のまま。
+    if (m_randomMode == SimRandomMode::RestoreState && section.Find("randomState"))
+    {
+        m_activeSeed = static_cast<uint32_t>(section.GetNumber("randomSeed", static_cast<double>(m_activeSeed)));
+        m_random.SetState(static_cast<uint32_t>(section.GetNumber("randomState", static_cast<double>(m_random.GetState()))));
+    }
 
     // 施設ごとの集計。
     uint32_t retiredCount = 0;
@@ -1791,6 +1824,16 @@ float DemandSystem::RouteLength(const std::vector<XMFLOAT3>& waypoints)
 // 通常のプレイ(計画が1つも無い時)は、ここを通っても、何も変わらない(乱数の消費も、同じ)。
 // ---------------------------------------------------------------------------
 SimTestSubmitResult DemandSystem::SubmitTestCommand(const SimTestCommand& command, uint32_t selectedResidentId, const std::vector<GameObject>& objects)
+{
+    const SimTestSubmitResult result = SubmitTestCommandSilently(command, selectedResidentId, objects);
+    if (m_onTestSubmitted)
+    {
+        m_onTestSubmitted(command, selectedResidentId); // 再現セッションの記録(画面からの指示だけ)
+    }
+    return result;
+}
+
+SimTestSubmitResult DemandSystem::SubmitTestCommandSilently(const SimTestCommand& command, uint32_t selectedResidentId, const std::vector<GameObject>& objects)
 {
     SimTestSubmitResult result;
     result.batchId = m_nextTestBatchId++;

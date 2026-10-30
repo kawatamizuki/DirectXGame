@@ -23,6 +23,11 @@ namespace GameObjectFactory
     // セーブデータの読み込み前の全消去に使う。削除した数を返す。
     size_t DespawnAllOfKind(std::vector<GameObject>& objects, ObjectKind kind);
 
+    // 次に付けるidを、今あるGameObjectのidの最大値の次に戻す。セーブデータの読み込みで街を丸ごと作り直す時に、全消去の後に呼ぶ。
+    // 読み込みのたびにidが増え続けないので、同じセーブを読み直すと、同じidが付く(住民の特徴の種・デバッグの再現が、読み込みで変わらない)。
+    // 消した物のidを、新しい物が使い回す(消した物を指す古いidが、まだ残っていないことが前提。街を丸ごと入れ替える時だけ使う)。
+    void ResetIdCounter(const std::vector<GameObject>& objects);
+
     // idから現在のGameObjectを探す(線形探索)。見つからなければnullptr。
     // 複数フレームにまたがってオブジェクトを参照する時は、インデックスではなくidを保持し、
     // 使う直前にこの関数で解決すること(Despawnでインデックスがずれても安全なため)。

@@ -282,6 +282,15 @@
     <ClCompile Include="Simulation\SimTimeline.cpp">
       <Filter>ソース ファイル\Simulation</Filter>
     </ClCompile>
+    <ClCompile Include="Simulation\SimRunDigest.cpp">
+      <Filter>ソース ファイル\Simulation</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\SimReproController.cpp">
+      <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\SimReproPanel.cpp">
+      <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
     <ClCompile Include="Simulation\SimStats.cpp">
       <Filter>ソース ファイル\Simulation</Filter>
     </ClCompile>
@@ -670,6 +679,15 @@
     </ClInclude>
     <ClInclude Include="Simulation\SimTimeline.h">
       <Filter>ヘッダー ファイル\Simulation</Filter>
+    </ClInclude>
+    <ClInclude Include="Simulation\SimRunDigest.h">
+      <Filter>ヘッダー ファイル\Simulation</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\SimReproController.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\SimReproPanel.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
     </ClInclude>
     <ClInclude Include="Simulation\SimStats.h">
       <Filter>ヘッダー ファイル\Simulation</Filter>

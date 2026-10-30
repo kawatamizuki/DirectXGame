@@ -45,6 +45,16 @@ namespace GameObjectFactory
         return before - objects.size();
     }
 
+    void ResetIdCounter(const std::vector<GameObject>& objects)
+    {
+        uint32_t maxId = 0;
+        for (const GameObject& obj : objects)
+        {
+            maxId = (std::max)(maxId, obj.id);
+        }
+        s_nextId = maxId + 1; // 0は「未割当」なので、必ず1以上
+    }
+
     GameObject* FindById(std::vector<GameObject>& objects, uint32_t id)
     {
         for (GameObject& obj : objects)

@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include <algorithm>
 #include <cstdint>
 #include <deque>
 #include <unordered_map>
@@ -302,8 +303,9 @@ public:
 class SimDebugRecorder
 {
 public:
-    // 観察者を付ける(nullptrで外す)。所有はしない。
-    void SetObserver(ISimRecordObserver* observer) { m_observer = observer; }
+    // 観察者を付ける・外す(統計・実行結果のダイジェストなど。複数付けられる)。所有はしない。
+    void AddObserver(ISimRecordObserver* observer) { if (observer && std::find(m_observers.begin(), m_observers.end(), observer) == m_observers.end()) { m_observers.push_back(observer); } }
+    void RemoveObserver(ISimRecordObserver* observer) { m_observers.erase(std::remove(m_observers.begin(), m_observers.end(), observer), m_observers.end()); }
 
     static constexpr size_t kDefaultEventCapacity = 20000;  // 全住民の重要イベントの上限
     static constexpr size_t kDefaultDetailCapacity = 2000;  // 判断の内訳(候補ごとの計算)の上限(1件は、候補が数軒で約1KB。実測は学習メモ)
@@ -370,7 +372,7 @@ private:
     void TrimDetails();
 
     bool m_enabled = false;
-    ISimRecordObserver* m_observer = nullptr; // 統計など(所有しない)
+    std::vector<ISimRecordObserver*> m_observers; // 統計など(所有しない)
     SimBreakpoints m_breakpoints;       // 止める条件(世界を作り直しても、残す)
     bool m_pauseActive = false;         // 止める印が立っているか
     uint64_t m_pausedEventId = 0;
