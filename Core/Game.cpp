@@ -130,6 +130,7 @@ bool Game::Initialize(HWND hwnd)
     m_residentDebugPanel.SetOpenFlag(m_editorUi.PanelFlag("住民デバッグ"));
     m_simStatsPanel.SetOpenFlag(m_editorUi.PanelFlag("行動統計"));
     m_simReproPanel.SetOpenFlag(m_editorUi.PanelFlag("乱数・再現"));
+    m_rewindPanel.SetOpenFlag(m_editorUi.PanelFlag("タイムライン"));
 
     // 住民の判断・状態遷移の記録を有効にする(Editorのビルドだけ。Releaseでは無効のまま)。記録は、乱数・シミュレーションの結果を変えない。
     m_demandSystem.GetDebugRecorder().SetEnabled(true);
@@ -335,8 +336,21 @@ bool Game::Initialize(HWND hwnd)
         m_demolition.Cancel(); // ロード中(F9)に、解体の選びかけがあれば、やめる(選んだ位置は、前の街の物)
         CancelMoveIn();        // 入居者を選ぶ待ちも、前の街の物なので、やめる(住宅・住民が入れ替わる)
         m_repro.NotifyWorldReplaced(); // 記録・再生の途中で、街が読み込み直されたら、中止する
+        m_rewind.NotifyWorldReplaced(); // タイムラインは、(自分の巻き戻し以外で)街が入れ替わったら、記録を最初からやり直す
     });
     m_repro.Initialize(&m_demandSystem, &m_scenarioManager, &m_gameClock, &m_objects);
+    m_rewind.Initialize(&m_demandSystem, &m_scenarioManager, &m_gameClock, &m_objects,
+        [this](float stepSeconds, bool headless)
+        {
+            // 1ステップ: 時計を進めて、住民を進める(ふだんのフレームの更新と、同じ呼び方)。画面を描かないシーク中は、メニューの一時停止などの画面の処理は、しない。
+            m_gameClock.Update(stepSeconds);
+            m_demandSystem.Update(m_gameClock.GetScaledDeltaSeconds(), m_context, m_roadSystem.GetSegments());
+            if (!headless && m_demandSystem.GetDebugRecorder().IsPauseActive())
+            {
+                SyncMenuTimeScale();
+            }
+        },
+        [this]() { return StructureSignature(); });
 
     // 「Editor > エディタ機能のON/OFF」に出すスイッチ。全て登録し終えてから、保存してある設定を読む。
     m_buildController.RegisterEditorToggles(m_editorUi.Settings());
@@ -384,8 +398,6 @@ void Game::Update()
 
 
 
-
-
     // 毎フレームのクリック消費状況をリセットしてから呼び出しを行う。
     // Editorのギズモ/選択と、プレイヤーの配置操作が同じクリックを二重処理するのを防ぐ
     m_context.inputConsumed = false;
@@ -401,13 +413,17 @@ void Game::Update()
     // ゲーム内時刻を進める(Editing/Playingに関わらず進める。Editorで時刻を動かして見た目を確認できる)。
     // 再現セッションの記録・再生中は、実時間のフレーム間隔ではなく、固定の刻みで時計を進める(PCの速さに、結果が依存しないため)。
     // それ以外の時は、これまでどおり、実時間。建物・道路の数の指紋は、記録中に変えられたら中止するための物。
-    const uint64_t structureSignature = static_cast<uint64_t>(m_objects.size()) * 1000003ull + static_cast<uint64_t>(m_roadSystem.GetSegments().size());
+    const uint64_t structureSignature = StructureSignature();
     float clockDelta = m_repro.PrepareFrame(m_timeManager.GetDeltaTime(), IsInGameScene() && m_context.mode == GameMode::Playing, structureSignature);
     if (IsInGameScene() && m_context.mode == GameMode::Editing)
     {
         clockDelta = 0.0f; // Stop(Editing)の間は、住民だけでなく、ゲーム内の時間も止める(時刻は、Timeパネルのスライダーで動かせる)
     }
-    m_gameClock.Update(clockDelta);
+    // タイムラインがONの間は、ゲームシーンの時計も、住民の更新と一緒に、タイムラインが決める(下)。
+    if (!(m_rewind.IsDriving() && IsInGameScene()))
+    {
+        m_gameClock.Update(clockDelta);
+    }
 
     for (auto& obj : m_objects)
     {
@@ -510,18 +526,30 @@ void Game::Update()
             m_noticeSecondsLeft -= m_timeManager.GetDeltaTime();
         }
 
-        // 住民の移動・需要更新は、ゲーム内時間の倍率(停止/倍速)に従って進める。
-        m_demandSystem.Update(m_gameClock.GetScaledDeltaSeconds(), m_context, m_roadSystem.GetSegments());
-
-        // 一時停止の条件に当てはまるイベントが記録されていたら、シミュレーションの更新が済んだ、この安全な所で、すぐ時間を止める
-        // (次のフレームを待つと、倍速では、1フレームで大きく進んでしまうため)。
-        if (m_demandSystem.GetDebugRecorder().IsPauseActive())
+        if (m_rewind.IsDriving())
         {
-            SyncMenuTimeScale();
+            // タイムラインON: 固定刻みで、時計と住民を、何ステップか進める(巻き戻し中は、進め直し)。
+            m_rewind.Update(m_timeManager.GetDeltaTime(), true);
+        }
+        else
+        {
+            // 住民の移動・需要更新は、ゲーム内時間の倍率(停止/倍速)に従って進める。
+            m_demandSystem.Update(m_gameClock.GetScaledDeltaSeconds(), m_context, m_roadSystem.GetSegments());
+
+            // 一時停止の条件に当てはまるイベントが記録されていたら、シミュレーションの更新が済んだ、この安全な所で、すぐ時間を止める
+            // (次のフレームを待つと、倍速では、1フレームで大きく進んでしまうため)。
+            if (m_demandSystem.GetDebugRecorder().IsPauseActive())
+            {
+                SyncMenuTimeScale();
+            }
         }
     }
     else
     {
+        if (m_rewind.IsDriving() && IsInGameScene())
+        {
+            m_rewind.Update(m_timeManager.GetDeltaTime(), false); // Editing(Stop): 時間は進めない(戻った時に、キーフレームを撮り直す)
+        }
         // ゲームシーンでない(タイトルへ戻った)・Editingモードの間は、解体の選びかけを残さない(戻った時に、前の選択が、残らないように)。
         m_demolition.Cancel();
         m_roadSystem.CancelPlacement();     // Editing(Stop)の間は、道路の置きかけ・カーソルのマーカーも、残さない
@@ -532,6 +560,20 @@ void Game::Update()
     m_audio.SetListenerPosition(m_camera.GetPosition());
     m_audio.Update(m_timeManager.GetDeltaTime());
     SaveAudioSettingsIfChanged();
+}
+
+uint64_t Game::StructureSignature() const
+{
+    // 建物・飾りの数と、道路の区間の数。住民(Agent)は、シミュレーションで生まれるので、数えない。
+    uint64_t count = 0;
+    for (const GameObject& object : m_objects)
+    {
+        if (object.kind != ObjectKind::Agent)
+        {
+            ++count;
+        }
+    }
+    return count * 1000003ull + static_cast<uint64_t>(m_roadSystem.GetSegments().size());
 }
 
 bool Game::IsInTitleScene() const
@@ -2010,7 +2052,8 @@ void Game::Draw()
     m_demandSystem.DrawDebugUI(m_editorUi.PanelFlag("City Stats"));
     m_residentDebugPanel.Draw(m_demandSystem, m_objects);
     m_simStatsPanel.Draw(m_demandSystem, m_objects);
-    m_simReproPanel.Draw(m_demandSystem, m_repro);
+    m_simReproPanel.Draw(m_demandSystem, m_repro, m_rewind.IsEnabled());
+    m_rewindPanel.Draw(m_rewind, m_repro);
     m_gameClock.DrawDebugUI(m_editorUi.PanelFlag("Time"));
     m_gameEconomy.DrawDebugUI(m_editorUi.PanelFlag("Economy"));
     m_assetBrowser.DrawDebugUI();

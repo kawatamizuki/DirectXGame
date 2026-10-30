@@ -1826,9 +1826,9 @@ float DemandSystem::RouteLength(const std::vector<XMFLOAT3>& waypoints)
 SimTestSubmitResult DemandSystem::SubmitTestCommand(const SimTestCommand& command, uint32_t selectedResidentId, const std::vector<GameObject>& objects)
 {
     const SimTestSubmitResult result = SubmitTestCommandSilently(command, selectedResidentId, objects);
-    if (m_onTestSubmitted)
+    for (const auto& callback : m_onTestSubmitted)
     {
-        m_onTestSubmitted(command, selectedResidentId); // 再現セッションの記録(画面からの指示だけ)
+        callback(command, selectedResidentId); // 再現セッション・タイムラインの記録(画面からの指示だけ)
     }
     return result;
 }

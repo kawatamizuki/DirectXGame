@@ -344,7 +344,7 @@ public:
     SimRunDigestResult GetRunDigest() const { return m_digest.Result(); }
     const std::vector<SimDigestTraceEntry>& GetRunDigestTrace() const { return m_digest.Trace(); }
     // 行動テストの指示を出した時(画面から)に呼ばれる。再現セッションの記録用。再生中の指示では、呼ばれない。
-    void SetOnTestCommandSubmitted(std::function<void(const SimTestCommand&, uint32_t)> callback) { m_onTestSubmitted = std::move(callback); }
+    void AddOnTestCommandSubmitted(std::function<void(const SimTestCommand&, uint32_t)> callback) { m_onTestSubmitted.push_back(std::move(callback)); }
     // 再生用: 記録しないで、指示を出す。
     SimTestSubmitResult SubmitTestCommandSilently(const SimTestCommand& command, uint32_t selectedResidentId, const std::vector<GameObject>& objects);
 
@@ -512,7 +512,7 @@ private:
     SimRunDigest m_digest;                  // 実行結果の指紋。同じく観察者
     SimRandomMode m_randomMode = SimRandomMode::Reseed;
     uint32_t m_activeSeed = 0;              // 今の世界の乱数の種
-    std::function<void(const SimTestCommand&, uint32_t)> m_onTestSubmitted;
+    std::vector<std::function<void(const SimTestCommand&, uint32_t)>> m_onTestSubmitted;
     uint64_t m_tickIndex = 0;               // RunDemandTick を呼んだ回数(記録用。保存しない)
 
     // 最後に時計から読んだ、通算の週(デバッグ表示用)。

@@ -410,11 +410,19 @@ bool ScenarioManager::Load(const std::string& path, std::string& message)
         m_lastMessage = message;
         return false;
     }
+    return LoadFromBytes(bytes, path, message, false);
+}
+
+bool ScenarioManager::LoadFromBytes(const std::string& bytes, const std::string& label, std::string& message, bool quiet)
+{
+    auto startTime = std::chrono::steady_clock::now();
+    std::string error;
+    const std::string& path = label;
 
     if (!m_format->Matches(bytes))
     {
         message = "読み込めません: " + path + " は対応している形式のセーブデータではありません";
-        m_lastMessage = message;
+        if (!quiet) { m_lastMessage = message; }
         return false;
     }
 
@@ -455,8 +463,25 @@ bool ScenarioManager::Load(const std::string& path, std::string& message)
         message += "、警告 " + std::to_string(warnings.size()) + " 件";
     }
     message += ")";
-    m_lastMessage = message;
-    Debug::Log("ScenarioManager: " + message);
+    if (!quiet)
+    {
+        m_lastMessage = message;
+        Debug::Log("ScenarioManager: " + message);
+    }
+    return true;
+}
+
+bool ScenarioManager::CaptureBytes(std::string& bytes, std::string& message) const
+{
+    WorldSnapshot snapshot;
+    CaptureSnapshot(snapshot);
+    const Json root = ScenarioFile::SnapshotToJson(snapshot);
+    std::string error;
+    if (!m_format->Encode(root, bytes, error))
+    {
+        message = "保存に失敗しました: " + error;
+        return false;
+    }
     return true;
 }
 

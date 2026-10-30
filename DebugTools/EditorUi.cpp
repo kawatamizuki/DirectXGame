@@ -22,6 +22,7 @@ namespace
     constexpr const char* kPanelResidentDebug = "住民デバッグ";
     constexpr const char* kPanelSimStats = "行動統計";
     constexpr const char* kPanelSimRepro = "乱数・再現";
+    constexpr const char* kPanelTimeline = "タイムライン";
     constexpr const char* kPanelProfiler = "Profiler";
     constexpr const char* kPanelLog = "Log";
     constexpr const char* kPanelAssets = "Assets";
@@ -52,6 +53,7 @@ namespace
         { kPanelResidentDebug,  true,  nullptr }, // 住民を1人選んで、現在値・判断の計算・処理の履歴・異常を見る
         { kPanelSimStats,       true,  nullptr }, // 外出・立ち寄りの件数と率(分母つき)・施設別・住民別・週ごとの推移
         { kPanelSimRepro,       true,  nullptr }, // 乱数の取り方・再現セッション(記録 → 再生 → 結果の比較)
+        { kPanelTimeline,       true,  nullptr }, // プレイ中のゲーム内時間を、シークバーで巻き戻し・進める
         { kPanelProfiler,       true,  nullptr },
         { kPanelLog,            true,  nullptr },
         { kPanelAssets,         false, "F2"    }, // 開くまでは何も処理しない(素材を探すのも、初めて開いた時)
@@ -325,6 +327,7 @@ void EditorUi::BuildDefaultLayout(unsigned int dockId, float width, float height
     ImGui::DockBuilderDockWindow(kPanelCityStats, bottom);
     ImGui::DockBuilderDockWindow(kPanelSimStats, bottom);
     ImGui::DockBuilderDockWindow(kPanelSimRepro, bottom);
+    ImGui::DockBuilderDockWindow(kPanelTimeline, bottom);
     ImGui::DockBuilderDockWindow(kPanelAudio, bottom);
 
     ImGui::DockBuilderFinish(dockId);

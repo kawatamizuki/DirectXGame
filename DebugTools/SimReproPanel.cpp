@@ -54,7 +54,7 @@ namespace
     }
 }
 
-void SimReproPanel::Draw(DemandSystem& demand, SimReproController& repro)
+void SimReproPanel::Draw(DemandSystem& demand, SimReproController& repro, bool timelineEnabled)
 {
     if (m_open && !*m_open)
     {
@@ -97,9 +97,15 @@ void SimReproPanel::Draw(DemandSystem& demand, SimReproController& repro)
     const SimReproState state = repro.GetState();
     if (state == SimReproState::Idle)
     {
+        ImGui::BeginDisabled(timelineEnabled);
         if (ImGui::Button("記録を始める(スナップショットを保存して、読み込み直す)"))
         {
             repro.RequestBeginRecording();
+        }
+        ImGui::EndDisabled();
+        if (timelineEnabled)
+        {
+            ImGui::TextColored(kColorWarning, "タイムラインがONの間は、記録を始められません(「タイムライン」のパネルで、OFFにしてください)。");
         }
         ImGui::BeginDisabled(!repro.GetRecorded().valid);
         ImGui::RadioButton("乱数の状態を復元して再生", &m_replayRandom, 0);

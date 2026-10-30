@@ -22,6 +22,8 @@
 #include "SimStatsPanel.h"
 #include "SimReproController.h"
 #include "SimReproPanel.h"
+#include "GameRewind.h"
+#include "GameRewindPanel.h"
 #include "CityCameraController.h"
 #include "ClickDragGesture.h"
 #include "ModelCache.h"
@@ -278,4 +280,10 @@ private:
     // 再現セッション(記録 → 再生 → 指紋の比較)の制御と、Editorの「乱数・再現」パネル。制御は、Editorのビルドの時だけ初期化する(Releaseでは何もしない)。
     SimReproController m_repro;
     SimReproPanel m_simReproPanel;
+
+    // タイムライン(プレイ中のゲーム内時間を、シークバーで巻き戻し・進める)。ONの間だけ、時計と住民の更新を、これが決める。
+    GameRewind m_rewind;
+    GameRewindPanel m_rewindPanel;
+    // 建物・道路の数の指紋(住民の見た目は数えない: 住民が生まれても、構造の変更とは見なさない)。
+    uint64_t StructureSignature() const;
 };

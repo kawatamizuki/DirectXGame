@@ -288,6 +288,12 @@
     <ClCompile Include="DebugTools\SimReproController.cpp">
       <Filter>ソース ファイル\DebugTools</Filter>
     </ClCompile>
+    <ClCompile Include="DebugTools\GameRewind.cpp">
+      <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\GameRewindPanel.cpp">
+      <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
     <ClCompile Include="DebugTools\SimReproPanel.cpp">
       <Filter>ソース ファイル\DebugTools</Filter>
     </ClCompile>
@@ -684,6 +690,12 @@
       <Filter>ヘッダー ファイル\Simulation</Filter>
     </ClInclude>
     <ClInclude Include="DebugTools\SimReproController.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\GameRewind.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\GameRewindPanel.h">
       <Filter>ヘッダー ファイル\DebugTools</Filter>
     </ClInclude>
     <ClInclude Include="DebugTools\SimReproPanel.h">
