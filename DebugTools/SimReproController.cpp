@@ -18,7 +18,7 @@ void SimReproController::Initialize(DemandSystem* demand, ScenarioManager* scena
     m_objects = objects;
 
     // 画面からの行動テストの指示を、記録中なら、フレーム番号つきで残す。再生中の指示は、SubmitTestCommandSilently なので、ここには来ない。
-    m_demand->SetOnTestCommandSubmitted([this](const SimTestCommand& command, uint32_t selectedResidentId)
+    m_demand->AddOnTestCommandSubmitted([this](const SimTestCommand& command, uint32_t selectedResidentId)
     {
         if (m_state == SimReproState::Recording)
         {

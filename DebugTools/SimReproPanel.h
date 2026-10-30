@@ -12,7 +12,8 @@ class SimReproPanel
 {
 public:
     void SetOpenFlag(bool* open) { m_open = open; }
-    void Draw(DemandSystem& demand, SimReproController& repro);
+    // timelineEnabled: タイムラインがONの間は、記録を始められない(どちらも、時間の進め方を決めるため)。
+    void Draw(DemandSystem& demand, SimReproController& repro, bool timelineEnabled);
 
 private:
     bool* m_open = nullptr;

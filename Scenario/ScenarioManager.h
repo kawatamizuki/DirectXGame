@@ -57,6 +57,13 @@ public:
     // ファイルの読み込み・構文・内容の検証が全て成功してから街を消すので、失敗しても今の街は壊れない。
     bool Load(const std::string& path, std::string& message);
 
+    // ---- メモリ上のセーブデータ(巻き戻し用のキーフレームなど。ファイルを経由しない) ----
+    // 今の街を、セーブデータの文字列(bytes)にする。
+    bool CaptureBytes(std::string& bytes, std::string& message) const;
+    // セーブデータの文字列から、街を置き換える(Load と同じ検証・処理)。labelは、メッセージに出す名前。
+    // quiet==true なら、ログ・「直近のメッセージ」を更新しない(巻き戻しのシークで、何度も呼ぶ時用)。
+    bool LoadFromBytes(const std::string& bytes, const std::string& label, std::string& message, bool quiet);
+
     // ゲーム開始時の初期マップ(kStartScenarioPath)があれば読み込む。読み込んだらtrue(無ければ何もしない)。
     bool LoadStartScenario();
 
