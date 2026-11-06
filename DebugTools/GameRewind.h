@@ -127,6 +127,8 @@ public:
     size_t GetKeyframeCount() const { return m_keyframes.size(); }
     const std::vector<GameRewindKeyframe>& GetKeyframes() const { return m_keyframes; }
     size_t GetBytesUsed() const { return m_bytesUsed; }
+    // キーフレーム + 指示・倍率の記録が使っているメモリの概算(バイト)。メモリのパネル用。
+    size_t EstimateBytes() const { return m_bytesUsed + m_scaleEntries.capacity() * sizeof(GameRewindScaleEntry) + m_commandEntries.capacity() * sizeof(GameRewindCommandEntry); }
     const std::string& GetMessage() const { return m_message; }
     const GameRewindVerifyResult& GetVerifyResult() const { return m_verify; }
     // 最新へ戻った時に、乱数・時刻が、記録した時と一致しなかったか(true=ずれた)。

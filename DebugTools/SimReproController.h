@@ -101,6 +101,12 @@ public:
     const SimReproRunSummary& GetRecorded() const { return m_recorded; }
     const SimReproRunSummary& GetReplayed() const { return m_replayed; }
     bool HasSnapshot() const { return m_hasSnapshot; }
+    // 記録・再生の結果(途中経過・指示・倍率)が使っているメモリの概算(バイト)。メモリのパネル用。
+    size_t EstimateBytes() const
+    {
+        return (m_recorded.trace.capacity() + m_replayed.trace.capacity()) * sizeof(SimDigestTraceEntry)
+            + m_commands.capacity() * sizeof(SimReproCommand) + m_scaleChanges.capacity() * sizeof(SimReproScaleChange);
+    }
     const std::string& GetMessage() const { return m_message; }
     SimReplayRandom GetLastReplayRandom() const { return m_lastReplayRandom; }
     // 記録した区間(スナップショット + 指示・倍率 + 結果)を、ファイルに保存・読み込む(Saves/repro/<名前>.json)。止まっている間(Idle)だけ。

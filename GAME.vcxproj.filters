@@ -291,11 +291,23 @@
     <ClCompile Include="DebugTools\GameRewind.cpp">
       <Filter>ソース ファイル\DebugTools</Filter>
     </ClCompile>
+    <ClCompile Include="DebugTools\SimEndurance.cpp">
+      <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\MemoryPanel.cpp">
+      <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\SimEndurancePanel.cpp">
+      <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
     <ClCompile Include="DebugTools\GameRewindPanel.cpp">
       <Filter>ソース ファイル\DebugTools</Filter>
     </ClCompile>
     <ClCompile Include="DebugTools\SimReproPanel.cpp">
       <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
+    <ClCompile Include="Simulation\SimInvariantMonitor.cpp">
+      <Filter>ソース ファイル\Simulation</Filter>
     </ClCompile>
     <ClCompile Include="Simulation\SimStats.cpp">
       <Filter>ソース ファイル\Simulation</Filter>
@@ -695,11 +707,26 @@
     <ClInclude Include="DebugTools\GameRewind.h">
       <Filter>ヘッダー ファイル\DebugTools</Filter>
     </ClInclude>
+    <ClInclude Include="DebugTools\SimEndurance.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\MemoryPanel.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\MemoryReport.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\SimEndurancePanel.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
     <ClInclude Include="DebugTools\GameRewindPanel.h">
       <Filter>ヘッダー ファイル\DebugTools</Filter>
     </ClInclude>
     <ClInclude Include="DebugTools\SimReproPanel.h">
       <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
+    <ClInclude Include="Simulation\SimInvariantMonitor.h">
+      <Filter>ヘッダー ファイル\Simulation</Filter>
     </ClInclude>
     <ClInclude Include="Simulation\SimStats.h">
       <Filter>ヘッダー ファイル\Simulation</Filter>

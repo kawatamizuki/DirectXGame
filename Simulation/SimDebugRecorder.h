@@ -99,7 +99,16 @@ enum class SimAnomaly : uint8_t
     WaypointIndexOutOfRange,// 移動中なのに、経路の添字が、経路の外
     MissingTargetFacility,  // 向かっている・利用中なのに、行き先の施設が無い(0、または、オブジェクトが無い)
     MissingHome,            // 家のid(0でない)のオブジェクトが無い、または、家にいるのに家のidが0
-    HomelessWithHome        // 住居なしなのに、家のidが0でない
+    HomelessWithHome,       // 住居なしなのに、家のidが0でない
+    // ---- 段階6: 外出の「流れ」の不変条件(SimInvariantMonitor が、イベントの並びから見つける) ----
+    StopCountExceeded,      // 立ち寄りの回数が、設定の上限を超えた(a=立ち寄りの何回目か)
+    ArrivedWithoutMove,     // 歩き始めていないのに、施設に着いた
+    SettleWithoutArrival,   // 到着していないのに(または、1回の到着で2回目の)、売上を確定した(a=売上)
+    DuplicateFacilityInOuting, // 同じ外出で、同じ施設の売上を、2回確定した(a=施設のid)
+    MoveWhileVisiting,      // 利用の途中(到着後、売上の確定前)に、次の施設へ歩き出した
+    ReturnWhileVisiting,    // 利用の途中に、帰宅した
+    NegativeRevenue,        // 売上が、負・NaN/Inf(a=売上)
+    SettledOnMissingFacility // 売上を確定した施設が、もうオブジェクトとして無い(a=施設のid)
 };
 
 // 異常のビット。

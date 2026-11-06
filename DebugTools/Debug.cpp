@@ -156,3 +156,13 @@ namespace Debug
         ImGui::End();
     }
 }
+
+size_t Debug::EstimateLogBytes()
+{
+    size_t bytes = s_logEntries.size() * sizeof(std::string);
+    for (const std::string& line : s_logEntries)
+    {
+        bytes += line.capacity();
+    }
+    return bytes;
+}

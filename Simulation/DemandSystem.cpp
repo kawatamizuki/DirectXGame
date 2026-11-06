@@ -657,11 +657,74 @@ void DemandSystem::Update(float deltaTime, GameContext& context, std::vector<Roa
     m_tickTimer += deltaTime;
     if (m_tickTimer < kTickInterval)
     {
+        DrainFlowViolations(context);
         return;
     }
     m_tickTimer = 0.0f;
 
     RunDemandTick(context, segments);
+    DrainFlowViolations(context);
+}
+
+DemandDebugMemory DemandSystem::GetDebugMemory() const
+{
+    DemandDebugMemory memory;
+    const SimRecorderStats recorder = m_debugRecorder.GetStats();
+    memory.recorder = recorder.estimatedBytes;
+    memory.recorderEvents = recorder.eventCount;
+    memory.recorderEventCapacity = recorder.eventCapacity;
+    memory.recorderDetails = recorder.detailCount;
+    memory.recorderDetailCapacity = recorder.detailCapacity;
+    memory.stats = m_stats.EstimateBytes();
+    memory.digest = m_digest.EstimateBytes();
+    memory.monitor = m_flowMonitor.EstimateBytes();
+    memory.testPlans = m_testPlans.capacity() * sizeof(SimTestPlan);
+    return memory;
+}
+
+void DemandSystem::DrainFlowViolations(const GameContext& context)
+{
+    if (!m_debugRecorder.IsEnabled() || !m_flowMonitor.HasPending())
+    {
+        return;
+    }
+    m_flowMonitor.SetMaxStopovers(m_settings.maxStopovers);
+    std::vector<SimFlowViolation> violations;
+    std::vector<std::pair<uint32_t, uint32_t>> settled;
+    m_flowMonitor.Drain(violations, settled);
+
+    auto findAgent = [&](uint32_t residentId) -> const ResidentAgent*
+    {
+        for (const ResidentAgent& agent : m_agents)
+        {
+            if (agent.objectId == residentId)
+            {
+                return &agent;
+            }
+        }
+        return nullptr;
+    };
+    for (const SimFlowViolation& violation : violations)
+    {
+        if (const ResidentAgent* agent = findAgent(violation.residentId))
+        {
+            RecordEvent(*agent, context, SimEventKind::Anomaly, SimEventResult::Violation, SimReason::None, violation.facilityId, violation.value, 0.0f, 0.0f, -1, 0, violation.kind);
+        }
+    }
+    // 売上を確定した施設が、まだ、オブジェクトとして有るか(解体と同じ更新の中で、売上が確定することは無いはず)。
+    if (context.objects)
+    {
+        for (const auto& entry : settled)
+        {
+            if (entry.second != 0 && !GameObjectFactory::FindById(*context.objects, entry.second))
+            {
+                if (const ResidentAgent* agent = findAgent(entry.first))
+                {
+                    RecordEvent(*agent, context, SimEventKind::Anomaly, SimEventResult::Violation, SimReason::None, entry.second, static_cast<float>(entry.second), 0.0f, 0.0f, -1, 0, SimAnomaly::SettledOnMissingFacility);
+                }
+            }
+        }
+    }
 }
 
 void DemandSystem::ProcessClockEvents(GameContext& context)

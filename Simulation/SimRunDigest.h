@@ -50,6 +50,8 @@ public:
     // 途中経過(イベント・抽選ごと。上限 kMaxTrace 件まで。上限を超えたら、それ以降は残さない)。
     const std::vector<SimDigestTraceEntry>& Trace() const { return m_trace; }
     static constexpr size_t kMaxTrace = 400000;
+    // 途中経過が使っているメモリの概算(バイト。確保済みの大きさ)。メモリのパネル用。
+    size_t EstimateBytes() const { return m_trace.capacity() * sizeof(SimDigestTraceEntry); }
 
 private:
     void MixBytes(const void* data, size_t size);

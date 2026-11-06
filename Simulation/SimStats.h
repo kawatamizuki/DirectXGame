@@ -158,6 +158,8 @@ public:
     int StartWeek() const { return m_startWeek; }       // 集計を始めた週(まだ何も数えていなければ -1)
     int CurrentWeek() const { return m_currentWeek; }   // 今の週(まだ無ければ -1)
     uint64_t TotalCounted() const { return m_counted; } // 数えたイベント・判断・判定の数(動作の確認用)
+    // 統計が使っているメモリの概算(バイト。表の要素数 × 1件の大きさ + 表の管理に要る分の目安)。メモリのパネル用。
+    size_t EstimateBytes() const;
 
 private:
     // 週が進んでいたら、今週を先週へ送り、推移に残す。

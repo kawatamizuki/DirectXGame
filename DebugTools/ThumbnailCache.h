@@ -70,6 +70,7 @@ public:
 
     // 統計(パネルの表示用)。
     size_t GetPendingCount() const { return m_queue.size(); }
+    size_t GetResidentCount() const { return m_resident.size(); }       // メモリ(GPU)に持っているサムネイルの数(1枚は kThumbnailSize の正方形のRGBA)
     size_t GetGeneratedCount() const { return m_generatedCount; }       // 今回の起動で、モデルを読んで作った数
     size_t GetLoadedFromDiskCount() const { return m_loadedFromDiskCount; } // 今回の起動で、キャッシュのPNGを読んだ数
     size_t GetFailedCount() const { return m_failed.size(); }

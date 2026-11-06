@@ -131,6 +131,8 @@ bool Game::Initialize(HWND hwnd)
     m_simStatsPanel.SetOpenFlag(m_editorUi.PanelFlag("行動統計"));
     m_simReproPanel.SetOpenFlag(m_editorUi.PanelFlag("乱数・再現"));
     m_rewindPanel.SetOpenFlag(m_editorUi.PanelFlag("タイムライン"));
+    m_endurancePanel.SetOpenFlag(m_editorUi.PanelFlag("耐久試験"));
+    m_memoryPanel.SetOpenFlag(m_editorUi.PanelFlag("メモリ"));
 
     // 住民の判断・状態遷移の記録を有効にする(Editorのビルドだけ。Releaseでは無効のまま)。記録は、乱数・シミュレーションの結果を変えない。
     m_demandSystem.GetDebugRecorder().SetEnabled(true);
@@ -337,6 +339,7 @@ bool Game::Initialize(HWND hwnd)
         CancelMoveIn();        // 入居者を選ぶ待ちも、前の街の物なので、やめる(住宅・住民が入れ替わる)
         m_repro.NotifyWorldReplaced(); // 記録・再生の途中で、街が読み込み直されたら、中止する
         m_rewind.NotifyWorldReplaced(); // タイムラインは、(自分の巻き戻し以外で)街が入れ替わったら、記録を最初からやり直す
+        m_endurance.NotifyWorldReplaced(); // 耐久試験は、途中で街が入れ替わったら、中止する
     });
     m_repro.Initialize(&m_demandSystem, &m_scenarioManager, &m_gameClock, &m_objects);
     m_rewind.Initialize(&m_demandSystem, &m_scenarioManager, &m_gameClock, &m_objects,
@@ -351,6 +354,13 @@ bool Game::Initialize(HWND hwnd)
             }
         },
         [this]() { return StructureSignature(); });
+    m_endurance.Initialize(&m_demandSystem, &m_scenarioManager, &m_gameClock,
+        [this](float stepSeconds, bool /*headless*/)
+        {
+            // 1ステップ: 時計 → 住民(ふだんのフレームの更新と、同じ呼び方・順番)。
+            m_gameClock.Update(stepSeconds);
+            m_demandSystem.Update(m_gameClock.GetScaledDeltaSeconds(), m_context, m_roadSystem.GetSegments());
+        });
 
     // 「Editor > エディタ機能のON/OFF」に出すスイッチ。全て登録し終えてから、保存してある設定を読む。
     m_buildController.RegisterEditorToggles(m_editorUi.Settings());
@@ -396,8 +406,6 @@ void Game::Update()
 
 
 
-
-
     // 毎フレームのクリック消費状況をリセットしてから呼び出しを行う。
     // Editorのギズモ/選択と、プレイヤーの配置操作が同じクリックを二重処理するのを防ぐ
     m_context.inputConsumed = false;
@@ -420,7 +428,7 @@ void Game::Update()
         clockDelta = 0.0f; // Stop(Editing)の間は、住民だけでなく、ゲーム内の時間も止める(時刻は、Timeパネルのスライダーで動かせる)
     }
     // タイムラインがONの間は、ゲームシーンの時計も、住民の更新と一緒に、タイムラインが決める(下)。
-    if (!(m_rewind.IsDriving() && IsInGameScene()))
+    if (!((m_rewind.IsDriving() || m_endurance.IsDriving()) && IsInGameScene()))
     {
         m_gameClock.Update(clockDelta);
     }
@@ -526,7 +534,11 @@ void Game::Update()
             m_noticeSecondsLeft -= m_timeManager.GetDeltaTime();
         }
 
-        if (m_rewind.IsDriving())
+        if (m_endurance.IsDriving())
+        {
+            // 耐久試験の実行中・停止中: 時計と住民は、耐久試験が決める(下で、まとめて呼ぶ)。
+        }
+        else if (m_rewind.IsDriving())
         {
             // タイムラインON: 固定刻みで、時計と住民を、何ステップか進める(巻き戻し中は、進め直し)。
             m_rewind.Update(m_timeManager.GetDeltaTime(), true);
@@ -556,10 +568,105 @@ void Game::Update()
         m_roadSystem.ClearHoverMarker();
     }
 
+    // 耐久試験(長い期間を、画面を描かずに進める)。Playing・Editingに関わらず、実行中は、ここで進める。
+    if (m_endurance.IsDriving() && IsInGameScene())
+    {
+        m_endurance.Update(m_timeManager.GetDeltaTime());
+    }
+    else if (IsInGameScene())
+    {
+        m_endurance.Update(m_timeManager.GetDeltaTime()); // 始める要求・戻す要求の処理(動いていなければ、何もしない)
+    }
+
     // 音: 聞く位置はカメラ。時間は、ゲーム内の倍率に関係なく、実時間で進める(メニューで時間を止めても、曲のフェードは進む)。
     m_audio.SetListenerPosition(m_camera.GetPosition());
     m_audio.Update(m_timeManager.GetDeltaTime());
     SaveAudioSettingsIfChanged();
+}
+
+MemoryReport Game::BuildMemoryReport() const
+{
+    // 各機能が使っているメモリの概算を集める(要素の数 × 1件の大きさ)。約1秒ごとにだけ呼ばれる。ゲーム本体 / デバッグ・検証の機能の、2つに分ける。
+    MemoryReport report;
+    auto add = [&](MemoryGroup group, const char* name, size_t bytes, const std::string& detail, size_t limitBytes = 0, const std::string& limitNote = std::string(), bool gpu = false)
+    {
+        MemoryItem item;
+        item.group = group;
+        item.name = name;
+        item.bytes = bytes;
+        item.detail = detail;
+        item.limitBytes = limitBytes;
+        item.limitNote = limitNote;
+        item.gpu = gpu;
+        report.Add(std::move(item));
+    };
+    auto count = [](size_t value) { return std::to_string(value); };
+
+    // ---- ゲーム本体 ----
+    add(MemoryGroup::Game, "オブジェクト一覧(GameObject)", m_objects.size() * sizeof(GameObject), count(m_objects.size()) + " 個(建物・住民の見た目・飾りなど。モデル本体は含まない)");
+
+    const std::vector<RoadSegment>& segments = m_roadSystem.GetSegments();
+    const std::vector<RoadNode>& nodes = m_roadSystem.GetNodes();
+    size_t nodeConnectionBytes = 0;
+    for (const RoadNode& node : nodes)
+    {
+        nodeConnectionBytes += node.connectedSegmentIndices.size() * sizeof(size_t);
+    }
+    add(MemoryGroup::Game, "道路", segments.size() * sizeof(RoadSegment) + nodes.size() * sizeof(RoadNode) + nodeConnectionBytes + m_roadSystem.GetMeshVertexCount() * sizeof(Vertex),
+        "区間 " + count(segments.size()) + " / 交差点 " + count(nodes.size()) + " / メッシュの頂点 " + count(m_roadSystem.GetMeshVertexCount()));
+
+    add(MemoryGroup::Game, "占有グリッド", m_occupancyGrid.GetOccupiedCellCount() * sizeof(GridCoord), "占有セル " + count(m_occupancyGrid.GetOccupiedCellCount()));
+
+    const DemandMemoryStats demand = m_demandSystem.GetMemoryStats();
+    add(MemoryGroup::Game, "住民・経路探索(人流)", static_cast<size_t>(demand.agentCount) * sizeof(ResidentAgent) + demand.totalWaypoints * sizeof(DirectX::XMFLOAT3)
+        + static_cast<size_t>(demand.roadGraphNodeCount) * sizeof(int) + static_cast<size_t>(demand.roadGraphEdgeCount) * sizeof(int) * 2,
+        "住民 " + count(static_cast<size_t>(demand.agentCount)) + " 人 / 経路の点 " + count(demand.totalWaypoints) + " / 経路探索グラフ ノード " + count(static_cast<size_t>(demand.roadGraphNodeCount)) + "・エッジ " + count(static_cast<size_t>(demand.roadGraphEdgeCount)));
+
+    size_t vertices = m_modelCache.GetTotalVertexCount();
+    for (const Model* model : { &m_groundModel, &m_houseModel, &m_officeModel, &m_shopModel, &m_supermarketModel, &m_cinemaModel, &m_cafeModel, &m_agentModel })
+    {
+        vertices += model->GetVertexCount();
+    }
+    add(MemoryGroup::Game, "モデルの頂点バッファ", vertices * sizeof(Vertex), "頂点 " + count(vertices) + "(建物・住民・地面・飾り。テクスチャは含まない)", 0, std::string(), true);
+
+    // ---- デバッグ・検証の機能 ----
+    const DemandDebugMemory debug = m_demandSystem.GetDebugMemory();
+    {
+        // 記録の上限(件数)まで溜まった時の使用量の目安 = 今の使用量 / 満杯の割合(イベント・判断の内訳の、大きい方の割合)。
+        const double eventFill = debug.recorderEventCapacity > 0 ? static_cast<double>(debug.recorderEvents) / static_cast<double>(debug.recorderEventCapacity) : 0.0;
+        const double detailFill = debug.recorderDetailCapacity > 0 ? static_cast<double>(debug.recorderDetails) / static_cast<double>(debug.recorderDetailCapacity) : 0.0;
+        const double fill = (std::max)(eventFill, detailFill);
+        const size_t limit = fill > 0.0 ? static_cast<size_t>(static_cast<double>(debug.recorder) / fill) : 0;
+        add(MemoryGroup::Debug, "住民デバッグの記録", debug.recorder,
+            "イベント " + count(debug.recorderEvents) + " / " + count(debug.recorderEventCapacity) + " 件、判断の内訳 " + count(debug.recorderDetails) + " / " + count(debug.recorderDetailCapacity) + " 件",
+            limit, "件数の上限で、古い物から捨てる(SimDebugRecorder の容量。kDefaultEventCapacity)");
+    }
+    add(MemoryGroup::Debug, "行動統計", debug.stats, "施設別・住民別・週ごとの表(通常 / テスト)", 0, "「行動統計」の「集計を始め直す」で0に戻る。街が大きいほど、表が増える");
+    add(MemoryGroup::Debug, "実行結果の指紋の途中経過", debug.digest, "イベント・抽選ごとに1件(最初にずれた位置を探すため)",
+        SimRunDigest::kMaxTrace * sizeof(SimDigestTraceEntry), "400,000件が上限(超えたら、残さない)。世界が変わる(ロード)と、空になる");
+    add(MemoryGroup::Debug, "外出の流れの監視", debug.monitor, "住民ごとの、外出1回ぶんの履歴");
+    add(MemoryGroup::Debug, "行動テストの計画・結果", debug.testPlans, "「行動テスト」の結果の一覧(「終わった結果を消す」で減る)");
+
+    const GameRewind& rewind = m_rewind;
+    add(MemoryGroup::Debug, "タイムライン(キーフレーム・指示の記録)", rewind.EstimateBytes(),
+        rewind.IsEnabled() ? "キーフレーム " + count(rewind.GetKeyframeCount()) + " 個(OFFの間は、持ちません)" : "OFF(持っていません)",
+        static_cast<size_t>(rewind.Settings().memoryCapMB) * 1024u * 1024u, "「タイムライン」の設定の「メモリの上限」。超えたら、古いキーフレームを捨てる(遡れる長さが短くなる)");
+    add(MemoryGroup::Debug, "再現セッション(記録・再生の結果)", m_repro.EstimateBytes(), "途中経過・指示・倍率(「乱数・再現」で、記録を始め直すと、置き換わる)");
+    add(MemoryGroup::Debug, "耐久試験(基点・計測の表)", m_endurance.EstimateBytes(), "基点の保存データ・計測の表(試験が終わっても、次の試験まで持つ)");
+
+    const AssetCatalog& catalog = m_assetBrowser.GetCatalog();
+    size_t catalogBytes = catalog.GetEntries().capacity() * sizeof(AssetEntry);
+    for (const AssetEntry& entry : catalog.GetEntries())
+    {
+        catalogBytes += entry.path.capacity() + entry.name.capacity() + entry.pack.capacity() + entry.extension.capacity() + entry.directory.capacity();
+    }
+    add(MemoryGroup::Debug, "素材一覧(Assets)", catalogBytes, "素材 " + count(catalog.GetEntries().size()) + " 件(パネルを開いた時に作る)");
+    const size_t thumbnails = m_assetBrowser.GetThumbnailCache().GetResidentCount();
+    add(MemoryGroup::Debug, "サムネイル(Assets)", thumbnails * ThumbnailCache::kThumbnailSize * ThumbnailCache::kThumbnailSize * 4, count(thumbnails) + " 枚(1枚 " + count(ThumbnailCache::kThumbnailSize) + "x" + count(ThumbnailCache::kThumbnailSize) + " のRGBA。GPU側)",
+        ThumbnailCache::kMaxResident * ThumbnailCache::kThumbnailSize * ThumbnailCache::kThumbnailSize * 4, "サムネイルの最大数(ThumbnailCache::kMaxResident)。超えたら、古い物を捨てる", true);
+    add(MemoryGroup::Debug, "ログ(画面表示用)", Debug::EstimateLogBytes(), "直近 300 行まで(それより古い物は、捨てる)");
+
+    return report;
 }
 
 uint64_t Game::StructureSignature() const
@@ -2054,6 +2161,15 @@ void Game::Draw()
     m_simStatsPanel.Draw(m_demandSystem, m_objects);
     m_simReproPanel.Draw(m_demandSystem, m_repro, m_rewind.IsEnabled());
     m_rewindPanel.Draw(m_rewind, m_repro);
+    {
+        // 耐久試験を始められるか: ゲームシーンのPlayingで、タイムライン・再現セッションが動いていない時。
+        const char* whyNot = "";
+        bool canStart = true;
+        if (!(IsInGameScene() && m_context.mode == GameMode::Playing)) { canStart = false; whyNot = "ゲームシーンのPlayingの時だけ、始められます。"; }
+        else if (m_rewind.IsEnabled()) { canStart = false; whyNot = "「タイムライン」がONの間は、始められません(OFFにしてください)。"; }
+        else if (m_repro.GetState() != SimReproState::Idle) { canStart = false; whyNot = "「乱数・再現」の記録・再生が動いている間は、始められません。"; }
+        m_endurancePanel.Draw(m_endurance, canStart, whyNot);
+    }
     m_gameClock.DrawDebugUI(m_editorUi.PanelFlag("Time"));
     m_gameEconomy.DrawDebugUI(m_editorUi.PanelFlag("Economy"));
     m_assetBrowser.DrawDebugUI();
@@ -2062,6 +2178,7 @@ void Game::Draw()
     m_scenarioManager.DrawDebugUI(m_editorUi.PanelFlag("Scenario"));
     Profiler::DrawDebugUI(m_objects, m_roadSystem, m_occupancyGrid, m_demandSystem, m_editorUi.PanelFlag("Profiler"));
     Debug::DrawDebugUI(m_editorUi.PanelFlag("Log"));
+    m_memoryPanel.Draw([this]() { return BuildMemoryReport(); });
 
     // ホバーのヒントとショートカット一覧。全てのパネルを描いた後。
     m_editorUi.EndFrame(editorFrame);

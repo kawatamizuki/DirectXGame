@@ -13,6 +13,7 @@
 #include "RoutePlanner.h"
 #include "SimDebugRecorder.h"
 #include <functional>
+#include "SimInvariantMonitor.h"
 #include "SimRunDigest.h"
 #include "SimStats.h"
 #include "SimTest.h"
@@ -64,6 +65,20 @@ struct DemandMemoryStats
     size_t totalWaypoints = 0;     // 全住民の移動経路(waypoints)の合計点数
     int roadGraphNodeCount = 0;    // 直近の経路探索グラフのノード数
     int roadGraphEdgeCount = 0;    // 直近の経路探索グラフのエッジ数
+};
+
+// デバッグ・検証の仕組み(DemandSystem が持つ物)が使っているメモリの概算。メモリのパネル用。
+struct DemandDebugMemory
+{
+    size_t recorder = 0;        // 住民デバッグの記録(イベント・判断の内訳・住民ごとの集計)
+    size_t stats = 0;           // 行動統計
+    size_t digest = 0;          // 実行結果の指紋の途中経過
+    size_t monitor = 0;         // 外出の流れの監視
+    size_t testPlans = 0;       // 行動テストの計画・結果
+    size_t recorderEvents = 0;      // 参考: 記録しているイベントの数・上限
+    size_t recorderEventCapacity = 0;
+    size_t recorderDetails = 0;
+    size_t recorderDetailCapacity = 0;
 };
 
 // 住民1人の、表示用のコピー(ゲーム内の「住民の情報」パネル用。DemandSystemの内部を、画面側に見せないための橋渡し)。
@@ -213,7 +228,7 @@ class DemandSystem : public ISaveable
 {
 public:
     // 記録部に、統計を観察者として付ける(メンバーの住所を渡すので、コピー・移動は禁止)。
-    DemandSystem() { m_debugRecorder.AddObserver(&m_stats); m_debugRecorder.AddObserver(&m_digest); }
+    DemandSystem() { m_debugRecorder.AddObserver(&m_stats); m_debugRecorder.AddObserver(&m_digest); m_debugRecorder.AddObserver(&m_flowMonitor); }
     DemandSystem(const DemandSystem&) = delete;
     DemandSystem& operator=(const DemandSystem&) = delete;
 
@@ -309,6 +324,8 @@ public:
 
     // Profilerのメモリ内訳表示用の集計値を返す。
     DemandMemoryStats GetMemoryStats() const;
+    // デバッグ・検証の仕組みが使っているメモリの概算(メモリのパネル用)。
+    DemandDebugMemory GetDebugMemory() const;
 
     // ---- デバッグ(Editorの「住民デバッグ」パネル用。ゲームの動作には関わらない) ----
 
@@ -389,6 +406,8 @@ private:
 
     // 全住民について、CheckAgentInvariants を行う(ティックごと)。
     void CheckAllInvariants(const GameContext& context);
+    // 外出の流れの監視(SimInvariantMonitor)が溜めた違反を、異常のイベントとして記録する。更新の最後に呼ぶ(記録の最中に、記録を足さないため)。
+    void DrainFlowViolations(const GameContext& context);
 
     // 経路の長さの合計(ワールド単位)。
     static float RouteLength(const std::vector<DirectX::XMFLOAT3>& waypoints);
@@ -509,6 +528,7 @@ private:
     // 判断・状態遷移・異常の記録(Editorの「住民デバッグ」用。既定は無効。保存しない)。
     SimDebugRecorder m_debugRecorder;
     SimStats m_stats;                       // 統計。m_debugRecorder の観察者として、記録と同時に数える
+    SimInvariantMonitor m_flowMonitor;      // 外出の流れ(順序)の不変条件の監視。違反は、更新の最後に、異常として記録する
     SimRunDigest m_digest;                  // 実行結果の指紋。同じく観察者
     SimRandomMode m_randomMode = SimRandomMode::Reseed;
     uint32_t m_activeSeed = 0;              // 今の世界の乱数の種

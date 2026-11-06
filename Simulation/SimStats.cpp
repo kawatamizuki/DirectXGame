@@ -328,3 +328,16 @@ void SimStats::OnDetail(const SimDecisionDetail& detail)
         }
     }
 }
+
+size_t SimStats::EstimateBytes() const
+{
+    constexpr size_t kMapOverhead = 48;     // 表(unordered_map)の、1要素あたりの管理に要る分の目安
+    size_t bytes = sizeof(*this);
+    for (const SimStatsScopeData& scope : m_scopes)
+    {
+        bytes += scope.weekly.capacity() * sizeof(SimWeekRow);
+        bytes += scope.facilities.size() * (sizeof(uint32_t) + sizeof(SimFacilityStat) + kMapOverhead);
+        bytes += scope.residents.size() * (sizeof(uint32_t) + sizeof(SimResidentStat) + kMapOverhead);
+    }
+    return bytes;
+}

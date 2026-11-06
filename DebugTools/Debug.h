@@ -32,4 +32,7 @@ namespace Debug
     // Game::Draw()から他のデバッグパネル(Profiler等)と同じように毎フレーム呼ぶ想定。
     // openがnullptrでなければ、タイトルバーの×で閉じられ、*openがfalseの間は描かない。
     void DrawDebugUI(bool* open = nullptr);
+
+    // 画面表示用のログ(直近の履歴)が使っているメモリの概算(バイト。メモリのパネル用)。
+    size_t EstimateLogBytes();
 }

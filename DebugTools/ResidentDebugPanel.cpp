@@ -94,6 +94,14 @@ namespace
         case SimAnomaly::MissingTargetFacility:   return "行き先の施設が無い";
         case SimAnomaly::MissingHome:             return "家の参照が壊れている";
         case SimAnomaly::HomelessWithHome:        return "住居なしなのに家のidがある";
+        case SimAnomaly::StopCountExceeded:       return "立ち寄りの回数が、設定の上限を超えた";
+        case SimAnomaly::ArrivedWithoutMove:      return "歩き始めていないのに、施設に着いた";
+        case SimAnomaly::SettleWithoutArrival:    return "到着していないのに(または、2回目の)、売上を確定した";
+        case SimAnomaly::DuplicateFacilityInOuting: return "同じ外出で、同じ施設の売上を、2回確定した";
+        case SimAnomaly::MoveWhileVisiting:       return "利用の途中で、次の施設へ歩き出した";
+        case SimAnomaly::ReturnWhileVisiting:     return "利用の途中で、帰宅した";
+        case SimAnomaly::NegativeRevenue:         return "売上が、負・NaN/Inf";
+        case SimAnomaly::SettledOnMissingFacility: return "売上を確定した施設が、もう無い";
         default:                                  return "(不明な異常)";
         }
     }

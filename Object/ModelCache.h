@@ -34,6 +34,16 @@ public:
     void ForgetFailures() { m_failed.clear(); }
 
     size_t GetLoadedCount() const { return m_models.size(); }
+    // 読み込み済みのモデルの頂点の合計(頂点バッファ。GPU側のメモリの目安に使う)。
+    size_t GetTotalVertexCount() const
+    {
+        size_t total = 0;
+        for (const auto& entry : m_models)
+        {
+            total += entry.second ? entry.second->GetVertexCount() : 0;
+        }
+        return total;
+    }
 
 private:
     Renderer* m_renderer = nullptr;
