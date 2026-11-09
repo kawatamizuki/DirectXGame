@@ -145,6 +145,17 @@ private:
     // 「エリア」パネルで押された操作(周知・削除・閉じる)を、区画へ反映する。
     void ApplyAreaPanelResult(const HudResult& result);
 
+    // 区画の上にカーソルがある間だけ、「エリア」パネルを出す(建物で埋まった区画でも、区画の上のカーソル=区画に所属する建物の上を含む)。
+    // 区画をクリックすると、カーソルを離しても出たままになる(周知・削除のボタンを押すため)。関係ない所をクリックするか、
+    // カーソルが区画から離れて少しすると、消える(パネルの上にいる間・確認の最中は、消えない)。毎フレーム、UIの更新より先に呼ぶ。
+    void UpdateAreaHover();
+
+    // カーソルの下の区画のID(無ければ0)。区画に所属する建物に当たっていれば、その区画。そうでなければ、地面の位置の区画。
+    uint32_t FindAreaAtScreenPoint(POINT screen) const;
+
+    // 今、「エリア」パネルに出す区画のID(0=出さない)。クリックで固定した区画があれば、それ。無ければ、カーソルの下の区画。
+    uint32_t DisplayedAreaId() const;
+
     // 音量(オプション)が変わっていたら、Settings/audio.json に保存する。スライダーをつかんでいる間・数字の入力中は待つ。
     void SaveAudioSettingsIfChanged();
 
@@ -281,7 +292,10 @@ private:
     DemolitionController m_demolition;   // 解体ツール(建物をなぞって選び、離すと解体する)
     CommercialAreaManager m_areas;       // 商業エリアの区画(仮置き・周知。保存される。住民の行動には、まだ影響しない)
     AreaToolController m_areaTool;       // 商業エリアのツール(区画の仮置き・移動の入力と、枠の描画)
-    uint32_t m_lastAreaSelection = 0;    // 直前のフレームに選んでいた区画(選びが変わったら、パネルの確認の手順を戻す)
+    uint32_t m_lastAreaSelection = 0;    // 直前のフレームに出していた区画(出す区画が変わったら、パネルの確認の手順を戻す)
+    uint32_t m_areaHoverId = 0;          // カーソルの下にある(または、離れて少しの間の)区画
+    float m_areaHoverGrace = 0.0f;       // カーソルが区画から離れた後、パネルを残す残りの秒数(パネルへ移る間に消えないように)
+    bool m_mouseOverUiPrev = false;      // 直前のフレームで、カーソルがゲーム内UIの上にあったか
     std::string m_noticeText;            // 画面の左下に、少しの間だけ出す知らせ(解体の結果・お金が足りない、など)
     float m_noticeSecondsLeft = 0.0f;
     StraightRoadPlacementStrategy m_roadPlacementStrategy;

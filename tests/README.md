@@ -21,7 +21,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tests\run_tests.ps1 -Filter 
 | `sim_rules_test.cpp` | 住民の行動規則(ResidentLogic)・時計・施設の台帳・Json |
 | `sim_p1_test.cpp` | 利用履歴・立ち寄り・食事系の規則(P1の仕様。体力の部分は P2-0 の規則に更新) |
 | `sim_p2_0_test.cpp` | P2-0: 需要の段階・外出の理由・理由ごとの距離・体力(移動で消費しない)・立ち寄りの連続的な確率 |
-| `sim_area_test.cpp` | P2-A: 商業エリアの区画(所属の50%面積ルール・二重所属なし・進捗・周知・履歴・保存) |
+| `sim_area_test.cpp` | P2-A/P2-B: 商業エリアの区画(所属の50%面積ルール・二重所属なし・進捗・周知・履歴・保存)・施設構成の評価(供給量と割合・充実度) |
 | `sim_debug_recorder_test.cpp` | 住民デバッグの記録(SimDebugRecorder) |
 | `sim_timeline_test.cpp` | 一時停止の条件(SimBreakpoints)・記録の時間軸(SimTimeline) |
 | `sim_test_command_test.cpp` | 行動テストの対象選び・テスト番号の付与 |

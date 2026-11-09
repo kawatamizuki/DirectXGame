@@ -62,7 +62,8 @@ AreaPanel::Layout AreaPanel::ComputeLayout(const AreaPanelInput& input, const Ar
     const float margin = kMargin * s;
     const float pad = kPadding * s;
     const float width = (std::min)(kPanelWidth * s, input.screenW - margin * 2.0f);
-    const float availableHeight = (std::max)(160.0f * s, input.screenH - input.topInset - margin * 2.0f);
+    // 右下の「メニュー」ボタン・左下の操作のヒントと重ならないよう、下を空ける(約110)。行が多い時は、行を縮める。
+    const float availableHeight = (std::max)(160.0f * s, input.screenH - input.topInset - margin * 2.0f - 110.0f * s);
 
     // 下の部分: 通常 = ボタンの1段。確認中 = 確認の文 + ボタンの1段。
     const bool confirming = (m_confirm != Confirm::None);

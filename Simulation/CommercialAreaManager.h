@@ -41,6 +41,9 @@ public:
 
     const std::vector<AreaMembers>& Members() const { return m_members; }
     const AreaMembers* MembersOf(uint32_t id) const;
+
+    // 区画の施設構成の評価(P2-B。直近の Refresh の結果。保存しない。住民の行動には、まだ、影響しない)。区画が無ければ、店なしの評価。
+    AreaComposition CompositionOf(uint32_t id) const;
     AreaProgress ProgressOf(uint32_t id) const;
 
     // (x, z) を含む区画のID(無ければ0)。クリックで選ぶのに使う。
@@ -67,4 +70,5 @@ private:
     std::vector<WithdrawnAreaRecord> m_withdrawn;
     uint32_t m_nextId = 1;
     std::vector<AreaMembers> m_members;     // 直近の Refresh の結果(保存しない)
+    std::vector<AreaComposition> m_compositions;    // m_members と同じ並びの、施設構成の評価(保存しない)
 };

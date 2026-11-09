@@ -94,8 +94,10 @@ void AreaToolController::Update()
     }
     if (m_context->placementTool != PlacementTool::Area)
     {
-        // ツールをやめた(メニューで別の物を選んだなど): 動かしかけ・選びを残さない。
-        if (m_dragging || m_selectedId != 0) { Cancel(); m_selectedId = 0; }
+        // 別のツール(建物・道路・解体)を選んだ: 動かしかけ・選びを残さない。ツールを使っていない時(None)は、
+        // 地面の区画をクリックして選べる(Gameが選ぶ)ので、選びは残す。動かしかけだけは、やめる。
+        if (m_dragging) { Cancel(); }
+        if (m_context->placementTool != PlacementTool::None && m_selectedId != 0) { m_selectedId = 0; }
         return;
     }
 

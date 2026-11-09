@@ -1,5 +1,6 @@
 ﻿#include "CommercialAreaManager.h"
 #include <algorithm>
+#include <unordered_map>
 #include "WorldScale.h"
 
 namespace
@@ -99,7 +100,16 @@ bool CommercialAreaManager::DeleteArea(uint32_t id, int currentWeek)
             m_withdrawn.push_back(record);
         }
         m_areas.erase(m_areas.begin() + static_cast<std::ptrdiff_t>(i));
-        m_members.erase(std::remove_if(m_members.begin(), m_members.end(), [id](const AreaMembers& m) { return m.areaId == id; }), m_members.end());
+        // 所属の結果と、施設構成の評価は、同じ並び。同じ添字を、一緒に消す(次の Refresh で、作り直される)。
+        for (size_t m = 0; m < m_members.size(); ++m)
+        {
+            if (m_members[m].areaId == id)
+            {
+                m_members.erase(m_members.begin() + static_cast<std::ptrdiff_t>(m));
+                if (m < m_compositions.size()) { m_compositions.erase(m_compositions.begin() + static_cast<std::ptrdiff_t>(m)); }
+                break;
+            }
+        }
         return true;
     }
     return false;
@@ -123,6 +133,21 @@ bool CommercialAreaManager::Publish(uint32_t id, int currentWeek)
 void CommercialAreaManager::Refresh(const std::vector<AreaFacility>& facilities)
 {
     m_members = ComputeAreaMembers(m_areas, facilities, m_settings);
+    // 施設構成の評価(P2-B)。所属する施設の種類から求める。
+    std::unordered_map<uint32_t, BuildingType> typeById;
+    for (const AreaFacility& facility : facilities) { typeById[facility.objectId] = facility.type; }
+    m_compositions.clear();
+    m_compositions.reserve(m_members.size());
+    for (const AreaMembers& members : m_members)
+    {
+        std::vector<BuildingType> types;
+        for (uint32_t id : members.facilityIds)
+        {
+            const auto it = typeById.find(id);
+            if (it != typeById.end()) { types.push_back(it->second); }
+        }
+        m_compositions.push_back(ComputeAreaComposition(types, m_settings));
+    }
     // 達成状態は、周知した区画だけ。一度届いた段階は、店舗が減っても、下がらない。
     for (CommercialArea& area : m_areas)
     {
@@ -145,6 +170,15 @@ const AreaMembers* CommercialAreaManager::MembersOf(uint32_t id) const
         if (members.areaId == id) { return &members; }
     }
     return nullptr;
+}
+
+AreaComposition CommercialAreaManager::CompositionOf(uint32_t id) const
+{
+    for (size_t i = 0; i < m_members.size() && i < m_compositions.size(); ++i)
+    {
+        if (m_members[i].areaId == id) { return m_compositions[i]; }
+    }
+    return AreaComposition{};
 }
 
 AreaProgress CommercialAreaManager::ProgressOf(uint32_t id) const
@@ -304,5 +338,6 @@ void CommercialAreaManager::ResetToDefault()
     m_areas.clear();
     m_withdrawn.clear();
     m_members.clear();
+    m_compositions.clear();
     m_nextId = 1;
 }

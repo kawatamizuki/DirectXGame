@@ -434,6 +434,9 @@ void Game::Update()
 
 
 
+
+
+
     // ゲーム内時刻を進める(Editing/Playingに関わらず進める。Editorで時刻を動かして見た目を確認できる)。
     // 再現セッションの記録・再生中は、実時間のフレーム間隔ではなく、固定の刻みで時計を進める(PCの速さに、結果が依存しないため)。
     // それ以外の時は、これまでどおり、実時間。建物・道路の数の指紋は、記録中に変えられたら中止するための物。
@@ -467,6 +470,7 @@ void Game::Update()
     // ゲームプレイ用UI(上部HUD)の入力は、ワールドへの操作(オブジェクト選択・建物/道路の配置)より先に
     // 処理する。HUDの上のクリックがワールドへ抜けないよう、mouseOverUI/inputConsumedを先に確定させる。
     // (ImGuiのBeginFrameの後なのは、ImGuiのパネルの上にいるかを今フレームの状態で見るため)
+    UpdateAreaHover();     // 区画の上のカーソルを調べる(「エリア」パネルを出す区画を決める。UIの更新より先)
     UpdateGameUI();
     UpdateBuildingSelection();
 
@@ -1249,6 +1253,17 @@ void Game::HandleMenuKeys()
         return;
     }
 
+    // ツールを使っていない時に、商業エリアの区画を選んでいる(「エリア」パネルが出ている): Esc・右クリックで、選びをやめる(メニューは開かない)。
+    if (m_context.placementTool == PlacementTool::None && m_areaTool.SelectedId() != 0 && !m_gameUI.IsMenuOpen() && !m_gameUI.IsResidentPanelOpen())
+    {
+        if (cancel)
+        {
+            m_areaTool.ClearSelection();
+            m_context.inputConsumed = true;
+            return;
+        }
+    }
+
     // 「住民の情報」パネルが開いている: Esc・右クリックで、パネルだけを閉じる(メニューは開かない)。
     if (m_gameUI.IsResidentPanelOpen())
     {
@@ -1785,6 +1800,7 @@ void Game::UpdateBuildingSelection()
     if (agentHitId != 0)
     {
         m_context.inputConsumed = true;
+        m_areaTool.ClearSelection();    // 住民・建物を選んだら、区画の選びは外す(パネルが重ならないように)
         if (agentHitId == m_followAgentId)
         {
             // 追跡中の住民を、もう1回クリック: 住民の情報を出す(開いている間は、時間が止まる)。
@@ -1803,6 +1819,7 @@ void Game::UpdateBuildingSelection()
     if (buildingHitId != 0)
     {
         m_context.inputConsumed = true; // 建物のクリックは、ここで受け取る(他の操作へ抜けない)
+        m_areaTool.ClearSelection();    // 建物を選んだら、区画の選びは外す(パネルが重ならないように)
         if (buildingHitId == m_selectedBuildingId)
         {
             // 同じ建物をもう1回クリック: 住宅なら、住民の情報。施設(コンビニ・スーパー・映画館・カフェ)なら、施設の情報を出す。
@@ -1819,9 +1836,28 @@ void Game::UpdateBuildingSelection()
         return;
     }
 
-    // ---- 何も無い所(地面)をクリック: 選択も追跡も外す ----
+    // ---- 何も無い所(地面)をクリック: 建物の選択・追跡を外す。商業エリアの区画の上なら、その区画を選ぶ(「エリア」パネルが出る) ----
     m_selectedBuildingId = 0;
     m_followAgentId = 0;
+    DirectX::XMFLOAT3 groundHit;
+    if (m_field.RaycastGround(ray, groundHit))
+    {
+        const uint32_t areaId = m_areas.FindAreaAt(groundHit.x, groundHit.z);   // 0=区画の外(選びが外れる)
+        m_areaTool.Select(areaId);      // 区画の上なら、固定する(カーソルを離しても、パネルが残る)。区画の外なら、固定を外す
+        if (areaId != 0)
+        {
+            m_context.inputConsumed = true;
+        }
+        else
+        {
+            m_areaHoverId = 0;          // 関係ない所のクリック: すぐに、パネルを消す
+            m_areaHoverGrace = 0.0f;
+        }
+    }
+    else
+    {
+        m_areaTool.ClearSelection();
+    }
 }
 ResidentInfoModel Game::BuildResidentInfoModel() const
 {
@@ -2097,6 +2133,7 @@ void Game::UpdateGameUI()
     HudResult result = m_gameUI.Update(input, BuildHudState());
 
     m_context.mouseOverUI = result.mouseOverUI;
+    m_mouseOverUiPrev = result.mouseOverUI;
     m_context.hudTopInset = m_gameUI.GetLayout().bar.Bottom();
     if (result.consumedClick)
     {
@@ -2226,7 +2263,8 @@ std::vector<AreaFacility> Game::CollectAreaFacilities() const
 AreaPanelModel Game::BuildAreaPanelModel() const
 {
     AreaPanelModel model;
-    const CommercialArea* area = (m_context.placementTool == PlacementTool::Area) ? m_areas.Find(m_areaTool.SelectedId()) : nullptr;
+    // 区画の上にカーソルがある間(または、区画をクリックして固定した間)だけ、出す。
+    const CommercialArea* area = m_areas.Find(DisplayedAreaId());
     if (!area)
     {
         return model;
@@ -2258,6 +2296,34 @@ AreaPanelModel Game::BuildAreaPanelModel() const
         value("達成した最高の段階", AreaMilestoneName(area->achieved));
     }
     note("計画の達成率について", "店の数だけを数えます。集客力・売上とは別です(店の用途・立地で決まります)。");
+
+    // 施設構成(P2-B)。住民の行動・集客には、まだ影響しない。特色・用途の充実度・同種の重なりを、短く見せる(詳しい値は、Editorの「商業エリア」パネル)。
+    {
+        const AreaComposition composition = m_areas.CompositionOf(area->id);
+        header("施設構成");
+        if (composition.storeCount == 0)
+        {
+            value("特色", "店がありません");
+        }
+        else
+        {
+            char share[48];
+            std::snprintf(share, sizeof(share), "(日用品寄り %.0f%%)", composition.dailyShare * 100.0f);
+            value("特色", std::string(AreaCharacterName(composition.character)) + share);
+        }
+        value("用途の充実度", std::to_string(composition.coveredPurposes) + " / " + std::to_string(kUsagePurposeCount) + " 種類",
+              static_cast<float>(composition.coveredPurposes) / static_cast<float>(kUsagePurposeCount));
+        std::string overlap;
+        for (int p = 0; p < kUsagePurposeCount; ++p)
+        {
+            if (composition.strongCount[p] >= 2)
+            {
+                if (!overlap.empty()) { overlap += " / "; }
+                overlap += std::string(UsagePurposeName(static_cast<UsagePurpose>(p))) + " " + std::to_string(composition.strongCount[p]) + "軒";
+            }
+        }
+        value("同じ用途の店の重なり", overlap.empty() ? "なし" : overlap);
+    }
 
     header("周知");
     if (area->published)
@@ -2298,8 +2364,8 @@ AreaPanelModel Game::BuildAreaPanelModel() const
 
 void Game::ApplyAreaPanelResult(const HudResult& result)
 {
-    // 区画の選びが変わったら、パネルの確認の手順(周知しますか?)を、最初に戻す。
-    const uint32_t selected = (m_context.placementTool == PlacementTool::Area) ? m_areaTool.SelectedId() : 0;
+    // 出す区画が変わったら、パネルの確認の手順(周知しますか?)を、最初に戻す。
+    const uint32_t selected = DisplayedAreaId();
     if (selected != m_lastAreaSelection)
     {
         m_gameUI.ResetAreaPanelConfirm();
@@ -2327,11 +2393,123 @@ void Game::ApplyAreaPanelResult(const HudResult& result)
             m_noticeText = wasPublished ? "商業エリアを撤回しました(記録は残ります)" : "商業エリアを削除しました";
             m_noticeSecondsLeft = 4.0f;
             m_areaTool.ClearSelection();
+            m_areaHoverId = 0;
+            m_areaHoverGrace = 0.0f;
         }
     }
     else if (result.areaCloseRequested)
     {
-        m_areaTool.ClearSelection();
+        m_areaTool.ClearSelection();    // 「閉じる」: 固定を外し、パネルを消す(カーソルが区画へ戻れば、また出る)
+        m_areaHoverId = 0;
+        m_areaHoverGrace = 0.0f;
+    }
+}
+
+uint32_t Game::DisplayedAreaId() const
+{
+    // 「エリア」パネルは、街を操作できる時(Playingのゲームシーンで、ツールなし・商業エリアのツール。メニュー・他のパネルが開いていない)だけ。
+    if (!IsGameUIVisible() || m_context.mode != GameMode::Playing
+        || !(m_context.placementTool == PlacementTool::Area || m_context.placementTool == PlacementTool::None)
+        || m_gameUI.IsMenuOpen() || m_gameUI.IsResidentPanelOpen() || m_gameUI.IsMoveInOpen())
+    {
+        return 0;
+    }
+    if (m_areaTool.SelectedId() != 0 && m_areas.Find(m_areaTool.SelectedId()))
+    {
+        return m_areaTool.SelectedId();     // クリックで固定した区画
+    }
+    return m_areas.Find(m_areaHoverId) ? m_areaHoverId : 0;
+}
+
+uint32_t Game::FindAreaAtScreenPoint(POINT mouse) const
+{
+    const Ray ray = m_camera.ScreenPointToRay(mouse, m_renderer.GetViewWidth(), m_renderer.GetViewHeight());
+
+    // 区画に所属する建物に、カーソルが当たっているか(手前の物)。当たっていれば、その建物の区画。
+    // (斜めから見ると、建物の上のカーソルは、建物の後ろの地面を指す。区画が建物で埋まっていても、区画を指せるようにする)
+    uint32_t nearestFacility = 0;
+    float nearest = FLT_MAX;
+    for (const GameObject& obj : m_objects)
+    {
+        if (obj.kind != ObjectKind::Building || !obj.model || !IsAreaFacilityType(obj.buildingType))
+        {
+            continue;
+        }
+        DirectX::XMFLOAT3 boundsMin, boundsMax;
+        PickBounds(obj, boundsMin, boundsMax);
+        float distance = 0.0f;
+        if (IntersectRayOBB(ray, obj.transform, boundsMin, boundsMax, distance) && distance < nearest)
+        {
+            nearest = distance;
+            nearestFacility = obj.id;
+        }
+    }
+    if (nearestFacility != 0)
+    {
+        for (const AreaMembers& members : m_areas.Members())
+        {
+            for (uint32_t id : members.facilityIds)
+            {
+                if (id == nearestFacility) { return members.areaId; }
+            }
+        }
+    }
+
+    // 地面の位置が、区画の中か。
+    DirectX::XMFLOAT3 hit;
+    if (m_field.RaycastGround(ray, hit))
+    {
+        return m_areas.FindAreaAt(hit.x, hit.z);
+    }
+    return 0;
+}
+
+void Game::UpdateAreaHover()
+{
+    constexpr float kGraceSeconds = 0.4f;   // 区画から離れても、パネルを残す時間(パネルへカーソルを動かす間に、消えないように)
+    const bool active = IsGameUIVisible() && m_context.mode == GameMode::Playing
+        && (m_context.placementTool == PlacementTool::Area || m_context.placementTool == PlacementTool::None)
+        && !m_gameUI.IsMenuOpen() && !m_gameUI.IsResidentPanelOpen() && !m_gameUI.IsMoveInOpen();
+    if (!active)
+    {
+        m_areaHoverId = 0;
+        m_areaHoverGrace = 0.0f;
+        return;
+    }
+
+    // パネルの上にカーソルがある間・周知(撤回)の確認の最中は、消さない(ボタンを押せるように)。
+    const POINT mouse = m_inputManager.GetMousePosition();
+    const AreaPanel& panel = m_gameUI.GetAreaPanel();
+    const bool overPanel = panel.GetLayout().visible && panel.GetLayout().panel.Contains(static_cast<float>(mouse.x), static_cast<float>(mouse.y));
+    if (overPanel || panel.GetConfirm() != AreaPanel::Confirm::None)
+    {
+        m_areaHoverGrace = kGraceSeconds;
+        return;
+    }
+
+    const bool outsideView = mouse.x < 0 || mouse.y < 0
+        || mouse.x >= static_cast<LONG>(m_renderer.GetViewWidth()) || mouse.y >= static_cast<LONG>(m_renderer.GetViewHeight());
+    bool blocked = outsideView || m_mouseOverUiPrev;
+#ifdef ENABLE_EDITOR
+    blocked = blocked || IsMouseOverEditorUi();
+#endif
+    const uint32_t candidate = blocked ? 0 : FindAreaAtScreenPoint(mouse);
+    if (candidate != 0)
+    {
+        m_areaHoverId = candidate;
+        m_areaHoverGrace = kGraceSeconds;
+    }
+    else if (m_areaHoverGrace > 0.0f)
+    {
+        m_areaHoverGrace -= m_timeManager.GetDeltaTime();
+        if (m_areaHoverGrace <= 0.0f)
+        {
+            m_areaHoverId = 0;
+        }
+    }
+    else
+    {
+        m_areaHoverId = 0;
     }
 }
 

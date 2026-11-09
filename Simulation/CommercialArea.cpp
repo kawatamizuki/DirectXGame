@@ -209,6 +209,76 @@ std::vector<AreaMembers> ComputeAreaMembers(const std::vector<CommercialArea>& a
     return result;
 }
 
+AreaComposition ComputeAreaComposition(const std::vector<BuildingType>& memberTypes, const CommercialAreaSettings& settings)
+{
+    AreaComposition result;
+    for (BuildingType type : memberTypes)
+    {
+        const FacilityDefinition* facility = FindFacilityDefinition(type);
+        if (!facility)
+        {
+            continue;
+        }
+        ++result.storeCount;
+        for (int p = 0; p < kUsagePurposeCount; ++p)
+        {
+            const float suitability = (std::max)(0.0f, facility->purposeSuitability[p]);    // 元の適性値
+            result.supply[p] += suitability;
+            if (suitability >= settings.strongSuitability)
+            {
+                ++result.strongCount[p];
+            }
+        }
+    }
+    if (result.storeCount == 0)
+    {
+        return result;
+    }
+
+    // 割合(供給量の分布)。合計が0(適性が全て0の施設だけ)なら、全て0のまま。
+    float total = 0.0f;
+    for (int p = 0; p < kUsagePurposeCount; ++p) { total += result.supply[p]; }
+    float maxShare = 0.0f;
+    if (total > 0.0f)
+    {
+        for (int p = 0; p < kUsagePurposeCount; ++p)
+        {
+            result.share[p] = result.supply[p] / total;
+            maxShare = (std::max)(maxShare, result.share[p]);
+        }
+    }
+    result.dailyShare = result.share[static_cast<int>(UsagePurpose::TopUp)] + result.share[static_cast<int>(UsagePurpose::BulkBuy)];
+
+    // 専門性: 一番大きい割合が、均等(1÷用途の数)から、どれだけ離れているか(0〜1)。複雑な式を使わない。
+    const float even = 1.0f / static_cast<float>(kUsagePurposeCount);
+    result.specialization = (std::min)(1.0f, (std::max)(0.0f, (maxShare - even) / (1.0f - even)));
+
+    for (int p = 0; p < kUsagePurposeCount; ++p)
+    {
+        if (result.strongCount[p] >= 1) { ++result.coveredPurposes; }
+        result.overlapStores += (std::max)(0, result.strongCount[p] - 1);
+    }
+
+    // 特色のラベル(日用品寄りの割合の、しきい値)。優劣を示さない。
+    if (total <= 0.0f) { result.character = AreaCharacter::Mixed; }
+    else if (result.dailyShare >= settings.dailyFocusedShare) { result.character = AreaCharacter::DailyFocused; }
+    else if (result.dailyShare <= settings.leisureFocusedShare) { result.character = AreaCharacter::LeisureFocused; }
+    else { result.character = AreaCharacter::Mixed; }
+    return result;
+}
+
+const char* AreaCharacterName(AreaCharacter character)
+{
+    switch (character)
+    {
+    case AreaCharacter::None:           return "店なし";
+    case AreaCharacter::DailyFocused:   return "日用品特化";
+    case AreaCharacter::Mixed:          return "混合";
+    case AreaCharacter::LeisureFocused: return "娯楽特化";
+    }
+    return "?";
+}
+
 AreaProgress ComputeAreaProgress(int storeCount, int plannedCapacity, const CommercialAreaSettings& settings)
 {
     AreaProgress progress;

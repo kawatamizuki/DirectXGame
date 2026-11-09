@@ -349,6 +349,101 @@ static void TestSaveLoad()
     CHECK(loadedBad.Validate().empty());
 }
 
+// ---- P2-B: 施設構成の評価(供給量と割合の区別・用途の充実度・単純な専門性) ----
+static AreaComposition Comp(std::initializer_list<BuildingType> types, const CommercialAreaSettings& s = CommercialAreaSettings())
+{
+    return ComputeAreaComposition(std::vector<BuildingType>(types), s);
+}
+
+static void TestComposition()
+{
+    const BuildingType Shop = BuildingType::Shop, Super = BuildingType::Supermarket, Cinema = BuildingType::Cinema, Cafe = BuildingType::Cafe;
+    const int TopUp = static_cast<int>(UsagePurpose::TopUp), Bulk = static_cast<int>(UsagePurpose::BulkBuy);
+    const int Movie = static_cast<int>(UsagePurpose::Movie), Light = static_cast<int>(UsagePurpose::Light);
+
+    // 店なし: 0。壊れない(NaNを作らない)。
+    const AreaComposition none = Comp({});
+    CHECK(none.storeCount == 0 && none.character == AreaCharacter::None && none.coveredPurposes == 0 && none.overlapStores == 0);
+    CHECK(none.dailyShare == 0.0f && none.specialization == 0.0f);
+
+    // 供給量は、元の適性値の合計(正規化していない)。コンビニ1軒 = {1.6, 0.5, 0.1, 0.8}。
+    const AreaComposition oneShop = Comp({ Shop });
+    CHECK(Near(oneShop.supply[TopUp], 1.6f) && Near(oneShop.supply[Bulk], 0.5f) && Near(oneShop.supply[Movie], 0.1f) && Near(oneShop.supply[Light], 0.8f));
+    // 割合は、供給量を合計(3.0)で割った分布。元の値とは別。
+    CHECK(Near(oneShop.share[TopUp], 1.6f / 3.0f) && Near(oneShop.share[Bulk], 0.5f / 3.0f));
+    float shareSum = 0.0f; for (float v : oneShop.share) { shareSum += v; }
+    CHECK(Near(shareSum, 1.0f));
+
+    // 同じ構成の比率なら、割合は同じ。店の数(供給量・競合の重なり)は、別に見える(要望①)。
+    const AreaComposition two = Comp({ Shop, Cafe });
+    const AreaComposition six = Comp({ Shop, Cafe, Shop, Cafe, Shop, Cafe });
+    for (int p = 0; p < kUsagePurposeCount; ++p) { CHECK(Near(two.share[p], six.share[p])); }
+    CHECK(Near(two.specialization, six.specialization) && two.character == six.character);
+    CHECK(two.storeCount == 2 && six.storeCount == 6);
+    CHECK(Near(six.supply[TopUp], two.supply[TopUp] * 3.0f) && Near(six.supply[Light], two.supply[Light] * 3.0f));
+    CHECK(two.overlapStores == 0 && six.overlapStores == 4);                // 強い店: コンビニ3(買い足し)・カフェ3(軽食) → 各2重なり
+    CHECK(two.strongCount[TopUp] == 1 && six.strongCount[TopUp] == 3 && six.strongCount[Light] == 3);
+    CHECK(two.coveredPurposes == 2 && six.coveredPurposes == 2);            // 用途の充実度は、店の数では増えない
+
+    // 用途の充実度(強い適性を持つ店がある用途の種類数)。
+    CHECK(Comp({ Shop }).coveredPurposes == 1);
+    CHECK(Comp({ Shop, Super }).coveredPurposes == 2);
+    CHECK(Comp({ Cinema, Cafe }).coveredPurposes == 2);
+    CHECK(Comp({ Shop, Super, Cinema, Cafe }).coveredPurposes == 4);
+    CHECK(Comp({ Shop, Shop, Shop }).coveredPurposes == 1 && Comp({ Shop, Shop, Shop }).overlapStores == 2);
+
+    // 特色のラベル(日用品寄りの割合): 日用品の店だけ=特化、娯楽の店だけ=特化、両方=混合。
+    CHECK(Comp({ Shop, Super }).character == AreaCharacter::DailyFocused);
+    CHECK(Comp({ Cinema, Cafe }).character == AreaCharacter::LeisureFocused);
+    CHECK(Comp({ Shop, Super, Cinema, Cafe }).character == AreaCharacter::Mixed);
+    CHECK(Comp({ Shop, Super }).dailyShare > 0.7f && Comp({ Cinema, Cafe }).dailyShare < 0.3f);
+
+    // 専門性: 単純な式(一番大きい割合と、均等の差)。1つの用途に偏るほど大きい。0〜1に収まる。
+    const AreaComposition allFour = Comp({ Shop, Super, Cinema, Cafe });
+    const AreaComposition shops3 = Comp({ Shop, Shop, Shop });
+    CHECK(shops3.specialization > allFour.specialization);
+    for (const AreaComposition& c : { oneShop, two, six, allFour, shops3 }) { CHECK(c.specialization >= 0.0f && c.specialization <= 1.0f); }
+    {
+        const float maxShare = (std::max)((std::max)(allFour.share[0], allFour.share[1]), (std::max)(allFour.share[2], allFour.share[3]));
+        CHECK(Near(allFour.specialization, (maxShare - 0.25f) / 0.75f));   // 式のとおり
+    }
+
+    // 専門型・汎用型のどちらかが、有利にならない: 評価は、集客・売上・品質に、何も掛からない(値を返すだけ)。
+    // (施設の品質・値段は、変わらない)
+    CHECK(Near(FindFacilityDefinition(Shop)->quality, 1.0f) && FindFacilityDefinition(Shop)->pricePerVisit == 120);
+
+    // 「強い適性」のしきい値は、元の適性値と比べる(設定)。上げると、強い店が減る。
+    CommercialAreaSettings strict;
+    strict.strongSuitability = 1.7f;                                         // コンビニ 1.6・スーパー 1.6 は強くない。映画館 2.0・カフェ 1.8 は強い
+    CHECK(Comp({ Shop, Super, Cinema, Cafe }, strict).coveredPurposes == 2);
+    CommercialAreaSettings loose;
+    loose.strongSuitability = 0.5f;                                          // コンビニの まとめ買い 0.5・軽食 0.8 も、強い
+    CHECK(Comp({ Shop }, loose).coveredPurposes == 3 && Comp({ Shop }, loose).strongCount[Bulk] == 1);
+    // ラベルのしきい値も設定。
+    CommercialAreaSettings narrow;
+    narrow.dailyFocusedShare = 0.99f;
+    CHECK(Comp({ Shop, Super }, narrow).character == AreaCharacter::Mixed);
+
+    // 住宅・オフィスは、無視する。
+    CHECK(Comp({ BuildingType::House, BuildingType::Office, Shop }).storeCount == 1);
+
+    // 管理側: 所属する施設の種類から、区画ごとに評価される。区画が無い・店が無ければ「店なし」。
+    CommercialAreaManager m;
+    const uint32_t a = m.PlaceArea(4.0f, 4.0f, WorldScale::kCellSize);
+    const AreaRect rect = m.Find(a)->rect;
+    std::vector<AreaFacility> facilities;
+    facilities.push_back(Fac(1, Cinema, Axis(rect.minX + 1.0f, rect.minZ + 1.0f, 1.5f, 1.5f)));
+    facilities.push_back(Fac(2, Cafe, Axis(rect.minX + 3.0f, rect.minZ + 1.0f, 1.5f, 1.5f)));
+    facilities.push_back(Fac(3, Shop, Axis(rect.maxX + 5.0f, rect.minZ + 1.0f, 1.5f, 1.5f)));   // 区画の外
+    m.Refresh(facilities);
+    const AreaComposition inArea = m.CompositionOf(a);
+    CHECK(inArea.storeCount == 2 && inArea.character == AreaCharacter::LeisureFocused && inArea.coveredPurposes == 2);
+    CHECK(m.CompositionOf(999).character == AreaCharacter::None);
+    m.DeleteArea(a, 1);
+    CHECK(m.CompositionOf(a).storeCount == 0);
+    CHECK(AreaCharacterName(AreaCharacter::Mixed) != nullptr);
+}
+
 int main()
 {
     TestOverlapArea();
@@ -358,6 +453,7 @@ int main()
     TestOperations();
     TestRefreshAndAchievement();
     TestSaveLoad();
+    TestComposition();
     std::printf(g_fail == 0 ? "ALL PASSED\n" : "%d FAILED\n", g_fail);
     return g_fail == 0 ? 0 : 1;
 }

@@ -3,6 +3,7 @@
 #include <vector>
 #include "OrientedRectangleOverlap.h"
 #include "BuildingType.h"
+#include "FacilityData.h"
 
 // ---------------------------------------------------------------------------
 // 商業エリア(商店街)の区画(P2-A)。
@@ -39,6 +40,11 @@ struct CommercialAreaSettings
     // 計画の完成は、計画規模(plannedCapacity)の店舗数。
     int graceWeeks = 8;                     // 周知してから、開発が間に合っていなくても許される週数(仮。猶予後の評判の変化は P2-D)
     float placementEpsilon = 1e-3f;         // 区画どうしの重なりの判定の許容(辺が接するだけは、重なっていないとする)
+
+    // ---- 施設構成の評価(P2-B)。施設データの「用途への適性」(元の値。コンビニの買い足し 1.6 など)を使う ----
+    float strongSuitability = 1.0f;         // 「その用途に強い」とみなす、適性の元の値(現在の施設は、強い用途が1つずつ: 1.6 / 1.6 / 2.0 / 1.8。次に高いのは 0.8)
+    float dailyFocusedShare = 0.7f;         // 日用品寄りの割合が、これ以上なら「日用品特化」(仮。ラベルを付けるだけで、優劣は無い)
+    float leisureFocusedShare = 0.3f;       // 日用品寄りの割合が、これ以下なら「娯楽特化」(その間は「混合」)
 };
 
 // 周知後の履歴の種類。周知後の移設・撤回・規模変更が、進捗のリセットや罰則逃れにならないように、記録を残す(実際の減点は P2-D)。
@@ -132,6 +138,38 @@ bool IsAreaFacilityType(BuildingType type);
 //  ・戻り値は、areas と同じ並び。
 std::vector<AreaMembers> ComputeAreaMembers(const std::vector<CommercialArea>& areas, const std::vector<AreaFacility>& facilities,
                                             const CommercialAreaSettings& settings);
+
+// ---- 施設構成の評価(P2-B) ----
+// エリアに所属する施設の構成を、「量」と「割合」を分けて評価する。住民の行動・集客・売上には、まだ、影響しない(エリア目的の外出は P2-C)。
+//  ・供給量(supply): 用途ごとの、所属施設の適性(元の値)の合計。店が増えれば増える「量」。
+//  ・割合(share): 供給量を、合計で割った分布(合計1)。店の数に依らない「構成」。2店舗でも6店舗でも、同じ種類の比率なら、同じ割合。
+//  ・どちらも、集客力ではない(需要との対応は、P2-C 以降)。専門型・汎用型のどちらかが有利になる評価にしない。
+//  ・用途の充実度(coveredPurposes): 「強い適性」を持つ店がある用途の種類数。施設どうしの補完性(映画館+カフェで立ち寄りやすい、など)とは、別の概念で、補完性は P2-C。
+enum class AreaCharacter : uint8_t
+{
+    None,           // 店が無い
+    DailyFocused,   // 日用品特化(日用品寄りの割合が高い)
+    Mixed,          // 混合
+    LeisureFocused  // 娯楽特化
+};
+
+struct AreaComposition
+{
+    int storeCount = 0;                                 // 所属する店舗数
+    float supply[kUsagePurposeCount] = {};              // 用途ごとの供給量 = 所属施設の適性(元の値)の合計
+    int strongCount[kUsagePurposeCount] = {};           // 用途ごとの、適性(元の値)が strongSuitability 以上の店の数
+    float share[kUsagePurposeCount] = {};               // 供給量の割合(合計1。店が無ければ全て0)。元の適性値ではない
+    float dailyShare = 0.0f;                            // 日用品寄りの割合 = 買い足しの割合 + まとめ買いの割合(0〜1)
+    float specialization = 0.0f;                        // 専門性(0〜1)= (一番大きい割合 − 均等な割合) ÷ (1 − 均等な割合)。1に近いほど1つの用途に偏る。1−この値が、汎用性
+    int coveredPurposes = 0;                            // 用途の充実度: 強い適性を持つ店がある用途の種類数(0〜用途の数)
+    int overlapStores = 0;                              // 同種の重なり: 用途ごとの「強い店の数 − 1」(0未満は0)の合計。競争が起きる材料(減点ではない)
+    AreaCharacter character = AreaCharacter::None;
+};
+
+// 所属する施設の種類の一覧から、構成を評価する(施設の定義は FindFacilityDefinition で引く。施設でない種類は、無視する)。
+AreaComposition ComputeAreaComposition(const std::vector<BuildingType>& memberTypes, const CommercialAreaSettings& settings);
+
+const char* AreaCharacterName(AreaCharacter character);
 
 // 進捗(店舗数と段階)。計画達成率と、実際の商業的魅力は、別物(魅力は P2-C 以降。ここでは出さない)。
 struct AreaProgress
