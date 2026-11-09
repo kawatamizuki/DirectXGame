@@ -229,6 +229,22 @@ HudResult GameUI::Update(const HudInput& input, const HudState& state)
     const ResidentPanelResult panelResult = m_residentPanel.Update(panelInput, state.residentInfo);
     const bool panelWasOpen = m_residentPanel.IsOpen() || panelResult.closed || moveInWasOpen;
 
+    // 「エリア」パネル(画面の右の小さなパネル。後ろのゲームは覆わない)。メニュー・他のパネルが開いている間は、反応しない。
+    AreaPanelInput areaInput;
+    areaInput.screenW = input.screenW;
+    areaInput.screenH = input.screenH;
+    areaInput.topInset = m_layout.bar.Bottom();
+    areaInput.mouseX = input.mouseX;
+    areaInput.mouseY = input.mouseY;
+    areaInput.pressed = input.pressed;
+    areaInput.down = input.down;
+    areaInput.blockedByOtherUI = input.blockedByOtherUI || panelWasOpen || m_menu.IsOpen();
+    const AreaPanelResult areaResult = m_areaPanel.Update(areaInput, state.areaPanel);
+    result.areaPublishConfirmed = areaResult.publishConfirmed;
+    result.areaDeleteConfirmed = areaResult.deleteConfirmed;
+    result.areaCloseRequested = areaResult.closeRequested;
+
+    menuInput.pressed = menuInput.pressed && !areaResult.consumedClick;
     menuInput.blockedByOtherUI = input.blockedByOtherUI || panelWasOpen;
     menuInput.typedDigits = input.typedDigits;
     menuInput.keyBackspace = input.keyBackspace;
@@ -244,10 +260,10 @@ HudResult GameUI::Update(const HudInput& input, const HudState& state)
     result.moveInOpen = m_moveInPanel.IsOpen();
     result.moveInChosenResidentId = moveInResult.chosenResidentId;
     result.moveInDeclined = moveInResult.declined;
-    result.mouseOverUI = overBar || menuResult.mouseOverUI || panelResult.mouseOverUI || moveInResult.mouseOverUI;
+    result.mouseOverUI = overBar || menuResult.mouseOverUI || panelResult.mouseOverUI || moveInResult.mouseOverUI || areaResult.mouseOverUI;
 
     // バーの上で押したクリックはHUDが受け取る(ワールドへ抜けない)。バーには、押せるものは無い。
-    if ((overBar && input.pressed) || menuResult.consumedClick || panelResult.consumedClick || moveInResult.consumedClick)
+    if ((overBar && input.pressed) || menuResult.consumedClick || panelResult.consumedClick || moveInResult.consumedClick || areaResult.consumedClick)
     {
         result.consumedClick = true;
     }
@@ -418,6 +434,9 @@ void GameUI::Draw(const HudState& state)
             m_ui->DrawString(rect.x + padX, rect.y + padY, label.text, labelFont, skin.GetTextStyle(UITextRole::Warning));
         }
     }
+
+    // 「エリア」パネル(商業エリアのツールで、区画を選んでいる間。メニューの幕より下)。
+    m_areaPanel.Draw(*m_ui, skin, state.areaPanel);
 
     // ゲーム内メニュー(右下のボタン、開いた時の一覧)。バーより手前に描く(開いた時の幕は、バーの下から始まる)。
     m_menu.Draw(*m_ui, skin);

@@ -175,6 +175,10 @@
     <ClCompile Include="UI\GameMenu.cpp" />
     <ClCompile Include="UI\ResidentInfoPanel.cpp" />
     <ClCompile Include="UI\MoveInPanel.cpp" />
+    <ClCompile Include="UI\AreaPanel.cpp" />
+    <ClCompile Include="Field\AreaToolController.cpp" />
+    <ClCompile Include="Simulation\CommercialArea.cpp" />
+    <ClCompile Include="Simulation\CommercialAreaManager.cpp" />
     <ClCompile Include="UI\GameUI.cpp" />
     <ClCompile Include="UI\ProceduralUISkin.cpp" />
     <ClCompile Include="UI\UIRenderer.cpp" />
@@ -212,6 +216,7 @@
     <ClCompile Include="DebugTools\SimEndurance.cpp" />
     <ClCompile Include="DebugTools\SimEndurancePanel.cpp" />
     <ClCompile Include="DebugTools\MemoryPanel.cpp" />
+    <ClCompile Include="DebugTools\AreaDebugPanel.cpp" />
     <ClCompile Include="DebugTools\SimStatsPanel.cpp" />
     <ClCompile Include="Simulation\RoutePlanner.cpp" />
     <ClCompile Include="Simulation\GameEconomy.cpp" />
@@ -307,6 +312,10 @@
     <ClInclude Include="UI\GameMenu.h" />
     <ClInclude Include="UI\ResidentInfoPanel.h" />
     <ClInclude Include="UI\MoveInPanel.h" />
+    <ClInclude Include="UI\AreaPanel.h" />
+    <ClInclude Include="Field\AreaToolController.h" />
+    <ClInclude Include="Simulation\CommercialArea.h" />
+    <ClInclude Include="Simulation\CommercialAreaManager.h" />
     <ClInclude Include="UI\GameUI.h" />
     <ClInclude Include="UI\ProceduralUISkin.h" />
     <ClInclude Include="UI\UILayoutUtil.h" />
@@ -354,6 +363,7 @@
     <ClInclude Include="DebugTools\SimEndurance.h" />
     <ClInclude Include="DebugTools\SimEndurancePanel.h" />
     <ClInclude Include="DebugTools\MemoryPanel.h" />
+    <ClInclude Include="DebugTools\AreaDebugPanel.h" />
     <ClInclude Include="DebugTools\MemoryReport.h" />
     <ClInclude Include="DebugTools\SimStatsPanel.h" />
     <ClInclude Include="Simulation\RoutePlanner.h" />

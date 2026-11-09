@@ -27,6 +27,7 @@
 #include "SimEndurance.h"
 #include "SimEndurancePanel.h"
 #include "MemoryPanel.h"
+#include "AreaDebugPanel.h"
 #include "CityCameraController.h"
 #include "ClickDragGesture.h"
 #include "ModelCache.h"
@@ -42,6 +43,8 @@
 #include "GridOrientationRegistry.h"
 #include "BuildController.h"
 #include "DemolitionController.h"
+#include "AreaToolController.h"
+#include "CommercialAreaManager.h"
 #include "StraightRoadPlacementStrategy.h"
 #include "CurveRoadPlacementStrategy.h"
 #include "QuadRoadMeshGenerator.h"
@@ -114,6 +117,10 @@ private:
     // 「住民の情報」パネルに出す内容(選択中の住宅に住む住民の内部パラメータ)を集める。
     ResidentInfoModel BuildResidentInfoModel() const;
 
+    // 「施設の情報」パネルに出す内容(選択中の施設の、種類ごとのデータ・今の利用状況・来客と売上・所属する商業エリア)を集める。
+    // 住宅と同じ操作(施設を1回クリックで選び、もう1回クリックで開く)で、同じパネル(ResidentInfoPanel)に出す。
+    ResidentInfoModel BuildFacilityInfoModel() const;
+
     // ---- 入居者を選ぶ(住居なしの住民を、新しい住宅へ入れる) ----
     // 住宅を建てた時に、住居なしの住民がいたら、その住宅を待ちの列に入れる(DemandSystem::ReserveHouse で、新しい住民を、まだ生まれさせない)。
     // 列の先頭の住宅から順に、「入居者を選ぶ」パネルを開く(開いている間は、ゲーム内の時間が止まる)。
@@ -127,6 +134,16 @@ private:
 
     // 入居者を選ぶ待ち(パネル・列)を全て取りやめる(新しい住民を迎える扱い。Esc・右クリック・タイトル画面・ロードなどで使う)。
     void CancelMoveIn();
+
+    // ---- 商業エリア(P2-A) ----
+    // 今の建物のうち、商業施設(コンビニ・スーパー・映画館・カフェ)の、敷地の一覧(区画の所属を求める入力)。
+    std::vector<AreaFacility> CollectAreaFacilities() const;
+
+    // 「エリア」パネルに出す内容(区画を選んでいる間だけ visible)。
+    AreaPanelModel BuildAreaPanelModel() const;
+
+    // 「エリア」パネルで押された操作(周知・削除・閉じる)を、区画へ反映する。
+    void ApplyAreaPanelResult(const HudResult& result);
 
     // 音量(オプション)が変わっていたら、Settings/audio.json に保存する。スライダーをつかんでいる間・数字の入力中は待つ。
     void SaveAudioSettingsIfChanged();
@@ -262,6 +279,9 @@ private:
     Model m_cafeModel;
     BuildController m_buildController;
     DemolitionController m_demolition;   // 解体ツール(建物をなぞって選び、離すと解体する)
+    CommercialAreaManager m_areas;       // 商業エリアの区画(仮置き・周知。保存される。住民の行動には、まだ影響しない)
+    AreaToolController m_areaTool;       // 商業エリアのツール(区画の仮置き・移動の入力と、枠の描画)
+    uint32_t m_lastAreaSelection = 0;    // 直前のフレームに選んでいた区画(選びが変わったら、パネルの確認の手順を戻す)
     std::string m_noticeText;            // 画面の左下に、少しの間だけ出す知らせ(解体の結果・お金が足りない、など)
     float m_noticeSecondsLeft = 0.0f;
     StraightRoadPlacementStrategy m_roadPlacementStrategy;
@@ -294,6 +314,7 @@ private:
 
     // メモリの使用量と、その内訳(ゲーム本体 / デバッグ・検証の機能)を見るパネル。内訳は、BuildMemoryReport が、各機能から集める(約1秒ごと)。
     MemoryPanel m_memoryPanel;
+    AreaDebugPanel m_areaDebugPanel;
     MemoryReport BuildMemoryReport() const;
     // 建物・道路の数の指紋(住民の見た目は数えない: 住民が生まれても、構造の変更とは見なさない)。
     uint64_t StructureSignature() const;

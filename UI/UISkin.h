@@ -63,7 +63,8 @@ enum class UIIcon
     RoadLarge,
     RoadStraight,
     RoadFreehand,
-    Demolish      // 解体(ハンマー)
+    Demolish,     // 解体(ハンマー)
+    Area          // 商業エリア(点線の四角)
 };
 
 // 文字の役割。色・縁取りなどの書式は、スキンが役割ごとに決める(呼び出し側は、色の数値を持たない)。

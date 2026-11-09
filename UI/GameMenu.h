@@ -18,6 +18,7 @@ enum class MenuCommandType
     SelectRoad,         // arg = RoadType。道路の配置を始める
     SetRoadDrawMode,    // arg = RoadDrawMode。道路の引き方(直線/自由)を切り替える
     SelectDemolish,     // 解体ツールを選ぶ(建物・道路をなぞって選び、離すと解体する)
+    SelectArea,         // 商業エリアのツールを選ぶ(区画の仮置き・移動・周知・削除)
     NotifyBlocked,      // 押せない項目(お金が足りない等)が押された。メニューは閉じず、理由を知らせる(ゲーム側が、noticeTextに出す)
     CancelPlacement,    // 配置を、やめる
     Save,

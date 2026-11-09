@@ -69,7 +69,7 @@ namespace
     bool ClosesMenu(const MenuCommand& command)
     {
         return command.type == MenuCommandType::SelectBuilding || command.type == MenuCommandType::SelectRoad
-            || command.type == MenuCommandType::SelectDemolish;
+            || command.type == MenuCommandType::SelectDemolish || command.type == MenuCommandType::SelectArea;
     }
 }
 

@@ -1,0 +1,306 @@
+﻿#include "CommercialArea.h"
+#include <algorithm>
+#include <cmath>
+#include <unordered_set>
+#include "FacilityData.h"
+
+namespace
+{
+    struct Point
+    {
+        double x;
+        double z;
+    };
+
+    // 多角形を、半平面 (axis=0:X / 1:Z)の (sign * (座標 - limit) <= 0) の側へ切り取る(Sutherland–Hodgman)。
+    std::vector<Point> ClipHalfPlane(const std::vector<Point>& polygon, int axis, double limit, double sign)
+    {
+        std::vector<Point> out;
+        if (polygon.empty())
+        {
+            return out;
+        }
+        auto value = [&](const Point& p) { return sign * ((axis == 0 ? p.x : p.z) - limit); };
+        for (size_t i = 0; i < polygon.size(); ++i)
+        {
+            const Point& a = polygon[i];
+            const Point& b = polygon[(i + 1) % polygon.size()];
+            const double va = value(a);
+            const double vb = value(b);
+            const bool aIn = va <= 0.0;
+            const bool bIn = vb <= 0.0;
+            if (aIn)
+            {
+                out.push_back(a);
+            }
+            if (aIn != bIn)
+            {
+                const double t = va / (va - vb);
+                out.push_back({ a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t });
+            }
+        }
+        return out;
+    }
+
+    double PolygonArea(const std::vector<Point>& polygon)
+    {
+        if (polygon.size() < 3)
+        {
+            return 0.0;
+        }
+        double sum = 0.0;
+        for (size_t i = 0; i < polygon.size(); ++i)
+        {
+            const Point& a = polygon[i];
+            const Point& b = polygon[(i + 1) % polygon.size()];
+            sum += a.x * b.z - b.x * a.z;
+        }
+        return std::fabs(sum) * 0.5;
+    }
+}
+
+AreaRect MakeAreaRect(float centerX, float centerZ, float side, float cellSize)
+{
+    float minX = centerX - side * 0.5f;
+    float minZ = centerZ - side * 0.5f;
+    if (cellSize > 0.0f)
+    {
+        minX = std::round(minX / cellSize) * cellSize;
+        minZ = std::round(minZ / cellSize) * cellSize;
+    }
+    AreaRect rect;
+    rect.minX = minX;
+    rect.minZ = minZ;
+    rect.maxX = minX + side;
+    rect.maxZ = minZ + side;
+    return rect;
+}
+
+float FootprintArea(const OrientedRect& footprint)
+{
+    return (footprint.width > 0.0f && footprint.depth > 0.0f) ? footprint.width * footprint.depth : 0.0f;
+}
+
+float OverlapArea(const OrientedRect& footprint, const AreaRect& rect)
+{
+    if (!(FootprintArea(footprint) > 0.0f) || !(rect.Area() > 0.0f))
+    {
+        return 0.0f;
+    }
+    // 敷地の4隅(OrientedRectの規約: 原点から、+X方向に幅、+Z方向に奥行き。yaw で回す。OrientedRectsOverlap と同じ)。
+    const double c = std::cos(static_cast<double>(footprint.yaw));
+    const double s = std::sin(static_cast<double>(footprint.yaw));
+    const double ax = c, az = -s;           // ローカル+X
+    const double bx = s, bz = c;            // ローカル+Z
+    const double w = footprint.width, d = footprint.depth;
+    const double ox = footprint.origin.x, oz = footprint.origin.z;
+    std::vector<Point> polygon = {
+        { ox, oz },
+        { ox + ax * w, oz + az * w },
+        { ox + ax * w + bx * d, oz + az * w + bz * d },
+        { ox + bx * d, oz + bz * d }
+    };
+    polygon = ClipHalfPlane(polygon, 0, rect.minX, -1.0);   // x >= minX
+    polygon = ClipHalfPlane(polygon, 0, rect.maxX, 1.0);    // x <= maxX
+    polygon = ClipHalfPlane(polygon, 1, rect.minZ, -1.0);   // z >= minZ
+    polygon = ClipHalfPlane(polygon, 1, rect.maxZ, 1.0);    // z <= maxZ
+    return static_cast<float>(PolygonArea(polygon));
+}
+
+float OverlapRatio(const OrientedRect& footprint, const AreaRect& rect)
+{
+    const float area = FootprintArea(footprint);
+    if (!(area > 0.0f))
+    {
+        return 0.0f;
+    }
+    return (std::min)(1.0f, OverlapArea(footprint, rect) / area);
+}
+
+bool AreaRectsOverlap(const AreaRect& a, const AreaRect& b, float epsilon)
+{
+    return a.minX < b.maxX - epsilon && b.minX < a.maxX - epsilon
+        && a.minZ < b.maxZ - epsilon && b.minZ < a.maxZ - epsilon;
+}
+
+bool CanPlaceAreaRect(const AreaRect& rect, const std::vector<CommercialArea>& areas, uint32_t ignoreId, float epsilon)
+{
+    if (!(rect.Area() > 0.0f))
+    {
+        return false;
+    }
+    for (const CommercialArea& other : areas)
+    {
+        if (other.id == ignoreId)
+        {
+            continue;
+        }
+        if (AreaRectsOverlap(rect, other.rect, epsilon))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool IsAreaFacilityType(BuildingType type)
+{
+    return FindFacilityDefinition(type) != nullptr;
+}
+
+std::vector<AreaMembers> ComputeAreaMembers(const std::vector<CommercialArea>& areas, const std::vector<AreaFacility>& facilities,
+                                            const CommercialAreaSettings& settings)
+{
+    std::vector<AreaMembers> result(areas.size());
+    for (size_t i = 0; i < areas.size(); ++i)
+    {
+        result[i].areaId = areas[i].id;
+    }
+    constexpr float kTieEpsilon = 1e-6f;
+    const float threshold = (std::max)(0.0f, settings.membershipMinOverlap);
+
+    for (const AreaFacility& facility : facilities)
+    {
+        if (!IsAreaFacilityType(facility.type))
+        {
+            continue;
+        }
+        // 条件(敷地面積のうち、区画の中にある割合が しきい値以上)を満たす区画の中で、割合が一番大きい区画(同じなら、IDが小さい区画)。
+        int best = -1;
+        float bestRatio = 0.0f;
+        for (size_t i = 0; i < areas.size(); ++i)
+        {
+            const float ratio = OverlapRatio(facility.footprint, areas[i].rect);
+            if (!(ratio > 0.0f) || ratio + kTieEpsilon < threshold)
+            {
+                continue;
+            }
+            const bool better = (best < 0)
+                || (ratio > bestRatio + kTieEpsilon)
+                || (std::fabs(ratio - bestRatio) <= kTieEpsilon && areas[i].id < areas[static_cast<size_t>(best)].id);
+            if (better)
+            {
+                best = static_cast<int>(i);
+                bestRatio = ratio;
+            }
+        }
+        if (best >= 0)
+        {
+            result[static_cast<size_t>(best)].facilityIds.push_back(facility.objectId);
+            result[static_cast<size_t>(best)].overlapRatios.push_back(bestRatio);
+        }
+    }
+    // 施設の並びに依らず、結果が同じになるように、idの小さい順に並べる。
+    for (AreaMembers& members : result)
+    {
+        std::vector<size_t> order(members.facilityIds.size());
+        for (size_t i = 0; i < order.size(); ++i) { order[i] = i; }
+        std::sort(order.begin(), order.end(), [&](size_t a, size_t b) { return members.facilityIds[a] < members.facilityIds[b]; });
+        std::vector<uint32_t> ids;
+        std::vector<float> ratios;
+        for (size_t index : order)
+        {
+            ids.push_back(members.facilityIds[index]);
+            ratios.push_back(members.overlapRatios[index]);
+        }
+        members.facilityIds = std::move(ids);
+        members.overlapRatios = std::move(ratios);
+    }
+    return result;
+}
+
+AreaProgress ComputeAreaProgress(int storeCount, int plannedCapacity, const CommercialAreaSettings& settings)
+{
+    AreaProgress progress;
+    progress.storeCount = (std::max)(0, storeCount);
+    progress.plannedCapacity = (std::max)(0, plannedCapacity);
+    progress.ratio = progress.plannedCapacity > 0
+        ? (std::min)(1.0f, static_cast<float>(progress.storeCount) / static_cast<float>(progress.plannedCapacity))
+        : 0.0f;
+    if (progress.plannedCapacity > 0 && progress.storeCount >= progress.plannedCapacity)
+    {
+        progress.current = AreaMilestone::Complete;
+    }
+    else if (progress.storeCount >= settings.expandedRangeStores)
+    {
+        progress.current = AreaMilestone::Expanded;
+    }
+    else if (progress.storeCount >= settings.minProgressStores)
+    {
+        progress.current = AreaMilestone::Minimum;
+    }
+    return progress;
+}
+
+int GraceWeeksLeft(const CommercialArea& area, int currentWeek, const CommercialAreaSettings& settings)
+{
+    if (!area.published)
+    {
+        return settings.graceWeeks;
+    }
+    return settings.graceWeeks - (currentWeek - area.publishedWeek);
+}
+
+const char* AreaMilestoneName(AreaMilestone milestone)
+{
+    switch (milestone)
+    {
+    case AreaMilestone::None:     return "未達成";
+    case AreaMilestone::Minimum:  return "最低進捗";
+    case AreaMilestone::Expanded: return "来訪範囲の拡大";
+    case AreaMilestone::Complete: return "計画の完成";
+    }
+    return "?";
+}
+
+const char* AreaHistoryKindName(AreaHistoryKind kind)
+{
+    switch (kind)
+    {
+    case AreaHistoryKind::Published: return "周知した";
+    case AreaHistoryKind::Moved:     return "動かした";
+    case AreaHistoryKind::Resized:   return "規模を変えた";
+    case AreaHistoryKind::Withdrawn: return "撤回した";
+    }
+    return "?";
+}
+
+std::vector<const char*> ValidateAreas(const std::vector<CommercialArea>& areas, const std::vector<AreaMembers>& members, float epsilon)
+{
+    std::vector<const char*> problems;
+    std::unordered_set<uint32_t> ids;
+    for (size_t i = 0; i < areas.size(); ++i)
+    {
+        if (areas[i].id == 0 || !ids.insert(areas[i].id).second)
+        {
+            problems.push_back("区画のIDが0、または重複している");
+            break;
+        }
+    }
+    bool overlapFound = false;
+    for (size_t i = 0; i < areas.size() && !overlapFound; ++i)
+    {
+        for (size_t j = i + 1; j < areas.size(); ++j)
+        {
+            if (AreaRectsOverlap(areas[i].rect, areas[j].rect, epsilon))
+            {
+                problems.push_back("区画どうしが重なっている");
+                overlapFound = true;
+                break;
+            }
+        }
+    }
+    std::unordered_set<uint32_t> seen;
+    for (const AreaMembers& area : members)
+    {
+        for (uint32_t id : area.facilityIds)
+        {
+            if (!seen.insert(id).second)
+            {
+                problems.push_back("施設が、2つ以上の区画に所属している(二重所属)");
+                return problems;
+            }
+        }
+    }
+    return problems;
+}

@@ -234,6 +234,18 @@
     <ClCompile Include="UI\MoveInPanel.cpp">
       <Filter>ソース ファイル\UI</Filter>
     </ClCompile>
+    <ClCompile Include="UI\AreaPanel.cpp">
+      <Filter>ソース ファイル\UI</Filter>
+    </ClCompile>
+    <ClCompile Include="Field\AreaToolController.cpp">
+      <Filter>ソース ファイル\Field</Filter>
+    </ClCompile>
+    <ClCompile Include="Simulation\CommercialArea.cpp">
+      <Filter>ソース ファイル\Simulation</Filter>
+    </ClCompile>
+    <ClCompile Include="Simulation\CommercialAreaManager.cpp">
+      <Filter>ソース ファイル\Simulation</Filter>
+    </ClCompile>
     <ClCompile Include="UI\GameMenu.cpp">
       <Filter>ソース ファイル\UI</Filter>
     </ClCompile>
@@ -295,6 +307,9 @@
       <Filter>ソース ファイル\DebugTools</Filter>
     </ClCompile>
     <ClCompile Include="DebugTools\MemoryPanel.cpp">
+      <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\AreaDebugPanel.cpp">
       <Filter>ソース ファイル\DebugTools</Filter>
     </ClCompile>
     <ClCompile Include="DebugTools\SimEndurancePanel.cpp">
@@ -632,6 +647,18 @@
     <ClInclude Include="UI\MoveInPanel.h">
       <Filter>ヘッダー ファイル\UI</Filter>
     </ClInclude>
+    <ClInclude Include="UI\AreaPanel.h">
+      <Filter>ヘッダー ファイル\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="Field\AreaToolController.h">
+      <Filter>ヘッダー ファイル\Field</Filter>
+    </ClInclude>
+    <ClInclude Include="Simulation\CommercialArea.h">
+      <Filter>ヘッダー ファイル\Simulation</Filter>
+    </ClInclude>
+    <ClInclude Include="Simulation\CommercialAreaManager.h">
+      <Filter>ヘッダー ファイル\Simulation</Filter>
+    </ClInclude>
     <ClInclude Include="UI\GameMenu.h">
       <Filter>ヘッダー ファイル\UI</Filter>
     </ClInclude>
@@ -711,6 +738,9 @@
       <Filter>ヘッダー ファイル\DebugTools</Filter>
     </ClInclude>
     <ClInclude Include="DebugTools\MemoryPanel.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\AreaDebugPanel.h">
       <Filter>ヘッダー ファイル\DebugTools</Filter>
     </ClInclude>
     <ClInclude Include="DebugTools\MemoryReport.h">

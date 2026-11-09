@@ -376,6 +376,29 @@ void ProceduralUISkin::DrawMonoIcon(UIRenderer& ui, UIIcon icon, float cx, float
         ui.FillCircle(cx + h * 0.30f, cy + h * 0.85f, size * 0.05f, color);
         break;
     }
+    case UIIcon::Area:
+    {
+        // 点線の四角(区画の枠)と、中の小さな四角(店)。
+        const float r = h * 0.78f;
+        const int dashes = 4;
+        for (int side = 0; side < 4; ++side)
+        {
+            // 各辺を、4つに分けた、1つおきの線(点線)。
+            const float ax = (side == 0) ? -r : (side == 1) ? r : (side == 2) ? r : -r;
+            const float ay = (side == 0) ? -r : (side == 1) ? -r : (side == 2) ? r : r;
+            const float bx = (side == 0) ? r : (side == 1) ? r : (side == 2) ? -r : -r;
+            const float by = (side == 0) ? -r : (side == 1) ? r : (side == 2) ? r : -r;
+            for (int i = 0; i < dashes; i += 2)
+            {
+                const float t0 = static_cast<float>(i) / static_cast<float>(dashes);
+                const float t1 = static_cast<float>(i + 1) / static_cast<float>(dashes);
+                ui.DrawLine(cx + ax + (bx - ax) * t0, cy + ay + (by - ay) * t0, cx + ax + (bx - ax) * t1, cy + ay + (by - ay) * t1, size * 0.08f, color);
+            }
+        }
+        ui.FillRect(UIRect{ cx - r * 0.55f, cy - r * 0.15f, r * 0.45f, r * 0.55f }, color);
+        ui.FillRect(UIRect{ cx + r * 0.10f, cy - r * 0.45f, r * 0.45f, r * 0.85f }, color);
+        break;
+    }
     default:
         break;
     }

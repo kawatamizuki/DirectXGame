@@ -194,6 +194,13 @@ struct ResidentListItem
 };
 
 // 住居が無い(Homeless)住民1人の、入居先を選ぶ画面に出す情報(表示用のコピー)。
+// 1つの施設を、今、使っている・向かっている住民の数(ゲーム内の「施設の情報」パネル用)。
+struct FacilityUsageNow
+{
+    int goingTo = 0;        // この施設へ向かっている住民の数(外出中で、行き先がこの施設)
+    int visiting = 0;       // この施設を、今、利用している住民の数
+};
+
 struct HomelessResidentInfo
 {
     uint32_t residentId = 0;        // 住民の見た目のオブジェクトのid(入居させる時に渡す)
@@ -314,6 +321,9 @@ public:
 
     // 今、入居できる住民(住居なしで、元の位置に立っている住民)の一覧。外出中に家が解体された住民は、帰り着いて住居なしになってから、載る。
     std::vector<HomelessResidentInfo> ListHomelessResidents() const;
+
+    // facilityObjectId の施設を、今、使っている・向かっている住民の数。読み取りだけ(乱数・状態を変えない)。
+    FacilityUsageNow GetFacilityUsageNow(uint32_t facilityObjectId) const;
     int CountHomelessResidents() const;
 
     // 新しい住宅を「入居者を選ぶ待ち」にする間、その住宅に、新しい住民を生まれさせない。選び終わったら ReleaseHouse(MoveInResident も、解除する)。

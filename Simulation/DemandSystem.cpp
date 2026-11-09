@@ -3098,6 +3098,25 @@ ResidentDebugView DemandSystem::GetResidentDebugView(uint32_t agentObjectId, con
     return view;
 }
 
+FacilityUsageNow DemandSystem::GetFacilityUsageNow(uint32_t facilityObjectId) const
+{
+    FacilityUsageNow usage;
+    if (facilityObjectId == 0)
+    {
+        return usage;
+    }
+    for (const ResidentAgent& agent : m_agents)
+    {
+        if (agent.targetFacilityId != facilityObjectId)
+        {
+            continue;
+        }
+        if (agent.state == ResidentAgentState::GoingOut) { ++usage.goingTo; }
+        else if (agent.state == ResidentAgentState::Visiting) { ++usage.visiting; }
+    }
+    return usage;
+}
+
 std::vector<HomelessResidentInfo> DemandSystem::ListHomelessResidents() const
 {
     std::vector<HomelessResidentInfo> list;

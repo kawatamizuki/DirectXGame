@@ -133,6 +133,7 @@ bool Game::Initialize(HWND hwnd)
     m_rewindPanel.SetOpenFlag(m_editorUi.PanelFlag("タイムライン"));
     m_endurancePanel.SetOpenFlag(m_editorUi.PanelFlag("耐久試験"));
     m_memoryPanel.SetOpenFlag(m_editorUi.PanelFlag("メモリ"));
+    m_areaDebugPanel.SetOpenFlag(m_editorUi.PanelFlag("商業エリア"));
 
     // 住民の判断・状態遷移の記録を有効にする(Editorのビルドだけ。Releaseでは無効のまま)。記録は、乱数・シミュレーションの結果を変えない。
     m_demandSystem.GetDebugRecorder().SetEnabled(true);
@@ -312,6 +313,14 @@ bool Game::Initialize(HWND hwnd)
         m_noticeSecondsLeft = 4.0f;
     });
 
+    // 商業エリア(P2-A): 区画の仮置き・移動の入力と枠の描画。区画の状態は m_areas が持つ。
+    m_areaTool.Initialize(&m_context, &m_field, &m_areas);
+    m_areaTool.SetOnMessage([this](const std::string& text)
+    {
+        m_noticeText = text;
+        m_noticeSecondsLeft = 4.0f;
+    });
+
     // 代表住民の見た目は、既に読み込んでいるKennyキャラクターモデルを仮で流用する
     if (!m_agentModel.LoadFromFile(m_renderer.GetDevice(), "Models/character-female-f.obj"))
     {
@@ -330,12 +339,15 @@ bool Game::Initialize(HWND hwnd)
     m_scenarioManager.RegisterSaveable(&m_gameFlags);
     m_scenarioManager.RegisterSaveable(&m_gameEconomy);
     m_scenarioManager.RegisterSaveable(&m_demandSystem);
+    m_scenarioManager.RegisterSaveable(&m_areas);   // 商業エリアの区画(P2-A)。古いセーブ(区画なし)は、「エリアなし」で読める
 #ifdef ENABLE_EDITOR
     // 読み込みで建物などのオブジェクトが入れ替わるので、エディタの選択(添字)を解除する。
     m_scenarioManager.SetOnWorldReplaced([this]()
     {
         m_debugEditor.ClearSelection();
         m_demolition.Cancel(); // ロード中(F9)に、解体の選びかけがあれば、やめる(選んだ位置は、前の街の物)
+        m_areaTool.Cancel();   // 区画を動かしている最中・選んでいた区画も、前の街の物なので、やめる
+        m_areaTool.ClearSelection();
         CancelMoveIn();        // 入居者を選ぶ待ちも、前の街の物なので、やめる(住宅・住民が入れ替わる)
         m_repro.NotifyWorldReplaced(); // 記録・再生の途中で、街が読み込み直されたら、中止する
         m_rewind.NotifyWorldReplaced(); // タイムラインは、(自分の巻き戻し以外で)街が入れ替わったら、記録を最初からやり直す
@@ -417,6 +429,10 @@ void Game::Update()
     m_inputManager.Update();
     m_sceneManager.Update();
     m_timeManager.Update();
+
+
+
+
 
     // ゲーム内時刻を進める(Editing/Playingに関わらず進める。Editorで時刻を動かして見た目を確認できる)。
     // 再現セッションの記録・再生中は、実時間のフレーム間隔ではなく、固定の刻みで時計を進める(PCの速さに、結果が依存しないため)。
@@ -517,6 +533,11 @@ void Game::Update()
     // もう片方は同じフレームでは動かない。
     // 街(建物・道路・住民)の更新は、ゲームシーンの間だけ。タイトル画面でクリックしても、街の操作(建物の配置など)が
     // 同時に起きないようにする。
+    if (IsInGameScene())
+    {
+        // 商業エリアの所属(どの施設が、どの区画か)は、今の建物の敷地から求め直す(建築・解体・区画の移動に、自動で追従する)。
+        m_areas.Refresh(CollectAreaFacilities());
+    }
     if (IsInGameScene() && m_context.mode == GameMode::Playing)
     {
         if (!m_context.inputConsumed)
@@ -528,6 +549,7 @@ void Game::Update()
             m_roadSystem.Update();
         }
         m_demolition.Update(); // 解体ツールの間だけ動く(押している間は、自分でinputConsumedを立てる)
+        m_areaTool.Update();   // 商業エリアのツールの間だけ動く(区画をクリック・ドラッグしている間は、自分でinputConsumedを立てる)
 
         if (m_noticeSecondsLeft > 0.0f)
         {
@@ -615,6 +637,7 @@ MemoryReport Game::BuildMemoryReport() const
     add(MemoryGroup::Game, "道路", segments.size() * sizeof(RoadSegment) + nodes.size() * sizeof(RoadNode) + nodeConnectionBytes + m_roadSystem.GetMeshVertexCount() * sizeof(Vertex),
         "区間 " + count(segments.size()) + " / 交差点 " + count(nodes.size()) + " / メッシュの頂点 " + count(m_roadSystem.GetMeshVertexCount()));
 
+    add(MemoryGroup::Game, "商業エリア(区画・所属)", m_areas.EstimateBytes(), count(m_areas.Areas().size()) + " 区画(区画・履歴・撤回の記録・所属の結果)");
     add(MemoryGroup::Game, "占有グリッド", m_occupancyGrid.GetOccupiedCellCount() * sizeof(GridCoord), "占有セル " + count(m_occupancyGrid.GetOccupiedCellCount()));
 
     const DemandMemoryStats demand = m_demandSystem.GetMemoryStats();
@@ -828,7 +851,10 @@ HudState Game::BuildHudState() const
     state.menu = BuildMenuModel();
     if (m_gameUI.IsResidentPanelOpen())
     {
-        state.residentInfo = BuildResidentInfoModel();
+        // 追跡している住民がいなくて、選んでいる建物が施設なら、「施設の情報」。それ以外(住民・住宅)は、「住民の情報」。
+        const GameObject* selected = (m_followAgentId == 0) ? GameObjectFactory::FindById(m_objects, m_selectedBuildingId) : nullptr;
+        const bool facilityPanel = selected && selected->kind == ObjectKind::Building && IsFacility(selected->buildingType);
+        state.residentInfo = facilityPanel ? BuildFacilityInfoModel() : BuildResidentInfoModel();
     }
     if (m_gameUI.IsMoveInOpen())
     {
@@ -846,6 +872,11 @@ HudState Game::BuildHudState() const
     {
         state.hintText = "解体: 建物・道路をクリック/なぞって選び、離すと解体(建物1棟100円・道路は建設費の半額) / Esc・右クリックでやめる";
     }
+    else if (m_context.placementTool == PlacementTool::Area)
+    {
+        state.hintText = "商業エリア: 地面をクリックで区画を仮置き(無料) / 区画をクリックで選択・ドラッグで移動 / Esc・右クリックで選びをやめる→ツールをやめる";
+    }
+    state.areaPanel = BuildAreaPanelModel();
 
     // 道路に接続できていない建物に、「道路がない！」を出す(建物の少し上)。
     if (IsInGameScene())
@@ -1025,6 +1056,15 @@ MenuModel Game::BuildMenuModel() const
         // お金が足りない(解体の最小の費用も、持っていない)時は、押しても、ツールに入らず、メニューも閉じない(理由を知らせる)。
         demolish.command = demolish.affordable ? MenuCommand{ MenuCommandType::SelectDemolish, 0 } : MenuCommand{ MenuCommandType::NotifyBlocked, 0 };
         model.tools.push_back(demolish);
+
+        // 商業エリア(区画の仮置き・周知)。仮置きは無料。
+        MenuItem area;
+        area.icon = UIIcon::Area;
+        area.name = "商業エリア";
+        area.detail = "仮置きは無料";
+        area.selected = (m_context.placementTool == PlacementTool::Area);
+        area.command = { MenuCommandType::SelectArea, 0 };
+        model.tools.push_back(area);
     }
 
     // 情報タブ。
@@ -1058,6 +1098,10 @@ MenuModel Game::BuildMenuModel() const
     else if (demolishTool)
     {
         model.activeToolLabel = "解体";
+    }
+    else if (m_context.placementTool == PlacementTool::Area)
+    {
+        model.activeToolLabel = "商業エリア";
     }
 
     model.statusText = m_menuStatus;
@@ -1108,9 +1152,16 @@ void Game::ApplyMenuCommand(const MenuCommand& command)
         m_demolition.Cancel();
         m_context.placementTool = PlacementTool::Demolish;
         break;
+    case MenuCommandType::SelectArea:
+        m_roadSystem.CancelPlacement();
+        m_demolition.Cancel();
+        m_areaTool.Cancel();
+        m_context.placementTool = PlacementTool::Area;
+        break;
     case MenuCommandType::CancelPlacement:
         m_roadSystem.CancelPlacement();
         m_demolition.Cancel();
+        m_areaTool.Cancel();
         m_context.placementTool = PlacementTool::None;
         break;
     case MenuCommandType::Save:
@@ -1237,6 +1288,13 @@ void Game::HandleMenuKeys()
         if (cancel && m_demolition.HasPending())
         {
             m_demolition.Cancel(); // 解体の選びかけがあれば、先にそれだけをやめる
+            m_context.inputConsumed = true;
+        }
+        else if (cancel && m_context.placementTool == PlacementTool::Area && (m_areaTool.IsDragging() || m_areaTool.SelectedId() != 0))
+        {
+            // 商業エリア: 動かしている最中なら、それだけをやめる。選んでいる区画があれば、選びをやめる(ツールは、そのまま)。
+            if (m_areaTool.IsDragging()) { m_areaTool.Cancel(); }
+            else { m_areaTool.ClearSelection(); }
             m_context.inputConsumed = true;
         }
         else if (cancel && !m_roadSystem.HasPendingPlacement())
@@ -1747,8 +1805,8 @@ void Game::UpdateBuildingSelection()
         m_context.inputConsumed = true; // 建物のクリックは、ここで受け取る(他の操作へ抜けない)
         if (buildingHitId == m_selectedBuildingId)
         {
-            // 同じ建物をもう1回クリック: 住宅なら、住民の情報を出す。
-            if (buildingHitType == BuildingType::House)
+            // 同じ建物をもう1回クリック: 住宅なら、住民の情報。施設(コンビニ・スーパー・映画館・カフェ)なら、施設の情報を出す。
+            if (buildingHitType == BuildingType::House || IsFacility(buildingHitType))
             {
                 m_gameUI.OpenResidentPanel();
             }
@@ -1872,6 +1930,104 @@ ResidentInfoModel Game::BuildResidentInfoModel() const
     }
     return model;
 }
+
+ResidentInfoModel Game::BuildFacilityInfoModel() const
+{
+    ResidentInfoModel model;
+    model.title = "施設の情報";
+
+    const GameObject* object = GameObjectFactory::FindById(m_objects, m_selectedBuildingId);
+    const FacilityDefinition* facility = (object && object->kind == ObjectKind::Building) ? FindFacilityDefinition(object->buildingType) : nullptr;
+    if (!facility)
+    {
+        model.emptyMessage = "この施設の情報が見つかりません。";
+        return model;
+    }
+    model.subtitle = std::string(facility->name) + " #" + std::to_string(object->id) + " / " + FacilityCategoryName(facility->category);
+
+    auto number = [](float value, int decimals) -> std::string
+    {
+        char text[32];
+        std::snprintf(text, sizeof(text), "%.*f", decimals, value);
+        return text;
+    };
+    auto header = [&](const char* label)
+    {
+        ResidentInfoRow row; row.kind = ResidentInfoRow::Kind::Header; row.label = label; model.rows.push_back(row);
+    };
+    auto value = [&](const char* label, const std::string& text, float gauge = -1.0f, bool warning = false)
+    {
+        ResidentInfoRow row; row.kind = ResidentInfoRow::Kind::Value; row.label = label; row.value = text;
+        row.gauge = gauge; row.warning = warning; model.rows.push_back(row);
+    };
+    auto clamp01 = [](float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); };
+
+    // 道路に接続できていない施設は、住民が来られない(一番上に、警告)。
+    for (uint32_t id : m_demandSystem.GetBuildingsWithoutRoad())
+    {
+        if (id == object->id)
+        {
+            ResidentInfoRow row; row.kind = ResidentInfoRow::Kind::Value; row.label = "道路"; row.value = "道路がない！(住民が来られません)"; row.warning = true;
+            model.rows.push_back(row);
+            break;
+        }
+    }
+
+    header("施設のデータ(種類ごとの固定の値)");
+    value("品質(1が標準)", number(facility->quality, 2), clamp01(facility->quality / 2.0f));
+    value("値段(1回の利用)", std::to_string(facility->pricePerVisit) + "円", clamp01(static_cast<float>(facility->pricePerVisit) / 800.0f));
+    value("滞在時間", number(facility->visitDurationHours, 1) + " 時間");
+    value("利用で減る体力", number(facility->staminaCost, 0) + "(2軒目以降は少し増える)");
+    value("需要の回復", "生活 +" + number(facility->lifeRecovery, 0) + " / アクティビティ +" + number(facility->activityRecovery, 0));
+
+    // 利用目的への向き(大きいほど、その目的で選ばれやすい)。行を増やさないよう、2つずつ1行にまとめる。
+    auto suitability = [&](UsagePurpose p) { return std::string(UsagePurposeName(p)) + " " + number(facility->purposeSuitability[static_cast<int>(p)], 1); };
+    header("利用目的への向き(大きいほど選ばれやすい)");
+    value("買い足し・まとめ買い", suitability(UsagePurpose::TopUp) + " / " + suitability(UsagePurpose::BulkBuy));
+    value("映画・軽食", suitability(UsagePurpose::Movie) + " / " + suitability(UsagePurpose::Light) + (facility->foodLike ? "(食事系)" : ""));
+
+    header("今の利用状況");
+    const FacilityUsageNow usage = m_demandSystem.GetFacilityUsageNow(object->id);
+    value("利用中 / 向かっている", std::to_string(usage.visiting) + "人 / " + std::to_string(usage.goingTo) + "人");
+
+    header("来客と売上(住民が実際に利用した結果)");
+    if (const FacilityRecord* record = m_demandSystem.GetLedger().Find(object->id))
+    {
+        auto tally = [](const FacilityTally& t) { return std::to_string(t.visits) + "人 / " + std::to_string(t.sales) + "円"; };
+        value("今週", tally(record->thisWeek));
+        value("先週", tally(record->lastWeek));
+        value("今月", tally(record->thisMonth));
+        value("通算", tally(record->total));
+    }
+    else
+    {
+        value("今週・先週・今月・通算", "まだ利用がありません");
+    }
+
+    header("商業エリア(施設のデータは、区画に入っても変わりません)");
+    const CommercialArea* belongArea = nullptr;
+    float belongRatio = 0.0f;
+    for (const AreaMembers& members : m_areas.Members())
+    {
+        for (size_t i = 0; i < members.facilityIds.size(); ++i)
+        {
+            if (members.facilityIds[i] == object->id)
+            {
+                belongArea = m_areas.Find(members.areaId);
+                belongRatio = members.overlapRatios[i];
+            }
+        }
+    }
+    if (belongArea)
+    {
+        value("所属する区画", "#" + std::to_string(belongArea->id) + (belongArea->published ? "(周知済み)" : "(非公開)") + "  敷地の" + number(belongRatio * 100.0f, 0) + "%が区画内", clamp01(belongRatio));
+    }
+    else
+    {
+        value("所属する区画", "なし");
+    }
+    return model;
+}
 void Game::UpdateGameUI()
 {
     if (!IsGameUIVisible())
@@ -1964,6 +2120,7 @@ void Game::UpdateGameUI()
     {
         ResolveMoveIn(0);
     }
+    ApplyAreaPanelResult(result);   // 「エリア」パネルの、周知・削除・閉じる
     SyncMenuTimeScale();
 }
 
@@ -2048,6 +2205,136 @@ void Game::CancelMoveIn()
     m_moveInQueue.clear();
 }
 
+std::vector<AreaFacility> Game::CollectAreaFacilities() const
+{
+    std::vector<AreaFacility> facilities;
+    for (const GameObject& object : m_objects)
+    {
+        if (object.kind != ObjectKind::Building || !IsAreaFacilityType(object.buildingType))
+        {
+            continue;
+        }
+        AreaFacility facility;
+        facility.objectId = object.id;
+        facility.type = object.buildingType;
+        facility.footprint = object.placement.footprintRect;
+        facilities.push_back(facility);
+    }
+    return facilities;
+}
+
+AreaPanelModel Game::BuildAreaPanelModel() const
+{
+    AreaPanelModel model;
+    const CommercialArea* area = (m_context.placementTool == PlacementTool::Area) ? m_areas.Find(m_areaTool.SelectedId()) : nullptr;
+    if (!area)
+    {
+        return model;
+    }
+    const CommercialAreaSettings& settings = m_areas.Settings();
+    const AreaProgress progress = m_areas.ProgressOf(area->id);
+    const int week = m_gameClock.GetWeekCount();
+    model.visible = true;
+    model.title = "商業エリア #" + std::to_string(area->id);
+    model.subtitle = area->published ? "周知済み(住民に知らされています)" : "非公開の仮置き(周知するまで、何も起きません)";
+
+    auto header = [&](const std::string& label) { ResidentInfoRow row; row.kind = ResidentInfoRow::Kind::Header; row.label = label; model.rows.push_back(row); };
+    auto value = [&](const std::string& label, const std::string& text, float gauge = -1.0f, bool warning = false)
+    {
+        ResidentInfoRow row; row.kind = ResidentInfoRow::Kind::Value; row.label = label; row.value = text; row.gauge = gauge; row.warning = warning;
+        model.rows.push_back(row);
+    };
+    auto note = [&](const std::string& label, const std::string& text, bool warning = false)
+    {
+        ResidentInfoRow row; row.kind = ResidentInfoRow::Kind::Note; row.label = label; row.value = text; row.warning = warning;
+        model.rows.push_back(row);
+    };
+
+    header("店舗数と進捗");
+    value("店舗数 / 計画", std::to_string(progress.storeCount) + " / " + std::to_string(progress.plannedCapacity) + " 軒", progress.ratio);
+    value("今の段階", AreaMilestoneName(progress.current));
+    if (area->published)
+    {
+        value("達成した最高の段階", AreaMilestoneName(area->achieved));
+    }
+    note("計画の達成率について", "店の数だけを数えます。集客力・売上とは別です(店の用途・立地で決まります)。");
+
+    header("周知");
+    if (area->published)
+    {
+        const int left = GraceWeeksLeft(*area, week, settings);
+        value("周知した週", "第" + std::to_string(area->publishedWeek) + "週");
+        value("開発の猶予", left > 0 ? "あと " + std::to_string(left) + " 週" : "猶予が過ぎました", -1.0f, left <= 0);
+        if (!area->history.empty())
+        {
+            std::string text;
+            for (const AreaHistoryEntry& entry : area->history)
+            {
+                if (!text.empty()) { text += " / "; }
+                text += "第" + std::to_string(entry.week) + "週 " + AreaHistoryKindName(entry.kind);
+            }
+            note("履歴", text);
+        }
+    }
+    else
+    {
+        value("猶予", "周知すると、" + std::to_string(settings.graceWeeks) + " 週から数え始めます");
+        note("仮置きについて", "無料で、いつでも移動・削除できます。何も起きません。");
+    }
+
+    if (!area->published)
+    {
+        model.publishLabel = "周知する";
+        model.publishConfirm = "周知すると、住民に計画が知らされ、\n" + std::to_string(settings.graceWeeks) + "週の猶予が始まります。周知しますか?";
+        model.deleteLabel = "削除";
+    }
+    else
+    {
+        model.deleteLabel = "撤回";
+        model.deleteConfirm = "周知済みの区画を撤回します。\n撤回の記録は残ります。撤回しますか?";
+    }
+    return model;
+}
+
+void Game::ApplyAreaPanelResult(const HudResult& result)
+{
+    // 区画の選びが変わったら、パネルの確認の手順(周知しますか?)を、最初に戻す。
+    const uint32_t selected = (m_context.placementTool == PlacementTool::Area) ? m_areaTool.SelectedId() : 0;
+    if (selected != m_lastAreaSelection)
+    {
+        m_gameUI.ResetAreaPanelConfirm();
+        m_lastAreaSelection = selected;
+    }
+    if (selected == 0)
+    {
+        return;
+    }
+    const int week = m_gameClock.GetWeekCount();
+    if (result.areaPublishConfirmed)
+    {
+        if (m_areas.Publish(selected, week))
+        {
+            m_noticeText = "商業エリア #" + std::to_string(selected) + " を周知しました(" + std::to_string(m_areas.Settings().graceWeeks) + "週の猶予が始まります)";
+            m_noticeSecondsLeft = 4.0f;
+            m_audio.PlaySe("ui_open");
+        }
+    }
+    else if (result.areaDeleteConfirmed)
+    {
+        const bool wasPublished = m_areas.Find(selected) && m_areas.Find(selected)->published;
+        if (m_areas.DeleteArea(selected, week))
+        {
+            m_noticeText = wasPublished ? "商業エリアを撤回しました(記録は残ります)" : "商業エリアを削除しました";
+            m_noticeSecondsLeft = 4.0f;
+            m_areaTool.ClearSelection();
+        }
+    }
+    else if (result.areaCloseRequested)
+    {
+        m_areaTool.ClearSelection();
+    }
+}
+
 void Game::Draw()
 {
     // ゲーム内時刻から今の光の状態(太陽/月の向き・色・空の色)を求めて、描画に渡す。
@@ -2086,12 +2373,14 @@ void Game::Draw()
         const bool showGrid = m_showGridOverlay; // Editorメニューで切り替える
 #else
         // エディタが無いビルド(Release): 格子線は、建物・道路を置こうとしている間だけ出す(置く場所の目安)。
-        const bool showGrid = (m_context.placementTool == PlacementTool::Building || m_context.placementTool == PlacementTool::Road);
+        const bool showGrid = (m_context.placementTool == PlacementTool::Building || m_context.placementTool == PlacementTool::Road
+                               || m_context.placementTool == PlacementTool::Area);
 #endif
         if (showGrid)
         {
             m_field.DrawGridOverlay(m_debugRenderer, m_orientationRegistry);
         }
+        m_areaTool.Draw(m_debugRenderer); // 商業エリアの区画の枠(ツールを使っていない間も出す)
         m_propPlacer.Draw(); // Assetsからのドラッグ中のゴースト
         // 追跡している住民のしるし(足元の黄色い輪)。建物の中にいても、位置に出す。
         // (これは、選択・追跡を知らせる、ゲームの表示。当たり判定の箱の表示とは別で、Releaseにも出る)
@@ -2179,6 +2468,7 @@ void Game::Draw()
     Profiler::DrawDebugUI(m_objects, m_roadSystem, m_occupancyGrid, m_demandSystem, m_editorUi.PanelFlag("Profiler"));
     Debug::DrawDebugUI(m_editorUi.PanelFlag("Log"));
     m_memoryPanel.Draw([this]() { return BuildMemoryReport(); });
+    m_areaDebugPanel.Draw(m_areas, m_gameClock);
 
     // ホバーのヒントとショートカット一覧。全てのパネルを描いた後。
     m_editorUi.EndFrame(editorFrame);

@@ -7,6 +7,7 @@
 #include "GameMenu.h"
 #include "ResidentInfoPanel.h"
 #include "MoveInPanel.h"
+#include "AreaPanel.h"
 #include "DemandSystem.h"
 #include "CostPreview.h"
 
@@ -46,6 +47,9 @@ struct HudState
     // 「入居者を選ぶ」パネルに出す内容(開いている間だけ使う)。
     MoveInModel moveIn;
 
+    // 「エリア」パネルに出す内容(商業エリアのツールで、区画を選んでいる間だけ visible)。
+    AreaPanelModel areaPanel;
+
     // 世界の建物に付ける警告(建物の少し上に出す。ゲーム側が、画面の位置に直して渡す)。
     std::vector<HudWorldLabel> worldLabels;
 
@@ -84,6 +88,9 @@ struct HudResult
     bool moveInOpen = false;                    // 「入居者を選ぶ」パネルが開いているか(開いている間は、ゲーム内の時間を止める)
     uint32_t moveInChosenResidentId = 0;        // このフレームに、入居する住民が選ばれた(0=選ばれていない)
     bool moveInDeclined = false;                // このフレームに、「新しい住民を迎える」が押された
+    bool areaPublishConfirmed = false;          // このフレームに、「エリア」パネルで、周知が確認まで済んだ
+    bool areaDeleteConfirmed = false;           // 同、削除(撤回)が確認まで済んだ
+    bool areaCloseRequested = false;            // 同、「閉じる」が押された(区画の選びをやめる)
 };
 
 // ゲームプレイ用の上部HUDバーと、ゲーム内メニュー。配置・入力をまとめて担当する(ImGuiは使わない)。
@@ -171,6 +178,10 @@ public:
     void CloseMoveIn() { m_moveInPanel.Close(); }
     const MoveInPanel& GetMoveInPanel() const { return m_moveInPanel; }
 
+    // 「エリア」パネルの確認の手順を、最初に戻す(区画の選びが変わった時に使う)。
+    void ResetAreaPanelConfirm() { m_areaPanel.ResetConfirm(); }
+    const AreaPanel& GetAreaPanel() const { return m_areaPanel; }
+
     // 配置を計算し、マウスの当たり判定とクリック処理を行う。毎フレーム、ワールドへの入力処理より先に呼ぶ。
     HudResult Update(const HudInput& input, const HudState& state);
 
@@ -197,5 +208,6 @@ private:
     GameMenu m_menu;
     ResidentInfoPanel m_residentPanel;
     MoveInPanel m_moveInPanel;
+    AreaPanel m_areaPanel;
     Layout m_layout;
 };

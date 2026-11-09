@@ -29,6 +29,7 @@ $common = @(
     "Simulation\ResidentLogic.cpp", "Simulation\SimDebugRecorder.cpp", "Simulation\SimTimeline.cpp",
     "Simulation\SimTest.cpp", "Simulation\SimStats.cpp", "Simulation\SimRunDigest.cpp",
     "Simulation\SimInvariantMonitor.cpp", "Simulation\FacilityData.cpp", "Simulation\FacilityLedger.cpp",
+    "Simulation\CommercialArea.cpp", "Simulation\CommercialAreaManager.cpp",
     "Object\BuildingType.cpp", "Field\OrientedRectangleOverlap.cpp", "Core\GameClock.cpp", "Scenario\Json.cpp"
 ) | ForEach-Object { Join-Path $root $_ }
 
