@@ -84,6 +84,57 @@ struct OutingReasonTrace
     bool areaAvailable = false;         // 「エリア」の候補があったか
     bool valid = false;                 // 理由を選べたか(falseなら、外出を取りやめる)
     OutingReason chosen = OutingReason::Quick;
+    bool fellBack = false;              // 「エリア」を引いたが、今回の目的に合う区画が無く、他の理由から選び直したか(P2-C1。乱数は引き直さず、同じ値を使う)
+    OutingReason chosenBeforeFallback = OutingReason::Quick; // fellBackの時の、選び直す前の理由(いつも「エリア」)
+};
+
+// 「エリア」を引いたが、今回の目的に合う区画が無かった時に、他の理由(手軽・がっつり)から、同じ乱数で選び直す(乱数は、引き直さない)。
+// trace: ChooseOutingReason が書き出した重みと乱数。out: 選び直した理由。選べる理由が無ければ false。
+bool ReevaluateReasonWithoutArea(const OutingReasonTrace& trace, OutingReason& out);
+
+// ---- 商業エリアへの外出(P2-C1) ----
+// 外出の理由が「エリア」の時に、目的地の区画を、重み付きの抽選で選ぶ。評価は、道路で実際に到達できる所属施設を基準にする(区画の中心への直線距離ではない)。
+// 距離の効き方は P2-0 のものを再利用する(理由「エリア」の距離の目安・形)。施設の数・供給量の効果は、頭打ち(過剰にならない)。
+struct AreaCandidate
+{
+    uint32_t areaId = 0;
+    bool published = false;             // 周知済みか
+    int memberCount = 0;                // 所属する施設の数
+    int usableCount = 0;                // 今回の目的(カテゴリ)に合い、道路で到達でき、体力が足りる、所属施設の数
+    float nearestPathLength = 0.0f;     // 使える所属施設までの、道のりの最小(ワールド単位。usableCountが0より大きい時だけ意味を持つ)
+    float supplyForPurpose = 0.0f;      // 使える所属施設の、今回の利用目的への適性(元の値)の合計
+    int coveredPurposes = 0;            // 区画全体の、用途の充実度(P2-B)
+};
+
+enum class AreaReject : uint8_t
+{
+    None,               // 抽選の対象になった
+    NotAvailable,       // 外出目的の候補にならない(未周知で、未周知の倍率が0。周知による差は P2-C2 で調整)
+    NoMember,           // 所属する施設が、1軒も無い
+    NoUsableMember      // 今回の目的に合う・道路で到達できる・体力が足りる所属施設が、1軒も無い
+};
+
+struct AreaCandidateEvaluation
+{
+    AreaCandidate candidate;
+    AreaReject reject = AreaReject::None;
+    float legacyDistance = 0.0f;        // 使える所属施設までの道のり(マス基準)
+    float distanceScale = 0.0f;         // 距離の目安(マス基準。理由「エリア」の倍率・住民の距離許容度込み)
+    float distanceFactor = 0.0f;        // 距離の重み(P2-0の距離の効き方)
+    float publishFactor = 0.0f;         // 周知の倍率
+    float fitFactor = 0.0f;             // 今の目的への適合 = 供給量 ÷ 頭打ち(下限あり。1が上限)
+    float coverageFactor = 0.0f;        // 充実度の魅力 = 1 + 増え方 × (充実度 − 1) ÷ (用途の数 − 1)
+    float reputation = 0.0f;            // 評判(P2-Dまで1.0)
+    float weight = 0.0f;                // 重み(rejectがNoneの時だけ、0より大きい)
+    float chance = 0.0f;                // 選ばれる確率(重み ÷ 合計)
+    bool chosen = false;
+};
+
+struct AreaChoiceTrace
+{
+    float roll = -1.0f;                 // 抽選に使った乱数(呼び出し側が、外出の理由に依らず、いつも1つ引く)
+    float totalWeight = 0.0f;
+    int pickedIndex = -1;               // 選ばれた候補の添字(-1=選べなかった)
 };
 
 // 外出の理由を、重み付きの抽選で決める。乱数は、いつも1回だけ引く(重みの合計が0でも)。
@@ -104,6 +155,7 @@ struct OutingPurposeChoice
     FacilityCategory category = FacilityCategory::Daily;
     UsagePurpose purpose = UsagePurpose::TopUp;
     OutingReason reason = OutingReason::Quick;
+    uint32_t areaId = 0;                // 理由が「エリア」で、選んだ商業エリアの区画のID(0=区画を選んでいない)。ChoosePurposeは、変えない(DemandSystemが入れる)
 };
 
 // 目的を決めた時の、判断の過程(デバッグ用)。ChoosePurpose が実際に使った値と乱数を、そのまま書き出す(後から計算し直さない)。
@@ -124,10 +176,24 @@ struct PurposeTrace
     float purposeRoll = -1.0f;          // 利用目的を決めた乱数
     float purposeChance = 0.0f;         // 乱数がこれ未満なら、日用品はまとめ買い・娯楽は映画(それ以外は買い足し・軽食)
     OutingReasonTrace reason;           // この外出の理由の決め方(呼び出し側が、ChooseOutingReason の結果を入れる)
+    std::vector<AreaCandidateEvaluation> areaEvaluations; // 区画の抽選の、候補ごとの評価(理由が「エリア」だった時だけ。呼び出し側が入れる)
+    AreaChoiceTrace areaChoice;         // 区画の抽選の、乱数・合計・選ばれた添字(同上)
 };
 
 // outTrace: 判断の過程を受け取る(nullptrなら要らない)。乱数の消費は、いつも2回(カテゴリ・利用目的)。outTraceの有無で変わらない。
 OutingPurposeChoice ChoosePurpose(const ResidentAgent& agent, const ResidentSimSettings& settings, SimRandom& random, PurposeTrace* outTrace = nullptr);
+
+// 区画を、重み付きの抽選で選ぶ(P2-C1)。乱数は、呼び出し側が引いた roll を使う(この関数は、乱数を引かない)。
+// evals: 全ての候補の評価(除外の理由・重み・確率・選ばれたか)。選ばれた候補の添字を返す。選べなければ-1(今回の目的に合う区画が、1つも無い)。
+// 区画の重み = 距離の重み × 周知の倍率 × 適合 × 充実度の魅力 × 評判(下限 minimumWeight)。除外は、実際に不可能な場合(所属施設が無い・使える所属施設が無い・候補にならない周知の状態)だけ。
+int ChooseArea(const ResidentAgent& agent, const std::vector<AreaCandidate>& candidates, const OutingPurposeChoice& purpose,
+               const ResidentSimSettings& settings, float roll, std::vector<AreaCandidateEvaluation>& evals, AreaChoiceTrace* trace = nullptr);
+
+// 距離の重み(P2-0の距離の効き方): exp(-(道のり ÷ 距離の目安)^形)。目安 = 基準 × 住民の距離許容度 × 理由ごとの倍率 × distanceScaleFactor。
+// 施設の重み(ComputeFacilityWeightBreakdown)と、区画の重み(ChooseArea)が、同じ関数を使う(距離の評価を、1か所にする)。
+// outLegacyDistance / outScale / outShape: 途中の値(マス基準の道のり・目安・形)。nullptrなら、要らない。
+float ComputeDistanceFactor(const ResidentAgent& agent, float pathLength, const ResidentSimSettings& settings, OutingReason reason,
+                            float distanceScaleFactor, float* outLegacyDistance = nullptr, float* outScale = nullptr, float* outShape = nullptr);
 
 // ---- 施設の選び方(重み付き抽選) ----
 struct FacilityCandidate

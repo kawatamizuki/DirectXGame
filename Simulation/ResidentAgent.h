@@ -106,6 +106,8 @@ struct ResidentAgent
     uint32_t targetFacilityId = 0;          // 向かっている(利用中の)施設のid(0=なし)
     UsagePurpose purpose = UsagePurpose::TopUp; // 今の外出の利用目的
     OutingReason outingReason = OutingReason::Quick; // 今の外出の理由(外出を始める時に決める。立ち寄りの判断・施設選びが参照する。保存される。古いセーブは「手軽」)
+    uint32_t outingAreaId = 0;              // 今の外出の目的地に選んだ商業エリアの区画のID(0=エリア目的の外出ではない)。保存される
+    std::vector<uint32_t> areasCountedThisOuting; // 今の外出で、「来訪者」として数え済みの区画のID(同じ外出で、同じ区画の人数を重ねて数えないため)。保存される
     float visitHoursLeft = 0.0f;            // 施設の中に、あと何ゲーム時間いるか
     int outingStopCount = 0;                // 今の外出での立ち寄り回数(P1で使う)
     bool usedFoodLikeFacilityThisOuting = false; // 今の外出で、食事系の施設を使ったか(P1で使う)

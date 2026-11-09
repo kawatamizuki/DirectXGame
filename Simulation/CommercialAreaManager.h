@@ -2,19 +2,24 @@
 #include <vector>
 #include "CommercialArea.h"
 #include "ISaveable.h"
+#include "IAreaSource.h"
 
 // 商業エリアの区画を持ち、仮置き・移動・削除・周知を行う(P2-A)。ISaveableなので、"commercialAreas" の区画として保存・復元される。
 //  ・区画の操作は、ゲームのオブジェクト・画面を知らない(位置と週を渡すだけ)。画面の操作は Field/AreaToolController が行う。
 //  ・所属(どの施設がどの区画か)は、保存せず、Refresh で、今の建物の敷地から求め直す(建築・解体・区画の移動に、自動で追従する)。
 //  ・住民の行動・売上・評判には、まだ、何も影響しない(P2-A)。周知後の猶予・評判は P2-D、エリア目的の外出は P2-C。
 //  ・乱数を使わない。
-class CommercialAreaManager : public ISaveable
+class CommercialAreaManager : public ISaveable, public IAreaSource
 {
 public:
     CommercialAreaSettings& Settings() { return m_settings; }
     const CommercialAreaSettings& Settings() const { return m_settings; }
 
     const std::vector<CommercialArea>& Areas() const { return m_areas; }
+
+    // ---- 読み取り専用の窓口(IAreaSource。住民のシミュレーションが読む) ----
+    const std::vector<CommercialArea>& GetAreas() const override { return m_areas; }
+    const CommercialAreaSettings& GetAreaSettings() const override { return m_settings; }
     const CommercialArea* Find(uint32_t id) const;
     const std::vector<WithdrawnAreaRecord>& Withdrawn() const { return m_withdrawn; }
 

@@ -1029,6 +1029,7 @@ void ResidentDebugPanel::DrawCurrentTab(DemandSystem& demand, const std::vector<
     }
     Row("立ち寄り", Fmt("%d / %d 回%s", view.outingStopCount, settings.maxStopovers, view.usedFoodLikeFacilityThisOuting ? "  (今回の外出で食事系を使った)" : ""));
     Row("外出の理由", OutingReasonName(view.outingReason));
+    if (view.outingAreaId != 0) { Row("目的地の区画", Fmt("#%u(区画を目的に外出。施設を使うまでは、来訪・売上に数えない)", view.outingAreaId)); }
     {
         const StopoverChanceBreakdown& sp = view.stopoverPreview;
         Row("今、立ち寄りを考えるなら", Fmt("%.1f%% = 基本 %.0f%% × 回数 %.2f × 体力 %.2f × 需要 %.2f × 理由「%s」%.2f",
@@ -1104,7 +1105,7 @@ void ResidentDebugPanel::DrawCurrentTab(DemandSystem& demand, const std::vector<
             const PurposeTrace& pt = view.purposePreview;
             const float total = (std::max)(rt.total, 1e-6f);
             Row("需要の段階", Fmt("生活 %s / アクティビティ %s(切迫度 %.2f)", NeedStageName(view.lifeStage), NeedStageName(view.activityStage), rt.pressure));
-            Row("外出の理由の見積り", Fmt("手軽 %.0f%% / がっつり %.0f%% / エリア %.0f%%(体力の割合 %.2f。エリアは P2-A まで候補なし)",
+            Row("外出の理由の見積り", Fmt("手軽 %.0f%% / がっつり %.0f%% / エリア %.0f%%(体力の割合 %.2f。エリアは、周知済みで所属施設がある区画が無い間は、0)",
                                        rt.weight[0] / total * 100.0f, rt.weight[1] / total * 100.0f, rt.weight[2] / total * 100.0f, rt.staminaRatio));
             Row("目的のカテゴリの見積り", Fmt("生活 %.0f%%(重み %.3f) / 余暇 %.0f%%(重み %.3f)", (1.0f - pt.leisureChance) * 100.0f, pt.dailyWeight, pt.leisureChance * 100.0f, pt.leisureWeight));
         }
@@ -1255,8 +1256,14 @@ void ResidentDebugPanel::DrawDecisionDetail(const SimDecisionDetail& detail, con
         {
             Heading("外出の理由(P2-0)");
             Row("重み", Fmt("手軽 %.3f / がっつり %.3f / エリア %.3f  (合計 %.3f)", rt.weight[0], rt.weight[1], rt.weight[2], rt.total));
-            Row("状態", Fmt("体力の割合 %.2f / 需要の切迫度 %.2f / エリアの候補 %s", rt.staminaRatio, rt.pressure, rt.areaAvailable ? "あり" : "なし(P2-Aまで、重み0)"));
+            Row("状態", Fmt("体力の割合 %.2f / 需要の切迫度 %.2f / エリアの候補 %s", rt.staminaRatio, rt.pressure, rt.areaAvailable ? "あり" : "なし(周知済みで所属施設がある区画が無い。重み0)"));
             Row("抽選", Fmt("乱数 %.4f → %s", rt.roll, rt.valid ? OutingReasonName(rt.chosen) : "選べる理由なし"));
+            if (rt.fellBack)
+            {
+                // 「エリア」を引いたが、今回の目的に合う区画が無く、他の理由から、同じ乱数で、選び直した。
+                ImGui::TextColored(kColorNotMet, "「%s」を引いたが、今回の目的に合う区画が無いので、同じ乱数で「%s」に選び直しました(乱数は引き直していません)",
+                                   OutingReasonName(rt.chosenBeforeFallback), OutingReasonName(rt.chosen));
+            }
             ImGui::TextDisabled("がっつり = 基本 %.2f × 体力の割合^%.2f × (1 − 切迫度 × %.2f) × 自発性 %.2f / 手軽 = 基本 %.2f",
                                 s.reasonSubstantialWeight, s.substantialStaminaExponent, s.substantialPressurePenalty, detail.traits.spontaneity, s.reasonQuickWeight);
         }
@@ -1281,6 +1288,66 @@ void ResidentDebugPanel::DrawDecisionDetail(const SimDecisionDetail& detail, con
                 Row("利用目的", Fmt("映画の確率 %.0f%% / 乱数 %.4f → %s", trace.purposeChance * 100.0f, trace.purposeRoll, UsagePurposeName(detail.purpose.purpose)));
             }
         }
+    }
+
+    // 理由が「エリア」だった時の、区画の抽選(P2-C1)。「狙った区画」と、実際に使った施設(下の候補の評価・結果)を、見比べられる。
+    if (!trace.areaEvaluations.empty())
+    {
+        Heading("区画の評価(理由が「エリア」)");
+        ImGui::TextDisabled("乱数 %.4f / 重みの合計 %.4f / 選ばれた区画: %s", trace.areaChoice.roll, trace.areaChoice.totalWeight,
+                            trace.areaChoice.pickedIndex >= 0 ? Fmt("#%u", trace.areaEvaluations[static_cast<size_t>(trace.areaChoice.pickedIndex)].candidate.areaId).c_str() : "なし");
+        const ImGuiTableFlags areaFlags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollX | ImGuiTableFlags_SizingFixedFit;
+        const float areaTableHeight = (static_cast<float>(trace.areaEvaluations.size()) + 1.0f) * ImGui::GetTextLineHeightWithSpacing() + ImGui::GetStyle().ScrollbarSize + 8.0f;
+        if (ImGui::BeginTable("##areaCandidates", 12, areaFlags, ImVec2(0.0f, areaTableHeight)))
+        {
+            ImGui::TableSetupColumn("区画");
+            ImGui::TableSetupColumn("採否");
+            ImGui::TableSetupColumn("所属/使える");
+            ImGui::TableSetupColumn("道のり(マス)");
+            ImGui::TableSetupColumn("距離");
+            ImGui::TableSetupColumn("周知");
+            ImGui::TableSetupColumn("適合");
+            ImGui::TableSetupColumn("充実度");
+            ImGui::TableSetupColumn("評判");
+            ImGui::TableSetupColumn("重み");
+            ImGui::TableSetupColumn("確率");
+            ImGui::TableSetupColumn("結果");
+            ImGui::TableHeadersRow();
+            for (const AreaCandidateEvaluation& ev : trace.areaEvaluations)
+            {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn(); ImGui::Text("#%u%s", ev.candidate.areaId, ev.candidate.published ? "" : "(未周知)");
+                ImGui::TableNextColumn();
+                switch (ev.reject)
+                {
+                case AreaReject::None:            ImGui::TextColored(kColorSuccess, "対象"); break;
+                case AreaReject::NotAvailable:    ImGui::TextColored(kColorNotMet, "候補にならない(未周知)"); break;
+                case AreaReject::NoMember:        ImGui::TextColored(kColorNotMet, "所属施設なし"); break;
+                case AreaReject::NoUsableMember:  ImGui::TextColored(kColorNotMet, "使える所属施設なし"); break;
+                }
+                ImGui::TableNextColumn(); ImGui::Text("%d / %d", ev.candidate.memberCount, ev.candidate.usableCount);
+                ImGui::TableNextColumn();
+                if (ev.reject == AreaReject::None) { ImGui::Text("%.1f", ev.legacyDistance); } else { ImGui::TextDisabled("-"); }
+                if (ev.reject == AreaReject::None)
+                {
+                    ImGui::TableNextColumn(); ImGui::Text("%.3f", ev.distanceFactor);
+                    ImGui::TableNextColumn(); ImGui::Text("%.2f", ev.publishFactor);
+                    ImGui::TableNextColumn(); ImGui::Text("%.3f", ev.fitFactor);
+                    ImGui::TableNextColumn(); ImGui::Text("%.3f", ev.coverageFactor);
+                    ImGui::TableNextColumn(); ImGui::Text("%.2f", ev.reputation);
+                    ImGui::TableNextColumn(); ImGui::Text("%.4f", ev.weight);
+                    ImGui::TableNextColumn(); ImGui::Text("%.1f%%", ev.chance * 100.0f);
+                }
+                else
+                {
+                    for (int c = 0; c < 7; ++c) { ImGui::TableNextColumn(); ImGui::TextDisabled("-"); }
+                }
+                ImGui::TableNextColumn();
+                if (ev.chosen) { ImGui::TextColored(kColorSuccess, "選ばれた"); } else { ImGui::TextDisabled("-"); }
+            }
+            ImGui::EndTable();
+        }
+        ImGui::TextDisabled("区画を選んだあと、施設は、その区画の所属施設の中から選びます(下の候補の評価)。区画を選んでも、実際に施設を使うとは限りません(施設の利用がなければ、売上は発生しません)。");
     }
 
     if (detail.evaluations.empty())

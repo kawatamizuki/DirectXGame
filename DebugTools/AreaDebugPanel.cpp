@@ -1,5 +1,7 @@
 ﻿#include "AreaDebugPanel.h"
+#include <algorithm>
 #include <string>
+#include "AreaLedger.h"
 #include "CommercialAreaManager.h"
 #include "GameClock.h"
 #include "imgui.h"
@@ -32,7 +34,7 @@ namespace
     }
 }
 
-void AreaDebugPanel::Draw(CommercialAreaManager& areas, const GameClock& clock)
+void AreaDebugPanel::Draw(CommercialAreaManager& areas, const GameClock& clock, const AreaLedger& ledger)
 {
     if (m_open && !*m_open)
     {
@@ -165,6 +167,63 @@ void AreaDebugPanel::Draw(CommercialAreaManager& areas, const GameClock& clock)
                 ImGui::TableNextColumn(); ImGui::Text("%.2f", c.specialization);
                 ImGui::TableNextColumn(); ImGui::Text("%d / %d", c.coveredPurposes, kUsagePurposeCount);
                 ImGui::TableNextColumn(); ImGui::Text("%d", c.overlapStores);
+            }
+            ImGui::EndTable();
+        }
+    }
+
+    // 区画ごとの、来訪・利用・売上の集計(P2-C1)。「目的にした人数」と「実際に使った人数」は、別の数字。差=エリアに向かったが、使わなかった人。
+    if (ImGui::CollapsingHeader("区画ごとの集計(来訪・利用・売上)", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        ImGui::TextDisabled("目的にした人数=理由が「エリア」で、その区画へ出発した人 / 来訪者=区画の施設を実際に使った人(目的が何でも。同じ外出で同じ区画は1人)\n"
+                            "目的の来訪者=来訪者のうち、その区画が目的だった人 / 延べ利用=施設を使った回数 / 売上=施設の利用が起きた時の値段の合計(利用が無ければ増えない)\n"
+                            "週=今の週、先週=直前の週、月=今の月、通算=全期間。人数は、最初の利用が起きた週で数える。区画を消しても、記録は残る");
+        const std::vector<AreaRecord>& records = ledger.GetRecords();
+        if (records.empty())
+        {
+            ImGui::TextDisabled("まだ集計がありません(エリアを目的にした外出も、区画の施設の利用も、起きていません)");
+        }
+        else if (ImGui::BeginTable("##areaLedger", 12, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollX | ImGuiTableFlags_SizingFixedFit))
+        {
+            ImGui::TableSetupColumn("区画");
+            ImGui::TableSetupColumn("期間");
+            ImGui::TableSetupColumn("目的にした人数");
+            ImGui::TableSetupColumn("来訪者");
+            ImGui::TableSetupColumn("目的の来訪者");
+            ImGui::TableSetupColumn("使えなかった人");
+            ImGui::TableSetupColumn("延べ利用");
+            ImGui::TableSetupColumn("売上");
+            ImGui::TableSetupColumn("1人あたり利用");
+            ImGui::TableSetupColumn("1人あたり売上");
+            ImGui::TableSetupColumn("状態");
+            ImGui::TableSetupColumn("点検");
+            ImGui::TableHeadersRow();
+            struct Row { const char* label; const AreaTally* tally; };
+            for (const AreaRecord& record : records)
+            {
+                const bool exists = areas.Find(record.areaId) != nullptr;
+                const Row rows[] = { { "今週", &record.thisWeek }, { "先週", &record.lastWeek }, { "今月", &record.thisMonth }, { "通算", &record.total } };
+                for (const Row& row : rows)
+                {
+                    const AreaTally& t = *row.tally;
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn(); ImGui::Text("#%u", record.areaId);
+                    ImGui::TableNextColumn(); ImGui::TextUnformatted(row.label);
+                    ImGui::TableNextColumn(); ImGui::Text("%d", t.areaOutings);
+                    ImGui::TableNextColumn(); ImGui::Text("%d", t.visitors);
+                    ImGui::TableNextColumn(); ImGui::Text("%d", t.purposeVisitors);
+                    // 使えなかった人 = 目的にして出発したが、まだ(または結局)使っていない人。通算でだけ、確定した数になる(外出中の人は、まだ数えない)。
+                    ImGui::TableNextColumn(); ImGui::Text("%d", (std::max)(0, t.areaOutings - t.purposeVisitors));
+                    ImGui::TableNextColumn(); ImGui::Text("%d", t.visits);
+                    ImGui::TableNextColumn(); ImGui::Text("%d", t.sales);
+                    ImGui::TableNextColumn(); if (t.visitors > 0) { ImGui::Text("%.2f", static_cast<float>(t.visits) / static_cast<float>(t.visitors)); } else { ImGui::TextDisabled("-"); }
+                    ImGui::TableNextColumn(); if (t.visitors > 0) { ImGui::Text("%.1f", static_cast<float>(t.sales) / static_cast<float>(t.visitors)); } else { ImGui::TextDisabled("-"); }
+                    ImGui::TableNextColumn(); ImGui::TextUnformatted(exists ? "あり" : "削除済み");
+                    ImGui::TableNextColumn();
+                    // 整合: 来訪者 <= 延べ利用 / 目的の来訪者 <= 来訪者 / (通算以外は、期間をまたぐ外出があるので、ここでは見ない)
+                    const bool ok = t.visitors <= t.visits && t.purposeVisitors <= t.visitors;
+                    if (ok) { ImGui::TextColored(ImVec4(0.5f, 0.9f, 0.5f, 1.0f), "OK"); } else { ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "不整合"); }
+                }
             }
             ImGui::EndTable();
         }

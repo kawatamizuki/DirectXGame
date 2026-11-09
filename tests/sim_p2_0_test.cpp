@@ -142,10 +142,20 @@ static void TestOutingReason()
         }
         CHECK(area == 0);
         CHECK(areaWhenAvailable > 1000);               // 3.0 / (1.0 + 0.8 + 3.0) ≒ 62%
-        // 既定の設定(エリアの重み 0)では、候補があっても、選ばれない(P2-Aで、重みを決める)。
-        int none = 0; SimRandom r3(45);
-        for (int i = 0; i < 2000; ++i) { OutingReason reason; ChooseOutingReason(a, s, r3, true, reason); if (reason == OutingReason::Area) { ++none; } }
+        // エリアの重みを0にすると、候補があっても、選ばれない。既定の重み(P2-C1で 0.5)なら、候補がある時だけ、一定の割合で選ばれる。
+        ResidentSimSettings noArea = s;
+        noArea.reasonAreaWeight = 0.0f;
+        int none = 0, byDefault = 0, byDefaultNoCandidate = 0; SimRandom r3(45), r4(46), r5(46);
+        for (int i = 0; i < 2000; ++i)
+        {
+            OutingReason reason;
+            ChooseOutingReason(a, noArea, r3, true, reason); if (reason == OutingReason::Area) { ++none; }
+            ChooseOutingReason(a, s, r4, true, reason); if (reason == OutingReason::Area) { ++byDefault; }
+            ChooseOutingReason(a, s, r5, false, reason); if (reason == OutingReason::Area) { ++byDefaultNoCandidate; }
+        }
         CHECK(none == 0);
+        CHECK(byDefault > 200 && byDefault < 1000);    // 0.5 / (1.0 + 0.8 + 0.5 × ...) の周辺。候補があれば、一定の割合で選ばれる
+        CHECK(byDefaultNoCandidate == 0);
     }
 }
 

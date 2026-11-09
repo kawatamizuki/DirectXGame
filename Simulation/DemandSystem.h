@@ -8,6 +8,8 @@
 #include "ResidentSimSettings.h"
 #include "ResidentLogic.h"
 #include "FacilityLedger.h"
+#include "AreaLedger.h"
+#include "IAreaSource.h"
 #include "BuildingType.h"
 #include "RoadCutting.h"
 #include "RoutePlanner.h"
@@ -146,6 +148,7 @@ struct ResidentDebugView
     bool usedFoodLikeFacilityThisOuting = false;
     OutingReason outingReason = OutingReason::Quick; // 今の外出の理由(外出中でなければ、直近の外出の理由)
     float visitHoursLeft = 0.0f;            // 施設の中に、あと何ゲーム時間いるか
+    uint32_t outingAreaId = 0;              // 今の外出で、目的地に選んだ商業エリアの区画のID(0=エリア目的ではない)
 
     // 「今、外出するなら」の見積り(P2-0。乱数は引かない。ResidentLogic の式の途中の値を、そのまま見せる)。
     NeedStage lifeStage = NeedStage::Satisfied;
@@ -281,6 +284,18 @@ public:
     ResidentSimSettings& GetSettings() { return m_settings; }
     const ResidentSimSettings& GetSettings() const { return m_settings; }
     const FacilityLedger& GetLedger() const { return m_ledger; }
+
+    // ---- 商業エリア(P2-C1) ----
+    // 区画を読む窓口を渡す(読み取り専用。nullptrなら、区画が無い街として動く)。所有はしない。
+    void SetAreaSource(const IAreaSource* source) { m_areaSource = source; }
+    // 区画ごとの、エリア目的の外出人数・来訪者数・延べ利用回数・実売上の集計。
+    const AreaLedger& GetAreaLedger() const { return m_areaLedger; }
+    // 施設が、直近の更新(約3秒ごと)の時点で、どの区画に所属しているか(0=どの区画にも所属しない)。
+    uint32_t GetAreaOfFacility(uint32_t facilityObjectId) const
+    {
+        const auto it = m_areaOfFacility.find(facilityObjectId);
+        return it == m_areaOfFacility.end() ? 0 : it->second;
+    }
 
     // 建物-道路の接続線(入口/私道)を毎フレーム描画する。RunDemandTickで計算した結果を使う。
     void Draw(DebugRenderer& debugRenderer) const;
@@ -515,6 +530,9 @@ private:
     ResidentSimSettings m_settings;         // 調整用の設定
     SimRandom m_random{ 12345 };            // 施設選びなどの乱数(settings.seedから)
     FacilityLedger m_ledger;                // 施設ごとの来訪者数・売上
+    AreaLedger m_areaLedger;                // 商業エリアの区画ごとの、外出・来訪者・利用・売上(P2-C1)
+    const IAreaSource* m_areaSource = nullptr; // 区画を読む窓口(読み取り専用。所有しない)
+    std::unordered_map<uint32_t, uint32_t> m_areaOfFacility; // 施設のid → 所属する区画のid(直近の更新の時点。保存しない)
     int m_weeksEnded = 0;                   // 処理した週末の回数(月末の判定に使う。セーブされる)
 
     float m_tickTimer = 0.0f;

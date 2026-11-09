@@ -277,7 +277,7 @@ void DemandSystem::DrawSettingsTab()
         ImGui::TextDisabled("理由 = 手軽 / がっつり / エリア。距離の効き方と、立ち寄りのしやすさを変える");
         ImGui::SliderFloat("手軽の重み", &s.reasonQuickWeight, 0.0f, 3.0f, "%.2f");
         ImGui::SliderFloat("がっつりの重み(基本)", &s.reasonSubstantialWeight, 0.0f, 3.0f, "%.2f");
-        ImGui::SliderFloat("エリアの重み(P2-Aまでは、候補が無く、選ばれない)", &s.reasonAreaWeight, 0.0f, 3.0f, "%.2f");
+        ImGui::SliderFloat("エリアの重み(目的の候補になる区画が無い間は、選ばれない)", &s.reasonAreaWeight, 0.0f, 3.0f, "%.2f");
         static const char* const kStageNames2[kNeedStageCount] = { "充足", "不足", "深刻", "危機的" };
         for (int i = 0; i < kNeedStageCount; ++i)
         {
@@ -296,6 +296,18 @@ void DemandSystem::DrawSettingsTab()
             std::snprintf(label, sizeof(label), "距離の減り方の形 k(%s)", kReasonNames[i]);
             ImGui::SliderFloat(label, &s.reasonDistanceShape[i], 0.3f, 4.0f, "%.2f");
         }
+    }
+    if (ImGui::CollapsingHeader("商業エリアへの外出(P2-C1)"))
+    {
+        ImGui::TextDisabled("区画の重み = 距離 × 周知の倍率 × 目的への適合 × 充実度の魅力 × 評判。距離は、道路で使える所属施設までの道のり(P2-0の距離の効き方)");
+        ImGui::SliderFloat("切迫時の、エリアの重みの減り方", &s.areaPressurePenalty, 0.0f, 1.0f, "%.2f");
+        ImGui::SliderFloat("周知済みの区画の倍率", &s.areaPublishedFactor, 0.0f, 2.0f, "%.2f");
+        ImGui::SliderFloat("未周知の区画の倍率(0=外出目的にならない)", &s.areaUnpublishedFactor, 0.0f, 2.0f, "%.2f");
+        ImGui::TextDisabled("未周知でも、実店舗の通常の選ばれ方(距離・用途)は、変わらない。周知の有無による集客の差は、P2-C2で調整");
+        ImGui::SliderFloat("評判の倍率(P2-Dまで1.0)", &s.areaReputation, 0.0f, 2.0f, "%.2f");
+        ImGui::SliderFloat("適合の頭打ち(供給量)", &s.areaFitSupplyCap, 0.1f, 10.0f, "%.1f");
+        ImGui::SliderFloat("適合の下限", &s.areaFitFloor, 0.0f, 1.0f, "%.2f");
+        ImGui::SliderFloat("充実度の魅力の増え方", &s.areaCoverageGain, 0.0f, 1.0f, "%.2f");
     }
     if (ImGui::CollapsingHeader("体力"))
     {

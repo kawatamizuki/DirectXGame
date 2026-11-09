@@ -315,6 +315,7 @@ bool Game::Initialize(HWND hwnd)
 
     // 商業エリア(P2-A): 区画の仮置き・移動の入力と枠の描画。区画の状態は m_areas が持つ。
     m_areaTool.Initialize(&m_context, &m_field, &m_areas);
+    m_demandSystem.SetAreaSource(&m_areas);         // 住民の外出の目的地に、周知済みの商業エリアを加える(P2-C1)。読み取り専用
     m_areaTool.SetOnMessage([this](const std::string& text)
     {
         m_noticeText = text;
@@ -2646,7 +2647,7 @@ void Game::Draw()
     Profiler::DrawDebugUI(m_objects, m_roadSystem, m_occupancyGrid, m_demandSystem, m_editorUi.PanelFlag("Profiler"));
     Debug::DrawDebugUI(m_editorUi.PanelFlag("Log"));
     m_memoryPanel.Draw([this]() { return BuildMemoryReport(); });
-    m_areaDebugPanel.Draw(m_areas, m_gameClock);
+    m_areaDebugPanel.Draw(m_areas, m_gameClock, m_demandSystem.GetAreaLedger());
 
     // ホバーのヒントとショートカット一覧。全てのパネルを描いた後。
     m_editorUi.EndFrame(editorFrame);

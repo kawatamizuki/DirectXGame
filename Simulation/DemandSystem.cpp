@@ -50,6 +50,7 @@ namespace
     {
         BuildingSnapshot building;
         BuildingType type = BuildingType::Shop;
+        OrientedRect footprint;     // 建物の敷地(商業エリアの区画への所属を求めるのに使う)
     };
 
     // buildingの位置から一番近い道路区間上の点を探し、接続情報を組み立てる。
@@ -146,6 +147,8 @@ void DemandSystem::Reset()
     m_lastStats = DemandStats{};
     m_connectionLines.clear();
     m_ledger.Clear();
+    m_areaLedger.Clear();
+    m_areaOfFacility.clear();
     m_weeksEnded = 0;
     m_decisionLog.clear();
     m_debugRecorder.StartNewRun(); // 住民の入れ替わり(ロード・リセット)で、古い記録は意味を失う(別の世界になる)
@@ -363,6 +366,12 @@ void DemandSystem::Save(Json& section, const SaveContext& context) const
                 entry.Set("outingStopCount", agent.outingStopCount);
                 entry.Set("usedFoodLike", agent.usedFoodLikeFacilityThisOuting);
                 entry.Set("outingReason", static_cast<int>(agent.outingReason)); // (P2-0)外出の理由。無い(古いセーブ)なら、読み込みで「手軽」
+                entry.Set("outingAreaId", static_cast<int>(agent.outingAreaId)); // (P2-C1)目的地に選んだ商業エリアの区画。無ければ0
+                {
+                    Json counted = Json::MakeArray();
+                    for (uint32_t id : agent.areasCountedThisOuting) { counted.Push(static_cast<int>(id)); }
+                    entry.Set("areasCounted", std::move(counted));  // (P2-C1)この外出で、来訪者に数え済みの区画
+                }
 
                 Json waypoints = Json::MakeArray();
                 for (const XMFLOAT3& waypoint : agent.waypoints)
@@ -404,6 +413,31 @@ void DemandSystem::Save(Json& section, const SaveContext& context) const
             facilities.Push(std::move(item));
         }
         section.Set("facilities", std::move(facilities));
+    }
+    {
+        // 商業エリアの区画ごとの集計(P2-C1)。区画のIDは再利用しないので、そのままのIDで保存する。
+        Json areaLedger = Json::MakeArray();
+        auto tallyJson = [](const AreaTally& t)
+        {
+            Json j = Json::MakeObject();
+            j.Set("areaOutings", t.areaOutings);
+            j.Set("visitors", t.visitors);
+            j.Set("purposeVisitors", t.purposeVisitors);
+            j.Set("visits", t.visits);
+            j.Set("sales", t.sales);
+            return j;
+        };
+        for (const AreaRecord& record : m_areaLedger.GetRecords())
+        {
+            Json item = Json::MakeObject();
+            item.Set("area", static_cast<int>(record.areaId));
+            item.Set("thisWeek", tallyJson(record.thisWeek));
+            item.Set("lastWeek", tallyJson(record.lastWeek));
+            item.Set("thisMonth", tallyJson(record.thisMonth));
+            item.Set("total", tallyJson(record.total));
+            areaLedger.Push(std::move(item));
+        }
+        section.Set("areaLedger", std::move(areaLedger));
     }
     section.Set("agents", std::move(agents));
 }
@@ -456,6 +490,40 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
                 record.thisMonth = TallyFromJson(item.Find("thisMonth"));
                 record.total = TallyFromJson(item.Find("total"));
                 m_ledger.SetRecord(record);
+            }
+        }
+    }
+
+    // 商業エリアの区画ごとの集計(P2-C1)。古いセーブには無いので、無ければ、空(集計なし)。
+    if (const Json* areaLedger = section.Find("areaLedger"))
+    {
+        if (areaLedger->IsArray())
+        {
+            auto tallyFrom = [](const Json* j)
+            {
+                AreaTally t;
+                if (j && j->IsObject())
+                {
+                    t.areaOutings = (std::max)(0, j->GetInt("areaOutings", 0));
+                    t.visitors = (std::max)(0, j->GetInt("visitors", 0));
+                    t.purposeVisitors = (std::max)(0, j->GetInt("purposeVisitors", 0));
+                    t.visits = (std::max)(0, j->GetInt("visits", 0));
+                    t.sales = (std::max)(0, j->GetInt("sales", 0));
+                }
+                return t;
+            };
+            for (size_t i = 0; i < areaLedger->Size(); ++i)
+            {
+                const Json& item = areaLedger->At(i);
+                if (!item.IsObject()) { continue; }
+                AreaRecord record;
+                record.areaId = static_cast<uint32_t>((std::max)(0, item.GetInt("area", 0)));
+                if (record.areaId == 0) { continue; }
+                record.thisWeek = tallyFrom(item.Find("thisWeek"));
+                record.lastWeek = tallyFrom(item.Find("lastWeek"));
+                record.thisMonth = tallyFrom(item.Find("thisMonth"));
+                record.total = tallyFrom(item.Find("total"));
+                m_areaLedger.SetRecord(record);
             }
         }
     }
@@ -574,6 +642,22 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
                     // (P2-0)外出の理由。範囲外・無い値は、「手軽」(古いセーブとの互換)。
                     const int reason = entry.GetInt("outingReason", static_cast<int>(OutingReason::Quick));
                     agent.outingReason = (reason >= 0 && reason < kOutingReasonCount) ? static_cast<OutingReason>(reason) : OutingReason::Quick;
+                }
+                {
+                    // (P2-C1)目的地の区画・来訪者に数え済みの区画。古いセーブには無いので、無ければ「エリア目的ではない・数え済みなし」。
+                    agent.outingAreaId = static_cast<uint32_t>((std::max)(0, entry.GetInt("outingAreaId", 0)));
+                    agent.areasCountedThisOuting.clear();
+                    if (const Json* counted = entry.Find("areasCounted"))
+                    {
+                        if (counted->IsArray())
+                        {
+                            for (size_t i = 0; i < counted->Size(); ++i)
+                            {
+                                const int id = counted->At(i).AsInt(0);
+                                if (id > 0) { agent.areasCountedThisOuting.push_back(static_cast<uint32_t>(id)); }
+                            }
+                        }
+                    }
                 }
 
                 if (const Json* waypoints = entry.Find("waypoints"))
@@ -753,6 +837,7 @@ void DemandSystem::ProcessClockEvents(GameContext& context)
         ++m_weeksEnded;
         const bool monthEnds = (m_weeksEnded % GameClock::kWeeksPerMonth) == 0;
         m_ledger.OnWeekEnd(monthEnds);
+        m_areaLedger.OnWeekEnd(monthEnds);   // 商業エリアの区画ごとの集計も、同じ区切り(週・月)
     }
 
     // 週の始まり(起床): 体力の回復。
@@ -821,6 +906,18 @@ void DemandSystem::FinishVisit(ResidentAgent& agent, GameContext& context, GameO
 
         // 実際に利用できた時だけ、売上を計上する。売上の一部(今は100%)を、プレイヤーの建設資金へ加える。
         m_ledger.RecordVisit(facilityObj->id, facilityObj->buildingType, facility->pricePerVisit);
+
+        // 商業エリアの区画の集計(P2-C1): 利用が起きた時の所属で数える。来訪者は、同じ外出で、同じ区画を、1回だけ数える(最初の利用)。
+        // 延べ利用回数・実売上は、利用ごと。エリアを目的に選んでも、利用が起きなければ、ここに来ない(売上は増えない)。
+        {
+            const uint32_t areaId = GetAreaOfFacility(facilityObj->id);
+            if (areaId != 0)
+            {
+                const bool first = std::find(agent.areasCountedThisOuting.begin(), agent.areasCountedThisOuting.end(), areaId) == agent.areasCountedThisOuting.end();
+                if (first) { agent.areasCountedThisOuting.push_back(areaId); }
+                m_areaLedger.RecordVisit(areaId, facility->pricePerVisit, first, agent.outingAreaId == areaId);
+            }
+        }
         if (context.economy)
         {
             const int share = static_cast<int>(std::lround(static_cast<float>(facility->pricePerVisit) * m_settings.salesShareToFunds));
@@ -1188,6 +1285,8 @@ void DemandSystem::BecomeHomeless(ResidentAgent& agent, GameContext& context)
     agent.visitHoursLeft = 0.0f;
     agent.outingStopCount = 0;
     agent.usedFoodLikeFacilityThisOuting = false;
+    agent.outingAreaId = 0;
+    agent.areasCountedThisOuting.clear();
 
     // 同じ位置に、既に立っている住居なしの住民の数だけ、ずらす(重ならないように)。
     int sameSpot = 0;
@@ -1227,6 +1326,8 @@ void DemandSystem::AbortOutingToDemolishedFacility(ResidentAgent& agent, GameCon
     agent.visitHoursLeft = 0.0f;
     agent.outingStopCount = 0;
     agent.usedFoodLikeFacilityThisOuting = false;
+    agent.outingAreaId = 0;
+    agent.areasCountedThisOuting.clear();
     agent.segmentIndices.clear();
 
     if (agent.state == ResidentAgentState::ReturningHome)
@@ -1397,6 +1498,8 @@ void DemandSystem::BecomeStranded(ResidentAgent& agent, GameContext& context, co
     agent.visitHoursLeft = 0.0f;
     agent.outingStopCount = 0;
     agent.usedFoodLikeFacilityThisOuting = false;
+    agent.outingAreaId = 0;
+    agent.areasCountedThisOuting.clear();
     agent.lastDecisionNote = "道路が無くなり、帰れなくなった(立ち往生)";
     if (applyPenalty)
     {
@@ -1657,6 +1760,8 @@ void DemandSystem::UpdateAgentMovement(float deltaTime, GameContext& context)
                 agent.currentWaypointIndex = 0;
                 agent.outingStopCount = 0;
                 agent.usedFoodLikeFacilityThisOuting = false;
+                agent.outingAreaId = 0;
+                agent.areasCountedThisOuting.clear();
                 obj->visible = false;
             }
         };
@@ -2192,6 +2297,8 @@ void DemandSystem::ProcessImmediateTestPlans(GameContext& context)
             agent->visitHoursLeft = 0.0f;
             agent->outingStopCount = 0;
             agent->usedFoodLikeFacilityThisOuting = false;
+            agent->outingAreaId = 0;
+            agent->areasCountedThisOuting.clear();
             agent->lastDecisionNote = "テストで、帰宅させられた";
             StartReturnFromHere(*agent, context, false);
             if (agent->state == ResidentAgentState::AtHome)
@@ -2353,7 +2460,35 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
             FacilitySnapshot facility;
             facility.building = MakeBuildingSnapshot(obj.id, obj.transform.position, segments, graph);
             facility.type = obj.buildingType;
+            facility.footprint = obj.placement.footprintRect;
             facilities.push_back(facility);
+        }
+    }
+
+    // 商業エリア(P2-C1): 施設の所属を、この施設一覧から求める(ゲームのフレーム・描画に依存しない。P2-Aの規則をそのまま使う)。
+    // 外出の目的の候補になる区画(周知済みで、所属施設がある。倍率が0の状態は除く)が、1つでもあれば、外出の理由「エリア」の候補がある。
+    std::vector<AreaMembers> areaMembers;
+    m_areaOfFacility.clear();
+    bool areaAvailable = false;
+    if (m_areaSource && !m_areaSource->GetAreas().empty())
+    {
+        const std::vector<CommercialArea>& areas = m_areaSource->GetAreas();
+        std::vector<AreaFacility> areaFacilities;
+        areaFacilities.reserve(facilities.size());
+        for (const FacilitySnapshot& facility : facilities)
+        {
+            AreaFacility item;
+            item.objectId = facility.building.id;
+            item.type = facility.type;
+            item.footprint = facility.footprint;
+            areaFacilities.push_back(item);
+        }
+        areaMembers = ComputeAreaMembers(areas, areaFacilities, m_areaSource->GetAreaSettings());
+        for (size_t i = 0; i < areaMembers.size() && i < areas.size(); ++i)
+        {
+            for (uint32_t id : areaMembers[i].facilityIds) { m_areaOfFacility[id] = areaMembers[i].areaId; }
+            const float factor = areas[i].published ? m_settings.areaPublishedFactor : m_settings.areaUnpublishedFactor;
+            if (factor > 0.0f && !areaMembers[i].facilityIds.empty()) { areaAvailable = true; }
         }
     }
 
@@ -2620,10 +2755,10 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
             }
 
             // 外出の理由(P2-0): 手軽 / がっつり / エリア。今の需要の切迫・体力を、重みに反映する。乱数は、いつも1回引く。
-            // エリアは、候補が実装されるまで(P2-A)は無いので、重み0(他の理由から、同じ乱数で選ぶのと同じ)。
+            // エリアは、外出の目的の候補になる区画(周知済みで、所属施設がある)が無い間は、重み0(他の理由から、同じ乱数で選ぶのと同じ)。
             OutingReason outingReason = OutingReason::Quick;
             OutingReasonTrace reasonTrace;
-            if (!ChooseOutingReason(agent, m_settings, m_random, false, outingReason, &reasonTrace))
+            if (!ChooseOutingReason(agent, m_settings, m_random, areaAvailable, outingReason, &reasonTrace))
             {
                 // 選べる理由が無い(設定で、全ての重みが0): 外出を取りやめる(普通は起きない)。
                 agent.lastDecisionNote = "外出したいが、外出の理由を選べない(全ての理由の重みが0)";
@@ -2637,6 +2772,8 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
             OutingPurposeChoice purpose = ChoosePurpose(agent, m_settings, m_random, &purposeTrace);
             purpose.reason = outingReason;
             purposeTrace.reason = reasonTrace;
+            // 区画の抽選の乱数(P2-C1): 外出の理由に依らず、いつも1回引く(乱数の消費を、状態で変えない)。理由が「エリア」の時だけ、使う。
+            const float areaRoll = m_random.Next01();
 
             // 行動テスト(施設を指定): 目的のカテゴリを、指定した施設のカテゴリに合わせる(乱数は、既に、普通に引いた後)。
             const FacilitySnapshot* forcedFacility = nullptr;
@@ -2686,10 +2823,98 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
             {
                 agent.lastDecisionNote = std::string("外出したいが、") + FacilityCategoryName(purpose.category) + "の施設が無い";
                 const uint64_t detailId = RecordDecisionDetail(agent, context, purpose, purposeTrace, {}, FacilityChoiceTrace{}, -1, 0, false, 0.0f, -1.0f);
-                RecordEvent(agent, context, SimEventKind::PurposeChoice, SimEventResult::Info, SimReason::None, 0, static_cast<float>(purpose.reason), 0.0f, 0.0f, 0, detailId);
+                RecordEvent(agent, context, SimEventKind::PurposeChoice, SimEventResult::Info, SimReason::None, 0, static_cast<float>(purpose.reason), static_cast<float>(purpose.areaId), 0.0f, 0, detailId);
                 RecordEvent(agent, context, SimEventKind::OutingBlocked, SimEventResult::NotMet, SimReason::NoFacilityInCategory);
                 if (testPlan) { FinishTestPlan(*testPlan, SimTestStatus::Rejected, SimTestReject::NoFacilityInCategory, static_cast<int>(purpose.category), &agent, context); }
                 continue;
+            }
+
+            // 商業エリアへの外出(P2-C1): 理由が「エリア」なら、まず、区画を重み付きで選び、その区画の所属施設の中から、主目的の店を選ぶ
+            // (経路は、家から店へ直接。区画の入口を、別に作らない)。区画の評価は、道路で実際に到達できる所属施設を基準にする
+            // (区画の中心への直線距離ではない)。今回の目的に合う施設が区画に無い・道路で行けない・体力が足りない区画は、候補から外す。
+            // 候補が1つも無ければ、他の理由から、同じ乱数で選び直す。行動テストで施設を指定している時は、区画を使わない。
+            if (purpose.reason == OutingReason::Area && !forcedFacility && m_areaSource)
+            {
+                const std::vector<CommercialArea>& areas = m_areaSource->GetAreas();
+                const int purposeIndex = static_cast<int>(purpose.purpose);
+                std::vector<AreaCandidate> areaCandidates;
+                std::vector<std::vector<size_t>> areaMemberIndex;   // 区画ごとの、candidates(今の目的のカテゴリの施設)の添字
+                for (size_t a = 0; a < areas.size() && a < areaMembers.size(); ++a)
+                {
+                    AreaCandidate ac;
+                    ac.areaId = areas[a].id;
+                    ac.published = areas[a].published;
+                    ac.memberCount = static_cast<int>(areaMembers[a].facilityIds.size());
+                    std::vector<BuildingType> memberTypes;
+                    std::vector<size_t> indices;
+                    float nearest = 1e30f;
+                    float supply = 0.0f;
+                    for (uint32_t memberId : areaMembers[a].facilityIds)
+                    {
+                        for (const FacilitySnapshot& snapshot : facilities)
+                        {
+                            if (snapshot.building.id == memberId) { memberTypes.push_back(snapshot.type); break; }
+                        }
+                        for (size_t c = 0; c < candidates.size(); ++c)
+                        {
+                            if (candidates[c].objectId != memberId) { continue; }
+                            indices.push_back(c);   // 施設選びの候補(到達不可・体力不足は、施設選びで、除外の理由つきで外れる)
+                            const FacilityDefinition* definition = FindFacilityDefinition(candidates[c].type);
+                            if (candidates[c].reachable && definition && agent.stamina >= RequiredStamina(*definition, 0, m_settings))
+                            {
+                                ++ac.usableCount;
+                                nearest = (std::min)(nearest, candidates[c].pathLength);
+                                supply += definition->purposeSuitability[purposeIndex];
+                            }
+                            break;
+                        }
+                    }
+                    ac.nearestPathLength = ac.usableCount > 0 ? nearest : 0.0f;
+                    ac.supplyForPurpose = supply;
+                    ac.coveredPurposes = ComputeAreaComposition(memberTypes, m_areaSource->GetAreaSettings()).coveredPurposes;
+                    areaCandidates.push_back(ac);
+                    areaMemberIndex.push_back(std::move(indices));
+                }
+                std::vector<AreaCandidateEvaluation> areaEvaluations;
+                AreaChoiceTrace areaTrace;
+                const int areaPick = ChooseArea(agent, areaCandidates, purpose, m_settings, areaRoll, areaEvaluations, &areaTrace);
+                purposeTrace.areaEvaluations = areaEvaluations;
+                purposeTrace.areaChoice = areaTrace;
+                if (areaPick >= 0)
+                {
+                    // この区画の所属施設だけを、施設選びの候補にする(既存の施設選びと経路を、そのまま使う)。
+                    std::vector<FacilityCandidate> filtered;
+                    std::vector<RoutePlan> filteredPlans;
+                    for (size_t index : areaMemberIndex[static_cast<size_t>(areaPick)])
+                    {
+                        filtered.push_back(candidates[index]);
+                        filteredPlans.push_back(std::move(plans[index]));
+                    }
+                    candidates = std::move(filtered);
+                    plans = std::move(filteredPlans);
+                    purpose.areaId = areaCandidates[static_cast<size_t>(areaPick)].areaId;
+                }
+                else
+                {
+                    // 今回の目的に合う区画が無い: 外出を見送る前に、他の理由(手軽・がっつり)から、同じ乱数で選び直す。
+                    OutingReason fallback = OutingReason::Quick;
+                    purposeTrace.reason.fellBack = true;
+                    purposeTrace.reason.chosenBeforeFallback = OutingReason::Area;
+                    if (ReevaluateReasonWithoutArea(reasonTrace, fallback))
+                    {
+                        purpose.reason = fallback;
+                        purposeTrace.reason.chosen = fallback;
+                    }
+                    else
+                    {
+                        agent.lastDecisionNote = "外出したいが、エリアの候補が無く、他の理由も選べない";
+                        const uint64_t detailId = RecordDecisionDetail(agent, context, purpose, purposeTrace, {}, FacilityChoiceTrace{}, -1, 0, false, 0.0f, -1.0f);
+                        RecordEvent(agent, context, SimEventKind::PurposeChoice, SimEventResult::Info, SimReason::None, 0, static_cast<float>(purpose.reason), static_cast<float>(purpose.areaId), 0.0f, 0, detailId);
+                        RecordEvent(agent, context, SimEventKind::OutingBlocked, SimEventResult::NotMet, SimReason::NoOutingReason);
+                        if (testPlan) { FinishTestPlan(*testPlan, SimTestStatus::Rejected, SimTestReject::NoPickable, 0, &agent, context); }
+                        continue;
+                    }
+                }
             }
 
             std::vector<CandidateEvaluation> evaluations;
@@ -2709,7 +2934,7 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
                 {
                     // 理由を、判断の内訳に残してから、拒否する(候補の表に、除外の理由が出る)。
                     const uint64_t rejectedDetail = RecordDecisionDetail(agent, context, purpose, purposeTrace, evaluations, choiceTrace, -1, 0, false, 0.0f, -1.0f, false, 1.0f, -1.0f, true, false);
-                    RecordEvent(agent, context, SimEventKind::PurposeChoice, SimEventResult::Info, SimReason::None, 0, static_cast<float>(purpose.reason), 0.0f, 0.0f, 0, rejectedDetail);
+                    RecordEvent(agent, context, SimEventKind::PurposeChoice, SimEventResult::Info, SimReason::None, 0, static_cast<float>(purpose.reason), static_cast<float>(purpose.areaId), 0.0f, 0, rejectedDetail);
                     RecordEvent(agent, context, SimEventKind::FacilitySelect, SimEventResult::NotMet, SimReason::NoPickableCandidate, forcedFacility->building.id, 0.0f, 0.0f, 0.0f, 0, rejectedDetail);
                     FinishTestPlan(*testPlan, SimTestStatus::Rejected,
                                    forcedIndex < 0 ? SimTestReject::FacilityNotFound : SimTestReject::FacilityNotEligible,
@@ -2739,7 +2964,7 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
 
             // 記録: 目的の決定と、施設の抽選(内訳は1件にまとめて、2つのイベントから参照する)。
             const uint64_t decisionDetailId = RecordDecisionDetail(agent, context, purpose, purposeTrace, evaluations, choiceTrace, chosen, 0, false, 0.0f, -1.0f, false, 1.0f, -1.0f, true, facilityForced);
-            RecordEvent(agent, context, SimEventKind::PurposeChoice, SimEventResult::Info, SimReason::None, 0, static_cast<float>(purpose.reason), 0.0f, 0.0f, 0, decisionDetailId);
+            RecordEvent(agent, context, SimEventKind::PurposeChoice, SimEventResult::Info, SimReason::None, 0, static_cast<float>(purpose.reason), static_cast<float>(purpose.areaId), 0.0f, 0, decisionDetailId);
 
             if (chosen < 0 || !plans[static_cast<size_t>(chosen)].valid)
             {
@@ -2768,6 +2993,13 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
             agent.outingReason = purpose.reason;    // この外出の理由(立ち寄りの判断・距離の評価が参照する)
             agent.outingStopCount = 0;
             agent.usedFoodLikeFacilityThisOuting = false;
+            agent.outingAreaId = 0;
+            agent.areasCountedThisOuting.clear();
+            agent.outingAreaId = purpose.areaId;    // エリア目的の外出なら、目的地の区画(今回の外出の来訪・利用の集計で使う)
+            if (purpose.areaId != 0)
+            {
+                m_areaLedger.RecordAreaOuting(purpose.areaId); // エリアを目的に外出した人数(実際に出発した時)
+            }
             agent.waypoints = plan.waypoints;   // 自宅 → 接続点 → 道路 → 接続点 → 施設(斜めに横切らない)
             agent.segmentIndices = plan.segmentIndices;
             agent.waypointsHomeToTarget = true;
@@ -3038,12 +3270,28 @@ ResidentDebugView DemandSystem::GetResidentDebugView(uint32_t agentObjectId, con
         view.outingStopCount = agent.outingStopCount;
         view.usedFoodLikeFacilityThisOuting = agent.usedFoodLikeFacilityThisOuting;
         view.outingReason = agent.outingReason;
+        view.outingAreaId = agent.outingAreaId;
         view.visitHoursLeft = agent.visitHoursLeft;
         {
             // 見積り: 乱数は、本物の乱数(m_random)を使わず、使い捨ての乱数で呼ぶ(重みは、乱数に依らない。ゲームの乱数列を進めない)。
             SimRandom scratch(1);
             OutingReason ignoredReason = OutingReason::Quick;
-            ChooseOutingReason(agent, m_settings, scratch, false, ignoredReason, &view.reasonPreview);
+            // 区画の候補があるか(直近の更新の所属から。周知済みで、所属施設がある区画が、1つでもあるか)。
+            bool areaAvailableNow = false;
+            if (m_areaSource)
+            {
+                for (const CommercialArea& area : m_areaSource->GetAreas())
+                {
+                    const float factor = area.published ? m_settings.areaPublishedFactor : m_settings.areaUnpublishedFactor;
+                    if (!(factor > 0.0f)) { continue; }
+                    for (const auto& pair : m_areaOfFacility)
+                    {
+                        if (pair.second == area.id) { areaAvailableNow = true; break; }
+                    }
+                    if (areaAvailableNow) { break; }
+                }
+            }
+            ChooseOutingReason(agent, m_settings, scratch, areaAvailableNow, ignoredReason, &view.reasonPreview);
             ChoosePurpose(agent, m_settings, scratch, &view.purposePreview);
             view.lifeStage = view.purposePreview.lifeStage;
             view.activityStage = view.purposePreview.activityStage;

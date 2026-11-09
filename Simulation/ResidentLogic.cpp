@@ -169,8 +169,10 @@ bool ChooseOutingReason(const ResidentAgent& agent, const ResidentSimSettings& s
     trace.weight[static_cast<int>(OutingReason::Substantial)] =
         (std::max)(0.0f, settings.reasonSubstantialWeight) * staminaTerm * pressureTerm * (std::max)(0.0f, agent.traits.spontaneity);
 
-    // エリア: 候補が無い間は、重み0(他の理由から、同じ乱数で選ぶのと同じ)。
-    trace.weight[static_cast<int>(OutingReason::Area)] = areaAvailable ? (std::max)(0.0f, settings.reasonAreaWeight) : 0.0f;
+    // エリア: 外出の目的の候補になる区画が無い間は、重み0(他の理由から、同じ乱数で選ぶのと同じ)。候補がある時は、体力に余裕があり、需要が切迫していないほど、重い。
+    const float areaPressureTerm = (std::max)(0.0f, 1.0f - trace.pressure * Clamp(settings.areaPressurePenalty, 0.0f, 1.0f));
+    trace.weight[static_cast<int>(OutingReason::Area)] =
+        areaAvailable ? (std::max)(0.0f, settings.reasonAreaWeight) * staminaTerm * areaPressureTerm : 0.0f;
 
     float total = 0.0f;
     for (float w : trace.weight) { total += w; }
@@ -248,6 +250,87 @@ OutingPurposeChoice ChoosePurpose(const ResidentAgent& agent, const ResidentSimS
 // ---------------------------------------------------------------------------
 // 施設の選び方
 // ---------------------------------------------------------------------------
+float ComputeDistanceFactor(const ResidentAgent& agent, float pathLength, const ResidentSimSettings& settings, OutingReason reason,
+                            float distanceScaleFactor, float* outLegacyDistance, float* outScale, float* outShape)
+{
+    const int reasonIndex = (std::max)(0, (std::min)(static_cast<int>(reason), kOutingReasonCount - 1));
+    const float legacyDistance = pathLength / WorldScale::FromLegacy(1.0f);
+    const float scale = (std::max)(0.1f, settings.distanceScaleLegacyCells * agent.traits.distanceTolerance
+                                       * (std::max)(0.01f, settings.reasonDistanceScale[reasonIndex]) * (std::max)(0.01f, distanceScaleFactor));
+    const float shape = (std::max)(0.1f, settings.reasonDistanceShape[reasonIndex]);
+    const float distanceRatio = (std::max)(0.0f, legacyDistance) / scale;
+    if (outLegacyDistance) { *outLegacyDistance = legacyDistance; }
+    if (outScale) { *outScale = scale; }
+    if (outShape) { *outShape = shape; }
+    return std::exp(-((shape == 1.0f) ? distanceRatio : std::pow(distanceRatio, shape)));
+}
+
+bool ReevaluateReasonWithoutArea(const OutingReasonTrace& trace, OutingReason& out)
+{
+    std::vector<float> weights(trace.weight, trace.weight + kOutingReasonCount);
+    weights[static_cast<int>(OutingReason::Area)] = 0.0f;
+    const int picked = PickWeightedIndex(weights, trace.roll);   // 同じ乱数で、他の理由から選び直す(乱数は、引き直さない)
+    if (picked < 0)
+    {
+        return false;
+    }
+    out = static_cast<OutingReason>(picked);
+    return true;
+}
+
+int ChooseArea(const ResidentAgent& agent, const std::vector<AreaCandidate>& candidates, const OutingPurposeChoice& purpose,
+               const ResidentSimSettings& settings, float roll, std::vector<AreaCandidateEvaluation>& evals, AreaChoiceTrace* trace)
+{
+    (void)purpose;
+    evals.clear();
+    evals.reserve(candidates.size());
+    std::vector<float> weights;
+    weights.reserve(candidates.size());
+    for (const AreaCandidate& candidate : candidates)
+    {
+        AreaCandidateEvaluation e;
+        e.candidate = candidate;
+        e.publishFactor = candidate.published ? settings.areaPublishedFactor : settings.areaUnpublishedFactor;
+        e.reputation = settings.areaReputation;
+        if (!(e.publishFactor > 0.0f)) { e.reject = AreaReject::NotAvailable; }
+        else if (candidate.memberCount <= 0) { e.reject = AreaReject::NoMember; }
+        else if (candidate.usableCount <= 0) { e.reject = AreaReject::NoUsableMember; }
+        else
+        {
+            // 距離: 道路で、実際に使える所属施設までの道のり(P2-0の距離の効き方。区画の中心への直線距離ではない)。
+            e.distanceFactor = ComputeDistanceFactor(agent, candidate.nearestPathLength, settings, OutingReason::Area, 1.0f, &e.legacyDistance, &e.distanceScale);
+            // 適合: 今の利用目的への、使える所属施設の供給量。頭打ち(店が増えても、過剰に有利にならない)。下限あり。
+            const float cap = (std::max)(0.01f, settings.areaFitSupplyCap);
+            e.fitFactor = Clamp(candidate.supplyForPurpose / cap, (std::max)(0.0f, settings.areaFitFloor), 1.0f);
+            // 魅力: 用途の充実度(強い店がある用途の種類数)。1種類だけなら増えない。最大でも、増え方の分まで。
+            const float coverage = static_cast<float>((std::max)(0, candidate.coveredPurposes - 1)) / static_cast<float>((std::max)(1, kUsagePurposeCount - 1));
+            e.coverageFactor = 1.0f + (std::max)(0.0f, settings.areaCoverageGain) * Clamp(coverage, 0.0f, 1.0f);
+            const float product = e.distanceFactor * e.publishFactor * e.fitFactor * e.coverageFactor * e.reputation;
+            e.weight = (std::max)(product, settings.minimumWeight);
+        }
+        weights.push_back(e.weight);
+        evals.push_back(e);
+    }
+    float total = 0.0f;
+    for (float w : weights) { total += w; }
+    if (total > 0.0f)
+    {
+        for (AreaCandidateEvaluation& e : evals) { e.chance = e.weight / total; }
+    }
+    const int picked = PickWeightedIndex(weights, roll);
+    if (picked >= 0)
+    {
+        evals[static_cast<size_t>(picked)].chosen = true;
+    }
+    if (trace)
+    {
+        trace->roll = roll;
+        trace->totalWeight = total;
+        trace->pickedIndex = picked;
+    }
+    return picked;
+}
+
 void ComputeFacilityWeightBreakdown(const ResidentAgent& agent, const FacilityDefinition& facility, UsagePurpose purpose,
                                     float pathLength, const ResidentSimSettings& settings, FacilityWeightBreakdown& out,
                                     OutingReason reason, float distanceScaleFactor)
@@ -268,12 +351,7 @@ void ComputeFacilityWeightBreakdown(const ResidentAgent& agent, const FacilityDe
     // 目安・形は、外出の理由ごと(手軽は、強く下がる。がっつりは、減り方が弱い)。
     const int reasonIndex = (std::max)(0, (std::min)(static_cast<int>(reason), kOutingReasonCount - 1));
     out.reason = static_cast<OutingReason>(reasonIndex);
-    out.legacyDistance = pathLength / WorldScale::FromLegacy(1.0f);
-    out.distanceScale = (std::max)(0.1f, settings.distanceScaleLegacyCells * agent.traits.distanceTolerance
-                                         * (std::max)(0.01f, settings.reasonDistanceScale[reasonIndex]) * (std::max)(0.01f, distanceScaleFactor));
-    out.distanceShape = (std::max)(0.1f, settings.reasonDistanceShape[reasonIndex]);
-    const float distanceRatio = (std::max)(0.0f, out.legacyDistance) / out.distanceScale;
-    out.distanceFactor = std::exp(-((out.distanceShape == 1.0f) ? distanceRatio : std::pow(distanceRatio, out.distanceShape)));
+    out.distanceFactor = ComputeDistanceFactor(agent, pathLength, settings, out.reason, distanceScaleFactor, &out.legacyDistance, &out.distanceScale, &out.distanceShape);
 
     out.product = (std::max)(0.0f, out.suitability) * out.qualityFactor * out.priceFactor * out.distanceFactor;
     // 到達できる候補を、無条件に0にしない(弱い候補も、ごくまれに選ばれる)。
