@@ -1,4 +1,4 @@
-// DemandSystem の、Editorのデバッグパネル(「City Stats」)。住民・施設・設定・施設選びの記録を、実行中に見て、調整できる。
+﻿// DemandSystem の、Editorのデバッグパネル(「City Stats」)。住民・施設・設定・施設選びの記録を、実行中に見て、調整できる。
 // ゲームの動作には関わらない(見る・設定を変える)。
 #include <cstdio>
 #include "DemandSystem.h"
@@ -239,7 +239,9 @@ void DemandSystem::DrawSettingsTab()
     }
     if (ImGui::CollapsingHeader("需要"))
     {
-        ImGui::SliderFloat("充足のしきい値", &s.needSatisfiedThreshold, 0.0f, 100.0f, "%.0f");
+        ImGui::SliderFloat("充足のしきい値(これ以上=充足)", &s.needSatisfiedThreshold, 0.0f, 100.0f, "%.0f");
+        ImGui::SliderFloat("深刻のしきい値(これ未満=深刻)", &s.needSevereThreshold, 0.0f, 100.0f, "%.0f");
+        ImGui::SliderFloat("危機的のしきい値(これ未満=危機的)", &s.needCriticalThreshold, 0.0f, 100.0f, "%.0f");
         ImGui::SliderFloat("週末に減る(生活)", &s.weeklyDecayLife, 0.0f, 100.0f, "%.0f");
         ImGui::SliderFloat("週末に減る(アクティビティ)", &s.weeklyDecayActivity, 0.0f, 100.0f, "%.0f");
         ImGui::TextDisabled("初期の需要の範囲は、新しく生まれる住民から反映");
@@ -253,10 +255,53 @@ void DemandSystem::DrawSettingsTab()
         ImGui::SliderFloat("自発に必要な体力", &s.spontaneousMinStamina, 0.0f, 100.0f, "%.0f");
         ImGui::SliderFloat("これ以降は新しく外出しない(時)", &s.lastDepartureHour, 6.0f, 22.0f, "%.1f");
     }
+    if (ImGui::CollapsingHeader("需要のカテゴリの重み(P2-0)"))
+    {
+        ImGui::TextDisabled("カテゴリの重み = 重要度 × 段階の補正。余暇が深刻でも、重要度の低い余暇は、生活より選ばれにくい");
+        ImGui::SliderFloat("生活の重要度", &s.dailyImportance, 0.0f, 3.0f, "%.2f");
+        ImGui::SliderFloat("余暇の重要度", &s.leisureImportance, 0.0f, 3.0f, "%.2f");
+        static const char* const kStageNames[kNeedStageCount] = { "充足", "不足", "深刻", "危機的" };
+        for (int i = 0; i < kNeedStageCount; ++i)
+        {
+            ImGui::PushID(i);
+            char label[64];
+            std::snprintf(label, sizeof(label), "生活の補正(%s)", kStageNames[i]);
+            ImGui::SliderFloat(label, &s.dailyStageMultiplier[i], 0.0f, 5.0f, "%.2f");
+            std::snprintf(label, sizeof(label), "余暇の補正(%s)", kStageNames[i]);
+            ImGui::SliderFloat(label, &s.leisureStageMultiplier[i], 0.0f, 5.0f, "%.2f");
+            ImGui::PopID();
+        }
+    }
+    if (ImGui::CollapsingHeader("外出の理由(P2-0)"))
+    {
+        ImGui::TextDisabled("理由 = 手軽 / がっつり / エリア。距離の効き方と、立ち寄りのしやすさを変える");
+        ImGui::SliderFloat("手軽の重み", &s.reasonQuickWeight, 0.0f, 3.0f, "%.2f");
+        ImGui::SliderFloat("がっつりの重み(基本)", &s.reasonSubstantialWeight, 0.0f, 3.0f, "%.2f");
+        ImGui::SliderFloat("エリアの重み(P2-Aまでは、候補が無く、選ばれない)", &s.reasonAreaWeight, 0.0f, 3.0f, "%.2f");
+        static const char* const kStageNames2[kNeedStageCount] = { "充足", "不足", "深刻", "危機的" };
+        for (int i = 0; i < kNeedStageCount; ++i)
+        {
+            char label[64];
+            std::snprintf(label, sizeof(label), "切迫度(%s)", kStageNames2[i]);
+            ImGui::SliderFloat(label, &s.needPressureByStage[i], 0.0f, 1.0f, "%.2f");
+        }
+        ImGui::SliderFloat("切迫時の、がっつりの減り方", &s.substantialPressurePenalty, 0.0f, 1.0f, "%.2f");
+        ImGui::SliderFloat("体力の効き方(がっつり)", &s.substantialStaminaExponent, 0.0f, 4.0f, "%.2f");
+        static const char* const kReasonNames[kOutingReasonCount] = { "手軽", "がっつり", "エリア" };
+        for (int i = 0; i < kOutingReasonCount; ++i)
+        {
+            char label[64];
+            std::snprintf(label, sizeof(label), "距離の目安の倍率(%s)", kReasonNames[i]);
+            ImGui::SliderFloat(label, &s.reasonDistanceScale[i], 0.1f, 8.0f, "%.2f");
+            std::snprintf(label, sizeof(label), "距離の減り方の形 k(%s)", kReasonNames[i]);
+            ImGui::SliderFloat(label, &s.reasonDistanceShape[i], 0.3f, 4.0f, "%.2f");
+        }
+    }
     if (ImGui::CollapsingHeader("体力"))
     {
+        ImGui::TextDisabled("移動では、体力を消費しない。施設を使う時だけ消費(帰宅は、体力0でもできる)");
         ImGui::SliderFloat("体力の上限の基準", &s.staminaMax, 20.0f, 200.0f, "%.0f");
-        ImGui::SliderFloat("移動1マスの消費", &s.staminaPerLegacyCell, 0.0f, 5.0f, "%.2f");
+        ImGui::SliderFloat("2軒目以降の消費の増え方(/軒)", &s.additionalUseStaminaCostStep, 0.0f, 1.0f, "%.2f");
         ImGui::SliderFloat("家での回復(/時間)", &s.staminaHomeRecoveryPerHour, 0.0f, 20.0f, "%.1f");
         ImGui::SliderFloat("就寝での回復", &s.staminaSleepRecovery, 0.0f, 200.0f, "%.0f");
     }
@@ -281,14 +326,24 @@ void DemandSystem::DrawSettingsTab()
         ImGui::SliderFloat("直前と同じ施設の重みの倍率", &s.repeatVisitWeightFactor, 0.0f, 1.0f, "%.2f");
         ImGui::SliderFloat("不足による日用品の下げ幅の割合", &s.needDrivenDailyRepeatStrength, 0.0f, 1.0f, "%.2f");
     }
-    if (ImGui::CollapsingHeader("立ち寄り(P1)"))
+    if (ImGui::CollapsingHeader("立ち寄り(P1 → P2-0)"))
     {
-        ImGui::SliderInt("最大の立ち寄り回数", &s.maxStopovers, 0, 5);
-        ImGui::SliderFloat("1回目の立ち寄り確率", &s.stopoverBaseChance, 0.0f, 1.0f, "%.2f");
+        ImGui::TextDisabled("確率 = 基本 × 回数の減衰^済みの回数 × 体力の割合^指数 × 需要の補正 × 理由の倍率");
+        ImGui::SliderInt("最大の立ち寄り回数(暫定の安全弁)", &s.maxStopovers, 0, 8);
+        ImGui::SliderFloat("1回目の立ち寄りの基本の確率", &s.stopoverBaseChance, 0.0f, 1.0f, "%.2f");
         ImGui::SliderFloat("回数ごとの確率の倍率", &s.stopoverChanceDecay, 0.0f, 1.0f, "%.2f");
-        ImGui::SliderFloat("立ち寄りに必要な体力", &s.stopoverMinStamina, 0.0f, 100.0f, "%.0f");
+        ImGui::SliderFloat("体力の効き方(体力の割合^この値)", &s.stopoverStaminaExponent, 0.0f, 4.0f, "%.2f");
+        ImGui::SliderFloat("需要が足りている時の倍率", &s.stopoverNeedFloor, 0.0f, 1.0f, "%.2f");
+        static const char* const kReasonNames3[kOutingReasonCount] = { "手軽", "がっつり", "エリア" };
+        for (int i = 0; i < kOutingReasonCount; ++i)
+        {
+            char label[64];
+            std::snprintf(label, sizeof(label), "理由の倍率(%s)", kReasonNames3[i]);
+            ImGui::SliderFloat(label, &s.stopoverReasonMultiplier[i], 0.0f, 3.0f, "%.2f");
+        }
+        ImGui::SliderFloat("立ち寄り先の距離の目安の倍率", &s.stopoverDistanceScaleFactor, 0.1f, 2.0f, "%.2f");
         ImGui::SliderFloat("これ以降は立ち寄らない(時)", &s.stopoverLatestHour, 6.0f, 22.0f, "%.1f");
-        ImGui::SliderFloat("今の施設からの上限(マス)", &s.stopoverMaxDistanceLegacyCells, 1.0f, 40.0f, "%.1f");
+        ImGui::SliderFloat("今の施設からの上限(マス。0=上限なし)", &s.stopoverMaxDistanceLegacyCells, 0.0f, 40.0f, "%.1f");
         ImGui::SliderFloat("食事系が続く時に寄る確率", &s.foodChainAcceptChance, 0.0f, 1.0f, "%.2f");
     }
     if (ImGui::CollapsingHeader("お金"))

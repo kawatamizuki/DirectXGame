@@ -161,7 +161,12 @@ void SimStats::OnEvent(const SimEvent& event)
     case SimEventKind::PurposeChoice:
         if (event.stopIndex == 0)
         {
-            add([&](SimStatBucket& b) { ++b.purposeChosen; });
+            add([&](SimStatBucket& b)
+            {
+                ++b.purposeChosen;
+                const int reason = static_cast<int>(event.a); // PurposeChoice の a = 外出の理由
+                if (reason >= 0 && reason < kOutingReasonCount) { ++b.outingReasonChosen[static_cast<size_t>(reason)]; }
+            });
         }
         break;
 

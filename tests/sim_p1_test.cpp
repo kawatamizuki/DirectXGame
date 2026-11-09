@@ -125,58 +125,100 @@ static void TestStopCandidates()
     OutingPurposeChoice purpose; purpose.needDriven = false; purpose.category = FacilityCategory::Leisure; purpose.purpose = UsagePurpose::Light;
 
     std::vector<FacilityCandidate> c(4);
-    c[0].objectId = 10; c[0].type = BuildingType::Cinema; c[0].reachable = true; c[0].pathLength = 3.0f; c[0].walkLength = 8.0f;   // 今回使用済み
-    c[1].objectId = 11; c[1].type = BuildingType::Cafe;   c[1].reachable = true; c[1].pathLength = 3.0f; c[1].walkLength = 8.0f;   // 候補
-    c[2].objectId = 12; c[2].type = BuildingType::Cafe;   c[2].reachable = true; c[2].pathLength = 20.0f; c[2].walkLength = 30.0f; c[2].outOfRange = true; // 遠い
+    c[0].objectId = 10; c[0].type = BuildingType::Cinema; c[0].reachable = true; c[0].pathLength = 3.0f;    // 今回使用済み
+    c[1].objectId = 11; c[1].type = BuildingType::Cafe;   c[1].reachable = true; c[1].pathLength = 3.0f;    // 候補
+    c[2].objectId = 12; c[2].type = BuildingType::Cafe;   c[2].reachable = true; c[2].pathLength = 20.0f; c[2].outOfRange = true; // 遠い
     c[3].objectId = 13; c[3].type = BuildingType::Cafe;   c[3].reachable = false; // 到達不可
     PushVisit(a, 10);   // 主目的の映画館
     std::vector<CandidateEvaluation> ev;
     SimRandom random(5);
+
+    // P2-0: 今いる施設からの距離の上限は、既定では無い(距離は、確率の減衰で扱う)。遠い候補も、抽選の対象で、重みが小さいだけ。
+    ChooseFacility(a, c, purpose, s, random, ev, 1);
+    CHECK(ev[0].reject == CandidateReject::VisitedThisOuting);
+    CHECK(ev[2].reject == CandidateReject::None && ev[2].weight < ev[1].weight);
+    CHECK(ev[3].reject == CandidateReject::Unreachable);
+
+    // 設定で上限(マス)を決めると、範囲外は、除外される(従来の動き。0=上限なし)。
+    s.stopoverMaxDistanceLegacyCells = 8.0f;
     const int picked = ChooseFacility(a, c, purpose, s, random, ev, 1);
     CHECK(picked == 1);
     CHECK(ev[0].reject == CandidateReject::VisitedThisOuting);
     CHECK(ev[1].reject == CandidateReject::None && ev[1].chosen);
     CHECK(ev[2].reject == CandidateReject::OutOfRange);
     CHECK(ev[3].reject == CandidateReject::Unreachable);
+    s.stopoverMaxDistanceLegacyCells = 0.0f;
 
     // visitsThisOuting=0 なら(通常の施設選び)、履歴にあっても除外しない(重みが下がるだけ)。
     ChooseFacility(a, c, purpose, s, random, ev, 0);
     CHECK(ev[0].reject == CandidateReject::None && ev[0].repeatFactor < 1.0f);
 
-    // 体力: 行き + 家までの帰りが足りない候補は、除外される。
+    // 体力(P2-0): 移動では使わない。施設を使う分だけ。2軒目以降は、少し高い(カフェ 5 × (1 + 0.15 × 何軒目か))。
     ResidentAgent tired = MakeAgent(s);
-    tired.stamina = 12.0f;      // カフェ(利用5) + 歩く合計 8 × 0.8 = 6.4 → 合計 11.4 までなら足りる
     std::vector<FacilityCandidate> near(1);
-    near[0].objectId = 11; near[0].type = BuildingType::Cafe; near[0].reachable = true; near[0].pathLength = 3.0f; near[0].walkLength = 8.0f;
+    near[0].objectId = 11; near[0].type = BuildingType::Cafe; near[0].reachable = true; near[0].pathLength = 3.0f;
+    tired.stamina = 5.8f;       // 立ち寄り1軒目(visits=1)の必要は 5.75
     CHECK(ChooseFacility(tired, near, purpose, s, random, ev, 1) == 0);
-    near[0].walkLength = 12.0f;  // 5 + 9.6 = 14.6 > 12
+    tired.stamina = 5.7f;
     CHECK(ChooseFacility(tired, near, purpose, s, random, ev, 1) == -1);
-    CHECK(ev[0].reject == CandidateReject::NotEnoughStamina);
-    // walkLengthが負なら、従来どおり往復(pathLengthの2倍)。
-    near[0].walkLength = -1.0f; near[0].pathLength = 3.0f;
+    CHECK(ev[0].reject == CandidateReject::NotEnoughStamina && Near(ev[0].requiredStamina, 5.75f));
+    // 道のりが長くても、必要な体力は、変わらない(移動では、体力を使わない)。
+    near[0].pathLength = 500.0f;
+    tired.stamina = 5.8f;
     CHECK(ChooseFacility(tired, near, purpose, s, random, ev, 1) == 0);
+    CHECK(Near(ev[0].requiredStamina, 5.75f));
+    // 主目的(visits=0)は、5。
+    tired.stamina = 5.0f;
+    CHECK(ChooseFacility(tired, near, purpose, s, random, ev, 0) == 0);
+    CHECK(Near(ev[0].requiredStamina, 5.0f));
 }
 
 // ---- 立ち寄りの確率・条件 ----
 static void TestStopoverChance()
 {
-    ResidentSimSettings s;   // base 0.25, decay 0.4, max 2
+    // P2-0: 確率 = 基本 0.4 × 回数の減衰 0.4^済み × 体力の割合 × 需要の補正(足りている=0.7) × 理由の倍率(手軽 0.5)。
+    ResidentSimSettings s;
     ResidentAgent a = MakeAgent(s);
+    a.lifeNeed = 100.0f; a.activityNeed = 100.0f;          // 需要は、足りている
+    a.stamina = EffectiveStaminaCap(a, s);                  // 体力は、満タン
+    a.outingReason = OutingReason::Quick;
     a.outingStopCount = 0;
-    CHECK(Near(ComputeStopoverChance(a, s), 0.25f));
+    CHECK(Near(ComputeStopoverChance(a, s), 0.4f * 0.7f * 0.5f));
     a.outingStopCount = 1;
-    CHECK(Near(ComputeStopoverChance(a, s), 0.10f));
+    CHECK(Near(ComputeStopoverChance(a, s), 0.4f * 0.4f * 0.7f * 0.5f));
     a.outingStopCount = 2;
-    CHECK(Near(ComputeStopoverChance(a, s), 0.04f));
-    // 立ち寄りの確率は、主目的の施設を使うより低い(外出の判定の確率の最大 0.25 以下)。
-    CHECK(ComputeStopoverChance(a, s) < s.needDrivenChancePerTick);
+    CHECK(Near(ComputeStopoverChance(a, s), 0.4f * 0.4f * 0.4f * 0.7f * 0.5f));
+    // 3回目以降も、続けられる(最大回数は、安全弁。確率は、回数とともに下がり続ける)。
+    const float chance2 = ComputeStopoverChance(a, s);
+    a.outingStopCount = 3;
+    CHECK(ComputeStopoverChance(a, s) < chance2 && ComputeStopoverChance(a, s) > 0.0f);
 
+    // 理由: がっつりは、手軽の 1.2 / 0.5 倍。
     a.outingStopCount = 0;
+    a.outingReason = OutingReason::Substantial;
+    CHECK(Near(ComputeStopoverChance(a, s), 0.4f * 0.7f * 1.2f));
+    a.outingReason = OutingReason::Quick;
+
+    // 体力: 連続(割合に比例)。しきい値は無い。
+    const float full = ComputeStopoverChance(a, s);
+    a.stamina = EffectiveStaminaCap(a, s) * 0.5f;
+    CHECK(Near(ComputeStopoverChance(a, s), full * 0.5f, 1e-4f));
+    a.stamina = 5.0f;
+    CHECK(ComputeStopoverChance(a, s) > 0.0f && ComputeStopoverChance(a, s) < full * 0.1f);
+    CHECK(CanConsiderStopover(a, 12.0f, s));                // 体力が少なくても、確率が下がるだけ(考えてはよい)
+    a.stamina = 0.0f;
+    CHECK(ComputeStopoverChance(a, s) == 0.0f);
+    CHECK(!CanConsiderStopover(a, 12.0f, s));               // 体力が0なら、考えない
+    CHECK(ExplainStopoverBlock(a, 12.0f, s) == StopoverBlock::LowStamina);
+    a.stamina = EffectiveStaminaCap(a, s);
+
+    // 需要: 切迫しているほど、立ち寄りやすい(足りている=0.7 → 危機的=1.0)。
+    a.lifeNeed = 10.0f;
+    CHECK(Near(ComputeStopoverChance(a, s), 0.4f * 1.0f * 0.5f));
+    a.lifeNeed = 100.0f;
+
     CHECK(CanConsiderStopover(a, 12.0f, s));
     CHECK(!CanConsiderStopover(a, 19.5f, s));            // 遅い時刻
-    a.stamina = 10.0f;
-    CHECK(!CanConsiderStopover(a, 12.0f, s));            // 体力が足りない
-    a.stamina = 100.0f;
     a.outingStopCount = 2;
     CHECK(!CanConsiderStopover(a, 12.0f, s));            // 上限
     a.outingStopCount = 0;
@@ -186,13 +228,14 @@ static void TestStopoverChance()
     s.maxStopovers = 0;
     CHECK(!CanConsiderStopover(a, 12.0f, s));            // 設定で無効
 
-    // 立ち寄りが起きる回数を数える: 1回目が約25%、2回目はさらに低い。
+    // 立ち寄りが起きる回数を数える: 1回目が約14%(需要が足りて・体力満タン・手軽)、2回目はさらに低い。
     ResidentSimSettings t;
     SimRandom random(2024);
     int first = 0, second = 0, trials = 20000;
     for (int i = 0; i < trials; ++i)
     {
         ResidentAgent b = MakeAgent(t);
+        b.lifeNeed = 100.0f; b.activityNeed = 100.0f; b.stamina = EffectiveStaminaCap(b, t);
         if (random.Next01() < ComputeStopoverChance(b, t))
         {
             ++first;
@@ -202,9 +245,9 @@ static void TestStopoverChance()
     }
     const float r1 = static_cast<float>(first) / trials;
     const float r2 = static_cast<float>(second) / trials;
-    std::printf("  stopover rate: first=%.3f (exp 0.25)  second(any)=%.4f (exp 0.025)\n", r1, r2);
-    CHECK(r1 > 0.23f && r1 < 0.27f);
-    CHECK(r2 < r1 * 0.2f);
+    std::printf("  stopover rate: first=%.3f (exp 0.14)  second(any)=%.4f (exp 0.0056)\n", r1, r2);
+    CHECK(r1 > 0.12f && r1 < 0.16f);
+    CHECK(r2 < r1 * 0.1f);
 }
 
 // ---- 食事系の連続 ----

@@ -28,6 +28,27 @@ enum class ResidentAgentState
     Stranded
 };
 
+// 外出の理由(P2-0)。外出が決まった後に、「なぜ出かけるのか」を重み付きの抽選で決める。
+// 理由は、行き先の距離の効き方・立ち寄りのしやすさを変える(需要のカテゴリ=生活/余暇とは、別の軸)。値は、セーブされるので、後から足すだけにする。
+enum class OutingReason : uint8_t
+{
+    Quick,          // 手軽に需要を満たしたい: 近く・短時間・安い。距離で、強く下がる
+    Substantial,    // がっつり外出したい: 遠くの魅力的な施設も候補。距離で、下がり方が弱い
+    Area            // エリアに外出したい: 商業エリアなどを目指す。エリアの候補が実装されるまで(P2-A)は、選ばれない
+};
+constexpr int kOutingReasonCount = 3;
+
+inline const char* OutingReasonName(OutingReason reason)
+{
+    switch (reason)
+    {
+    case OutingReason::Quick:       return "手軽";
+    case OutingReason::Substantial: return "がっつり";
+    case OutingReason::Area:        return "エリア";
+    }
+    return "?";
+}
+
 // 住民ごとの、内部パラメータ(性格のようなもの)。生成時に、乱数の種から決まり、セーブされる。
 // 全員が同じ行動にならないよう、住民ごとに値を変える(1が標準。範囲は MakeResidentTraits)。
 struct ResidentTraits
@@ -84,6 +105,7 @@ struct ResidentAgent
     // ---- 今の外出 ----
     uint32_t targetFacilityId = 0;          // 向かっている(利用中の)施設のid(0=なし)
     UsagePurpose purpose = UsagePurpose::TopUp; // 今の外出の利用目的
+    OutingReason outingReason = OutingReason::Quick; // 今の外出の理由(外出を始める時に決める。立ち寄りの判断・施設選びが参照する。保存される。古いセーブは「手軽」)
     float visitHoursLeft = 0.0f;            // 施設の中に、あと何ゲーム時間いるか
     int outingStopCount = 0;                // 今の外出での立ち寄り回数(P1で使う)
     bool usedFoodLikeFacilityThisOuting = false; // 今の外出で、食事系の施設を使ったか(P1で使う)

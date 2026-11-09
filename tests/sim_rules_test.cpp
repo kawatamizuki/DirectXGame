@@ -196,9 +196,13 @@ static void TestWeights()
     // 重みの下限(到達できるなら、極端に遠くても0にならない)。
     CHECK(ComputeFacilityWeight(a, *conv, UsagePurpose::Movie, 100000.0f, s) >= s.minimumWeight);
 
-    // 必要な体力は、距離とともに増える。
-    CHECK(RequiredStamina(*conv, 20.0f, s) > RequiredStamina(*conv, 5.0f, s));
-    CHECK(Near(RequiredStamina(*conv, 0.0f, s), conv->staminaCost));
+    // 必要な体力(P2-0): 移動では体力を使わないので、距離に依らない。施設を使う分だけで、2軒目以降は、少し高い。
+    CHECK(Near(RequiredStamina(*conv, 0, s), conv->staminaCost));
+    CHECK(Near(RequiredStamina(*conv, 1, s), conv->staminaCost * 1.15f));
+    CHECK(Near(RequiredStamina(*conv, 2, s), conv->staminaCost * 1.30f));
+    s.additionalUseStaminaCostStep = 0.0f;                                  // 設定で、増えなくできる
+    CHECK(Near(RequiredStamina(*conv, 2, s), conv->staminaCost));
+    CHECK(Near(FacilityUseStaminaCost(*conv, -3, s), conv->staminaCost));   // 負の番号は、主目的と同じ
 }
 
 static FacilityCandidate Cand(uint32_t id, BuildingType t, bool reachable, float path)
@@ -221,10 +225,13 @@ static void TestChoose()
     std::vector<FacilityCandidate> list = {
         Cand(1, BuildingType::Shop, false, 0.0f),            // 到達不可
         Cand(2, BuildingType::Cinema, true, 5.0f),           // カテゴリ違い
-        Cand(3, BuildingType::Supermarket, true, 1000.0f),   // 遠すぎて体力が足りない
-        Cand(4, BuildingType::Shop, true, 6.0f),             // 行ける
+        Cand(3, BuildingType::Supermarket, true, 6.0f),      // 体力が足りない(P2-0: 距離ではなく、施設の利用の分で判定。スーパー 8 > 体力 6)
+        Cand(4, BuildingType::Shop, true, 6.0f),             // 行ける(コンビニ 4 ≦ 体力 6)
     };
+    const float savedStamina = a.stamina;
+    a.stamina = 6.0f;
     int idx = ChooseFacility(a, list, daily, s, rng, ev);
+    a.stamina = savedStamina;
     CHECK(idx == 3 && ev.size() == 4);
     CHECK(ev[0].reject == CandidateReject::Unreachable && ev[0].weight == 0.0f && !ev[0].chosen);
     CHECK(ev[1].reject == CandidateReject::WrongCategory && ev[1].weight == 0.0f);
@@ -306,14 +313,52 @@ static void TestPurpose()
     SimRandom rng(11);
     ResidentAgent a = MakeAgent(s);
 
-    a.lifeNeed = 40.0f; a.activityNeed = 95.0f;
-    for (int i = 0; i < 100; ++i) { auto p = ChoosePurpose(a, s, rng); CHECK(p.needDriven && p.category == FacilityCategory::Daily && (p.purpose == UsagePurpose::TopUp || p.purpose == UsagePurpose::BulkBuy)); }
-    a.lifeNeed = 95.0f; a.activityNeed = 40.0f;
-    for (int i = 0; i < 100; ++i) { auto p = ChoosePurpose(a, s, rng); CHECK(p.needDriven && p.category == FacilityCategory::Leisure && (p.purpose == UsagePurpose::Movie || p.purpose == UsagePurpose::Light)); }
-    a.lifeNeed = 30.0f; a.activityNeed = 60.0f;       // 両方不足 → より不足している生活
-    for (int i = 0; i < 50; ++i) { CHECK(ChoosePurpose(a, s, rng).category == FacilityCategory::Daily); }
-    a.lifeNeed = 60.0f; a.activityNeed = 30.0f;
-    for (int i = 0; i < 50; ++i) { CHECK(ChoosePurpose(a, s, rng).category == FacilityCategory::Leisure); }
+    // 利用目的は、選んだカテゴリに合う物だけ。
+    for (int i = 0; i < 300; ++i)
+    {
+        a.lifeNeed = static_cast<float>(i % 101); a.activityNeed = static_cast<float>((i * 7) % 101);
+        auto p = ChoosePurpose(a, s, rng);
+        CHECK(p.category == FacilityCategory::Daily ? (p.purpose == UsagePurpose::TopUp || p.purpose == UsagePurpose::BulkBuy)
+                                                    : (p.purpose == UsagePurpose::Movie || p.purpose == UsagePurpose::Light));
+    }
+    // P2-0: カテゴリは、需要の段階 × 重要度の重み付きの抽選(生活の重要度 1.0 / 余暇 0.5)。必ずではなく、確率。
+    auto dailyRate = [&](float life, float activity)
+    {
+        ResidentAgent b = a; b.lifeNeed = life; b.activityNeed = activity;
+        int daily = 0; SimRandom r(21);
+        for (int i = 0; i < 6000; ++i) { daily += (ChoosePurpose(b, s, r).category == FacilityCategory::Daily) ? 1 : 0; }
+        return daily / 6000.0;
+    };
+    const double lifeShort = dailyRate(40.0f, 95.0f);       // 生活だけ不足(深刻): 生活が大きく優先される。ただし、余暇も、たまに(例外)
+    CHECK(lifeShort > 0.85 && lifeShort < 1.0);
+    const double activityShort = dailyRate(95.0f, 40.0f);   // 余暇だけ不足: 余暇が多いが、生活もたまに
+    CHECK(activityShort < 0.35 && activityShort > 0.0);
+    // 受け入れテスト(P2-0): 生活 50/100・余暇 10/100 → 余暇の方が、不足は大きいが、生活が高い確率で選ばれる。100%ではない。
+    const double life50Leisure10 = dailyRate(50.0f, 10.0f);
+    CHECK(life50Leisure10 >= 0.75 && life50Leisure10 < 0.95);
+    std::printf("  life50/leisure10: daily=%.3f  lifeShort=%.3f activityShort=%.3f\n", life50Leisure10, lifeShort, activityShort);
+    // 段階が上がると、その需要のカテゴリが選ばれやすい(生活: 不足 < 深刻 < 危機的)。
+    CHECK(dailyRate(70.0f, 100.0f) < dailyRate(40.0f, 100.0f) && dailyRate(40.0f, 100.0f) < dailyRate(10.0f, 100.0f));
+    // needDriven: 選んだカテゴリの需要が、不足か。
+    {
+        ResidentAgent b = a; b.lifeNeed = 20.0f; b.activityNeed = 100.0f;
+        SimRandom r(5);
+        for (int i = 0; i < 200; ++i)
+        {
+            const auto p = ChoosePurpose(b, s, r);
+            CHECK(p.needDriven == (p.category == FacilityCategory::Daily));
+        }
+    }
+    // 重要度を同じにすると、余暇の深刻な不足が、生活の不足より、優先される(重要度は、設定で変えられる)。
+    {
+        ResidentSimSettings eq = s;
+        eq.leisureImportance = eq.dailyImportance;
+        for (int i = 0; i < 4; ++i) { eq.leisureStageMultiplier[i] = eq.dailyStageMultiplier[i]; }
+        ResidentAgent b = a; b.lifeNeed = 60.0f; b.activityNeed = 10.0f;
+        int daily = 0; SimRandom r(22);
+        for (int i = 0; i < 4000; ++i) { daily += (ChoosePurpose(b, eq, r).category == FacilityCategory::Daily) ? 1 : 0; }
+        CHECK(daily / 4000.0 < 0.4);
+    }
     // 生活が大きく不足しているほど、まとめ買いが増える。
     auto bulkRate = [&](float life) { ResidentAgent b = a; b.lifeNeed = life; b.activityNeed = 100.0f; int bulk = 0; SimRandom r(8); for (int i = 0; i < 4000; ++i) { bulk += (ChoosePurpose(b, s, r).purpose == UsagePurpose::BulkBuy) ? 1 : 0; } return bulk / 4000.0; };
     CHECK(bulkRate(10.0f) > bulkRate(70.0f) + 0.2);
@@ -321,7 +366,7 @@ static void TestPurpose()
     a.lifeNeed = 100.0f; a.activityNeed = 100.0f;
     int leisure = 0, daily = 0; SimRandom r2(9);
     for (int i = 0; i < 5000; ++i) { auto p = ChoosePurpose(a, s, r2); CHECK(!p.needDriven); (p.category == FacilityCategory::Leisure ? leisure : daily)++; }
-    CHECK(leisure > daily && daily > 800);
+    CHECK(leisure > daily && daily > 800);   // 余暇が約7割(従来の自発的な外出と同じ傾向)
     // ちょうど80は充足(不足ではない)。
     a.lifeNeed = 80.0f; a.activityNeed = 80.0f;
     CHECK(!IsLifeNeedUnmet(a, s) && !IsActivityNeedUnmet(a, s));
@@ -340,6 +385,9 @@ static void TestUseAndWeek()
     CHECK(a.history.size() == 1 && a.history[0].facilityObjectId == 7 && a.history[0].weekIndex == 3 && Near(a.history[0].hour, 12.5f));
     a.stamina = 2.0f; ApplyFacilityUse(a, *super, 8, 3, 13.0f, s);
     CHECK(a.stamina == 0.0f);                                                             // 体力は、0を下回らない
+    // 2軒目以降は、体力の消費が少し増える(useIndex)。
+    a.stamina = 50.0f; ApplyFacilityUse(a, *super, 9, 3, 13.5f, s, 2);
+    CHECK(Near(a.stamina, 50.0f - super->staminaCost * 1.30f));
     for (uint32_t i = 0; i < 20; ++i) { ApplyFacilityUse(a, *super, 100 + i, 4, 1.0f, s); }
     CHECK(a.history.size() == ResidentAgent::kMaxHistory && a.history[0].facilityObjectId == 119);   // 新しい順、最大8件
 
@@ -497,12 +545,7 @@ static void TestRoadLoss()
     ResidentSimSettings settings;
     ResidentAgent agent; InitializeResident(agent, 9u, settings);
     CHECK(agent.satisfaction == settings.satisfactionMax && settings.satisfactionMax == 100.0f, "new resident starts at max satisfaction");
-    const float cost1 = RoadLossStaminaCost(2.0f, settings);
-    const float cost2 = RoadLossStaminaCost(4.0f, settings);
-    CHECK(cost1 > 0.0f && std::fabs(cost2 - cost1 * 2.0f) < 1e-4f, "detour stamina cost is proportional to the route length (%.3f / %.3f)", cost1, cost2);
-    CHECK(RoadLossStaminaCost(-1.0f, settings) == 0.0f, "negative length costs 0");
-    ResidentSimSettings free = settings; free.roadLossStaminaCostScale = 0.0f;
-    CHECK(RoadLossStaminaCost(5.0f, free) == 0.0f, "scale 0 turns the stamina cost off");
+    // (P2-0: 迂回して帰る時の体力の消費は無くなった。移動では、体力を消費しない。)
 
     ApplyRoadLossPenalty(agent, false, settings);
     CHECK(std::fabs(agent.satisfaction - (100.0f - settings.roadLossRerouteSatisfactionPenalty)) < 1e-4f, "reroute lowers satisfaction by %.1f", settings.roadLossRerouteSatisfactionPenalty);

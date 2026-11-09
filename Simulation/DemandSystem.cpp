@@ -362,6 +362,7 @@ void DemandSystem::Save(Json& section, const SaveContext& context) const
                 entry.Set("visitHoursLeft", agent.visitHoursLeft);
                 entry.Set("outingStopCount", agent.outingStopCount);
                 entry.Set("usedFoodLike", agent.usedFoodLikeFacilityThisOuting);
+                entry.Set("outingReason", static_cast<int>(agent.outingReason)); // (P2-0)外出の理由。無い(古いセーブ)なら、読み込みで「手軽」
 
                 Json waypoints = Json::MakeArray();
                 for (const XMFLOAT3& waypoint : agent.waypoints)
@@ -569,6 +570,11 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
                 agent.visitHoursLeft = (std::max)(0.0f, entry.GetFloat("visitHoursLeft", 0.0f));
                 agent.outingStopCount = (std::max)(0, entry.GetInt("outingStopCount", 0));
                 agent.usedFoodLikeFacilityThisOuting = entry.GetBool("usedFoodLike", false);
+                {
+                    // (P2-0)外出の理由。範囲外・無い値は、「手軽」(古いセーブとの互換)。
+                    const int reason = entry.GetInt("outingReason", static_cast<int>(OutingReason::Quick));
+                    agent.outingReason = (reason >= 0 && reason < kOutingReasonCount) ? static_cast<OutingReason>(reason) : OutingReason::Quick;
+                }
 
                 if (const Json* waypoints = entry.Find("waypoints"))
                 {
@@ -806,7 +812,7 @@ void DemandSystem::FinishVisit(ResidentAgent& agent, GameContext& context, GameO
         const int week = context.clock ? context.clock->GetWeekCount() : 1;
         const float lifeBefore = agent.lifeNeed;
         const float staminaBefore = agent.stamina;
-        ApplyFacilityUse(agent, *facility, facilityObj->id, week, hour, m_settings);
+        ApplyFacilityUse(agent, *facility, facilityObj->id, week, hour, m_settings, agent.outingStopCount); // 何軒目の利用か(2軒目以降は、体力の消費が少し増える)
         agent.usedFoodLikeFacilityThisOuting = agent.usedFoodLikeFacilityThisOuting || facility->foodLike;
         // 記録: 利用が終わった(回復・売上・体力の消費。a=売上 b=生活需要の回復 c=体力の消費)。
         RecordEvent(agent, context, SimEventKind::VisitFinished, SimEventResult::Success, SimReason::None, facilityObj->id,
@@ -929,8 +935,10 @@ bool DemandSystem::TryStartStopover(ResidentAgent& agent, GameContext& context, 
 
     // 目的(不足している需要があれば、その充足を優先。無ければ自発的)と、候補(今の目的のカテゴリの、他の施設)。
     PurposeTrace purposeTrace;
-    OutingPurposeChoice purpose = ChoosePurpose(agent, m_settings, m_random, &purposeTrace);
+    OutingPurposeChoice purpose = ChoosePurpose(agent, m_settings, m_random, &purposeTrace); // 利用後の、更新された需要から、次のカテゴリを選び直す
+    purpose.reason = agent.outingReason;                                                      // 外出の理由は、この外出の間、変えない
     const float maxLeg = WorldScale::FromLegacy(m_settings.stopoverMaxDistanceLegacyCells);
+    const bool limitLeg = m_settings.stopoverMaxDistanceLegacyCells > 0.0f; // 0=上限なし(距離は、確率の減衰で扱う)
 
     // 行動テスト(施設を指定): 目的のカテゴリを、指定した施設のカテゴリに合わせる(乱数は、既に、普通に引いた後)。
     const GameObject* forcedFacility = nullptr;
@@ -972,14 +980,13 @@ bool DemandSystem::TryStartStopover(ResidentAgent& agent, GameContext& context, 
         RoutePlan leg = PlanRoute(hereEndpoint, candidateEndpoint, *m_roads, graph, *m_pathfinder, cache);
         if (leg.valid)
         {
-            // 立ち寄り先から家へ帰る道のりも、体力の判定に入れる(帰れなくなる立ち寄りはしない)。
+            // 立ち寄り先から家へ帰れる道があるか(帰れなくなる立ち寄りはしない)。体力は、移動では使わないので、道のりは、距離の重みにだけ使う。
             const RoutePlan back = PlanRoute(candidateEndpoint, homeEndpoint, *m_roads, graph, *m_pathfinder, cache);
             if (back.valid)
             {
                 candidate.reachable = true;
                 candidate.pathLength = leg.length;
-                candidate.walkLength = leg.length + back.length;
-                candidate.outOfRange = leg.length > maxLeg;
+                candidate.outOfRange = limitLeg && leg.length > maxLeg;
             }
         }
         candidates.push_back(candidate);
@@ -989,7 +996,7 @@ bool DemandSystem::TryStartStopover(ResidentAgent& agent, GameContext& context, 
     {
         // 記録: 目的は決めたが、同じカテゴリの他の施設が無い。
         const uint64_t detailId = RecordDecisionDetail(agent, context, purpose, purposeTrace, {}, FacilityChoiceTrace{}, -1, stopIndex, true, stopChance, stopRoll);
-        RecordEvent(agent, context, SimEventKind::PurposeChoice, SimEventResult::Info, SimReason::None, 0, 0.0f, 0.0f, 0.0f, stopIndex, detailId);
+        RecordEvent(agent, context, SimEventKind::PurposeChoice, SimEventResult::Info, SimReason::None, 0, static_cast<float>(purpose.reason), 0.0f, 0.0f, stopIndex, detailId);
         RecordEvent(agent, context, SimEventKind::StopoverCheck, SimEventResult::NotMet, SimReason::StopNoCandidates, currentFacility.id, 0.0f, 0.0f, 0.0f, stopIndex);
         if (testPlan) { FinishTestPlan(*testPlan, SimTestStatus::Rejected, SimTestReject::StopNoCandidates, 0, &agent, context); }
         return false;
@@ -1012,7 +1019,7 @@ bool DemandSystem::TryStartStopover(ResidentAgent& agent, GameContext& context, 
         if (forcedIndex < 0 || evaluations[static_cast<size_t>(forcedIndex)].reject != CandidateReject::None)
         {
             const uint64_t rejectedDetail = RecordDecisionDetail(agent, context, purpose, purposeTrace, evaluations, choiceTrace, -1, stopIndex, true, stopChance, stopRoll);
-            RecordEvent(agent, context, SimEventKind::PurposeChoice, SimEventResult::Info, SimReason::None, 0, 0.0f, 0.0f, 0.0f, stopIndex, rejectedDetail);
+            RecordEvent(agent, context, SimEventKind::PurposeChoice, SimEventResult::Info, SimReason::None, 0, static_cast<float>(purpose.reason), 0.0f, 0.0f, stopIndex, rejectedDetail);
             RecordEvent(agent, context, SimEventKind::FacilitySelect, SimEventResult::NotMet, SimReason::StopNoPickable, forcedFacility->id, 0.0f, 0.0f, 0.0f, stopIndex, rejectedDetail);
             FinishTestPlan(*testPlan, SimTestStatus::Rejected,
                            forcedIndex < 0 ? SimTestReject::FacilityNotFound : SimTestReject::FacilityNotEligible,
@@ -1047,7 +1054,7 @@ bool DemandSystem::TryStartStopover(ResidentAgent& agent, GameContext& context, 
         entry.note = "寄ろうとしたが、寄れる施設が無い(範囲外・体力不足・到達不可・使用済み)";
         PushDecisionLog(std::move(entry));
         const uint64_t detailId = RecordDecisionDetail(agent, context, purpose, purposeTrace, evaluations, choiceTrace, -1, stopIndex, true, stopChance, stopRoll);
-        RecordEvent(agent, context, SimEventKind::PurposeChoice, SimEventResult::Info, SimReason::None, 0, 0.0f, 0.0f, 0.0f, stopIndex, detailId);
+        RecordEvent(agent, context, SimEventKind::PurposeChoice, SimEventResult::Info, SimReason::None, 0, static_cast<float>(purpose.reason), 0.0f, 0.0f, stopIndex, detailId);
         RecordEvent(agent, context, SimEventKind::FacilitySelect, SimEventResult::NotMet, SimReason::StopNoPickable, 0, 0.0f, 0.0f, 0.0f, stopIndex, detailId);
         if (testPlan) { FinishTestPlan(*testPlan, SimTestStatus::Rejected, SimTestReject::StopNoPickable, 0, &agent, context); }
         return false;
@@ -1077,7 +1084,7 @@ bool DemandSystem::TryStartStopover(ResidentAgent& agent, GameContext& context, 
             // 記録: 抽選では選ばれたが、食事系の連続のため、取りやめた(内訳には、取りやめる前の抽選を残す)。
             const uint64_t detailId = RecordDecisionDetail(agent, context, purpose, purposeTrace, evaluations, choiceTrace, -1, stopIndex, true, stopChance, stopRoll,
                                                            foodChecked, foodAccept, foodRoll, foodPassed);
-            RecordEvent(agent, context, SimEventKind::PurposeChoice, SimEventResult::Info, SimReason::None, 0, 0.0f, 0.0f, 0.0f, stopIndex, detailId);
+            RecordEvent(agent, context, SimEventKind::PurposeChoice, SimEventResult::Info, SimReason::None, 0, static_cast<float>(purpose.reason), 0.0f, 0.0f, stopIndex, detailId);
             RecordEvent(agent, context, SimEventKind::FacilitySelect, SimEventResult::Success, SimReason::None, candidates[static_cast<size_t>(chosen)].objectId,
                         evaluations[static_cast<size_t>(chosen)].weight, evaluations[static_cast<size_t>(chosen)].chance, 0.0f, stopIndex, detailId);
             RecordEvent(agent, context, SimEventKind::StopoverCheck, SimEventResult::NotMet, SimReason::StopFoodChain, candidates[static_cast<size_t>(chosen)].objectId,
@@ -1092,7 +1099,7 @@ bool DemandSystem::TryStartStopover(ResidentAgent& agent, GameContext& context, 
     {
         const uint64_t detailId = RecordDecisionDetail(agent, context, purpose, purposeTrace, evaluations, choiceTrace, chosen, stopIndex, true, stopChance, stopRoll,
                                                        foodChecked, foodAccept, foodRoll, foodPassed, facilityForced);
-        RecordEvent(agent, context, SimEventKind::PurposeChoice, SimEventResult::Info, SimReason::None, 0, 0.0f, 0.0f, 0.0f, stopIndex, detailId);
+        RecordEvent(agent, context, SimEventKind::PurposeChoice, SimEventResult::Info, SimReason::None, 0, static_cast<float>(purpose.reason), 0.0f, 0.0f, stopIndex, detailId);
         RecordEvent(agent, context, SimEventKind::FacilitySelect, SimEventResult::Success, SimReason::StopStarted, candidates[static_cast<size_t>(chosen)].objectId,
                     evaluations[static_cast<size_t>(chosen)].weight, evaluations[static_cast<size_t>(chosen)].chance, 0.0f, stopIndex, detailId);
     }
@@ -1326,11 +1333,10 @@ bool DemandSystem::ReplanReturnRoute(ResidentAgent& agent, GameContext& context,
     if (applyDetourPenalty && plan.length > oldLength + 1e-3f)
     {
         // 元の道のりより長い: 道路が無くなって、迂回して帰ることになった。
-        const float staminaBefore = agent.stamina;
-        agent.stamina = (std::max)(0.0f, agent.stamina - RoadLossStaminaCost(plan.length - oldLength, m_settings));
+        // (P2-0)移動では、体力を消費しない。満足度の低下だけが残る。
         ApplyRoadLossPenalty(agent, false, m_settings);
         agent.lastDecisionNote = "道路が無くなったので、迂回して帰る";
-        RecordEvent(agent, context, SimEventKind::ReturnRerouted, SimEventResult::Warning, SimReason::DetourReturn, 0, plan.length - oldLength, staminaBefore - agent.stamina);
+        RecordEvent(agent, context, SimEventKind::ReturnRerouted, SimEventResult::Warning, SimReason::DetourReturn, 0, plan.length - oldLength, 0.0f);
     }
     return true;
 }
@@ -1506,11 +1512,10 @@ void DemandSystem::OnRoadsChanged(const std::vector<RemovedRoadSpan>& removed, c
         agent.state = ResidentAgentState::ReturningHome;
         agent.targetFacilityId = 0;
         agent.visitHoursLeft = 0.0f;
-        const float staminaBefore = agent.stamina;
-        agent.stamina = (std::max)(0.0f, agent.stamina - RoadLossStaminaCost(plan.length, m_settings));
+        // (P2-0)移動では、体力を消費しない。満足度の低下だけが残る。
         ApplyRoadLossPenalty(agent, false, m_settings);
         agent.lastDecisionNote = "道路が無くなったので、迂回して帰る";
-        RecordEvent(agent, context, SimEventKind::ReturnRerouted, SimEventResult::Warning, SimReason::RoadCut, 0, plan.length, staminaBefore - agent.stamina);
+        RecordEvent(agent, context, SimEventKind::ReturnRerouted, SimEventResult::Warning, SimReason::RoadCut, 0, plan.length, 0.0f);
     }
 }
 
@@ -1773,7 +1778,11 @@ uint64_t DemandSystem::RecordDecisionDetail(const ResidentAgent& agent, const Ga
     detail.isStopover = isStopover;
     detail.stopChance = stopChance;
     detail.stopRoll = stopRoll;
-    detail.settings = m_settings;           // 判断の時の設定(後でスライダーを動かしても、この判断の計算は読み返せる)
+    if (isStopover)
+    {
+        ComputeStopoverChance(agent, m_settings, &detail.stopBreakdown); // 判断した時の、体力・需要・理由・回数の係数(同じ式の、途中の値)
+    }
+    detail.settings = m_settings;          // 判断の時の設定(後でスライダーを動かしても、この判断の計算は読み返せる)
     detail.traits = agent.traits;
     detail.stamina = agent.stamina;
     detail.lifeNeed = agent.lifeNeed;
@@ -2247,10 +2256,11 @@ void DemandSystem::ProcessImmediateTestPlans(GameContext& context)
                 FinishTestPlan(plan, SimTestStatus::Rejected, SimTestReject::NoRoute, 0, agent, context);
                 continue;
             }
-            // 体力: 新しい行き先までの道のり + そこから家までの帰り(通常の施設選びと同じ判定)。
-            if (agent->stamina < RequiredStaminaForWalk(*definition, leg.length + back.length, m_settings))
+            // 体力: 新しい行き先を使うのに必要な体力(通常の施設選びと同じ判定。移動の分は無い。何軒目の利用かで、少し変わる)。
+            const float requiredStamina = RequiredStamina(*definition, agent->outingStopCount, m_settings);
+            if (agent->stamina < requiredStamina)
             {
-                FinishTestPlan(plan, SimTestStatus::Rejected, SimTestReject::NotEnoughStamina, static_cast<int>(RequiredStaminaForWalk(*definition, leg.length + back.length, m_settings)), agent, context);
+                FinishTestPlan(plan, SimTestStatus::Rejected, SimTestReject::NotEnoughStamina, static_cast<int>(requiredStamina), agent, context);
                 continue;
             }
             BeginTestPlan(plan, *agent, context);
@@ -2609,9 +2619,24 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
                 continue;
             }
 
+            // 外出の理由(P2-0): 手軽 / がっつり / エリア。今の需要の切迫・体力を、重みに反映する。乱数は、いつも1回引く。
+            // エリアは、候補が実装されるまで(P2-A)は無いので、重み0(他の理由から、同じ乱数で選ぶのと同じ)。
+            OutingReason outingReason = OutingReason::Quick;
+            OutingReasonTrace reasonTrace;
+            if (!ChooseOutingReason(agent, m_settings, m_random, false, outingReason, &reasonTrace))
+            {
+                // 選べる理由が無い(設定で、全ての重みが0): 外出を取りやめる(普通は起きない)。
+                agent.lastDecisionNote = "外出したいが、外出の理由を選べない(全ての理由の重みが0)";
+                RecordEvent(agent, context, SimEventKind::OutingBlocked, SimEventResult::NotMet, SimReason::NoOutingReason);
+                if (testPlan) { FinishTestPlan(*testPlan, SimTestStatus::Rejected, SimTestReject::NoPickable, 0, &agent, context); }
+                continue;
+            }
+
             // 目的と、候補(今の目的のカテゴリの施設)。
             PurposeTrace purposeTrace;
             OutingPurposeChoice purpose = ChoosePurpose(agent, m_settings, m_random, &purposeTrace);
+            purpose.reason = outingReason;
+            purposeTrace.reason = reasonTrace;
 
             // 行動テスト(施設を指定): 目的のカテゴリを、指定した施設のカテゴリに合わせる(乱数は、既に、普通に引いた後)。
             const FacilitySnapshot* forcedFacility = nullptr;
@@ -2661,7 +2686,7 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
             {
                 agent.lastDecisionNote = std::string("外出したいが、") + FacilityCategoryName(purpose.category) + "の施設が無い";
                 const uint64_t detailId = RecordDecisionDetail(agent, context, purpose, purposeTrace, {}, FacilityChoiceTrace{}, -1, 0, false, 0.0f, -1.0f);
-                RecordEvent(agent, context, SimEventKind::PurposeChoice, SimEventResult::Info, SimReason::None, 0, 0.0f, 0.0f, 0.0f, 0, detailId);
+                RecordEvent(agent, context, SimEventKind::PurposeChoice, SimEventResult::Info, SimReason::None, 0, static_cast<float>(purpose.reason), 0.0f, 0.0f, 0, detailId);
                 RecordEvent(agent, context, SimEventKind::OutingBlocked, SimEventResult::NotMet, SimReason::NoFacilityInCategory);
                 if (testPlan) { FinishTestPlan(*testPlan, SimTestStatus::Rejected, SimTestReject::NoFacilityInCategory, static_cast<int>(purpose.category), &agent, context); }
                 continue;
@@ -2684,7 +2709,7 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
                 {
                     // 理由を、判断の内訳に残してから、拒否する(候補の表に、除外の理由が出る)。
                     const uint64_t rejectedDetail = RecordDecisionDetail(agent, context, purpose, purposeTrace, evaluations, choiceTrace, -1, 0, false, 0.0f, -1.0f, false, 1.0f, -1.0f, true, false);
-                    RecordEvent(agent, context, SimEventKind::PurposeChoice, SimEventResult::Info, SimReason::None, 0, 0.0f, 0.0f, 0.0f, 0, rejectedDetail);
+                    RecordEvent(agent, context, SimEventKind::PurposeChoice, SimEventResult::Info, SimReason::None, 0, static_cast<float>(purpose.reason), 0.0f, 0.0f, 0, rejectedDetail);
                     RecordEvent(agent, context, SimEventKind::FacilitySelect, SimEventResult::NotMet, SimReason::NoPickableCandidate, forcedFacility->building.id, 0.0f, 0.0f, 0.0f, 0, rejectedDetail);
                     FinishTestPlan(*testPlan, SimTestStatus::Rejected,
                                    forcedIndex < 0 ? SimTestReject::FacilityNotFound : SimTestReject::FacilityNotEligible,
@@ -2714,7 +2739,7 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
 
             // 記録: 目的の決定と、施設の抽選(内訳は1件にまとめて、2つのイベントから参照する)。
             const uint64_t decisionDetailId = RecordDecisionDetail(agent, context, purpose, purposeTrace, evaluations, choiceTrace, chosen, 0, false, 0.0f, -1.0f, false, 1.0f, -1.0f, true, facilityForced);
-            RecordEvent(agent, context, SimEventKind::PurposeChoice, SimEventResult::Info, SimReason::None, 0, 0.0f, 0.0f, 0.0f, 0, decisionDetailId);
+            RecordEvent(agent, context, SimEventKind::PurposeChoice, SimEventResult::Info, SimReason::None, 0, static_cast<float>(purpose.reason), 0.0f, 0.0f, 0, decisionDetailId);
 
             if (chosen < 0 || !plans[static_cast<size_t>(chosen)].valid)
             {
@@ -2740,6 +2765,7 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
 
             agent.targetFacilityId = target->building.id;
             agent.purpose = purpose.purpose;
+            agent.outingReason = purpose.reason;    // この外出の理由(立ち寄りの判断・距離の評価が参照する)
             agent.outingStopCount = 0;
             agent.usedFoodLikeFacilityThisOuting = false;
             agent.waypoints = plan.waypoints;   // 自宅 → 接続点 → 道路 → 接続点 → 施設(斜めに横切らない)
@@ -3011,7 +3037,18 @@ ResidentDebugView DemandSystem::GetResidentDebugView(uint32_t agentObjectId, con
         view.purpose = agent.purpose;
         view.outingStopCount = agent.outingStopCount;
         view.usedFoodLikeFacilityThisOuting = agent.usedFoodLikeFacilityThisOuting;
+        view.outingReason = agent.outingReason;
         view.visitHoursLeft = agent.visitHoursLeft;
+        {
+            // 見積り: 乱数は、本物の乱数(m_random)を使わず、使い捨ての乱数で呼ぶ(重みは、乱数に依らない。ゲームの乱数列を進めない)。
+            SimRandom scratch(1);
+            OutingReason ignoredReason = OutingReason::Quick;
+            ChooseOutingReason(agent, m_settings, scratch, false, ignoredReason, &view.reasonPreview);
+            ChoosePurpose(agent, m_settings, scratch, &view.purposePreview);
+            view.lifeStage = view.purposePreview.lifeStage;
+            view.activityStage = view.purposePreview.activityStage;
+            ComputeStopoverChance(agent, m_settings, &view.stopoverPreview);
+        }
 
         view.lifeNeed = agent.lifeNeed;
         view.activityNeed = agent.activityNeed;

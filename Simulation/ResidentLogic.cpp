@@ -1,4 +1,4 @@
-#include "ResidentLogic.h"
+﻿#include "ResidentLogic.h"
 #include <algorithm>
 #include <cmath>
 
@@ -72,6 +72,44 @@ bool IsActivityNeedUnmet(const ResidentAgent& agent, const ResidentSimSettings& 
     return agent.activityNeed < settings.needSatisfiedThreshold;
 }
 
+NeedStage GetNeedStage(float need, const ResidentSimSettings& settings)
+{
+    if (need >= settings.needSatisfiedThreshold) { return NeedStage::Satisfied; }
+    if (need < settings.needCriticalThreshold)   { return NeedStage::Critical; }
+    if (need < settings.needSevereThreshold)     { return NeedStage::Severe; }
+    return NeedStage::Short;
+}
+
+const char* NeedStageName(NeedStage stage)
+{
+    switch (stage)
+    {
+    case NeedStage::Satisfied: return "充足";
+    case NeedStage::Short:     return "不足";
+    case NeedStage::Severe:    return "深刻";
+    case NeedStage::Critical:  return "危機的";
+    }
+    return "?";
+}
+
+float ComputeNeedPressure(const ResidentAgent& agent, const ResidentSimSettings& settings)
+{
+    const int life = static_cast<int>(GetNeedStage(agent.lifeNeed, settings));
+    const int activity = static_cast<int>(GetNeedStage(agent.activityNeed, settings));
+    const float dailyImportance = (std::max)(0.0f, settings.dailyImportance);
+    const float leisureImportance = (std::max)(0.0f, settings.leisureImportance);
+    const float maxImportance = (std::max)((std::max)(dailyImportance, leisureImportance), 1e-6f);
+    const float lifePressure = settings.needPressureByStage[life] * dailyImportance;
+    const float activityPressure = settings.needPressureByStage[activity] * leisureImportance;
+    return Clamp((std::max)(lifePressure, activityPressure) / maxImportance, 0.0f, 1.0f);
+}
+
+float StaminaRatio(const ResidentAgent& agent, const ResidentSimSettings& settings)
+{
+    const float cap = (std::max)(1.0f, EffectiveStaminaCap(agent, settings));
+    return Clamp(agent.stamina / cap, 0.0f, 1.0f);
+}
+
 void InitializeResident(ResidentAgent& agent, uint32_t seed, const ResidentSimSettings& settings)
 {
     agent.traits = MakeResidentTraits(seed, settings.staminaMax);
@@ -112,47 +150,75 @@ float ComputeOutingChance(const ResidentAgent& agent, const ResidentSimSettings&
 }
 
 // ---------------------------------------------------------------------------
+// 外出の理由(P2-0)
+// ---------------------------------------------------------------------------
+bool ChooseOutingReason(const ResidentAgent& agent, const ResidentSimSettings& settings, SimRandom& random, bool areaAvailable,
+                        OutingReason& out, OutingReasonTrace* outTrace)
+{
+    OutingReasonTrace trace;
+    trace.staminaRatio = StaminaRatio(agent, settings);
+    trace.pressure = ComputeNeedPressure(agent, settings);
+    trace.areaAvailable = areaAvailable;
+
+    // 手軽: 基本の重み。
+    trace.weight[static_cast<int>(OutingReason::Quick)] = (std::max)(0.0f, settings.reasonQuickWeight);
+
+    // がっつり: 体力に余裕があるほど・切迫した需要が無いほど・自発的な住民ほど、重い。切迫度は、ここ1か所だけで反映する(手軽には掛けない)。
+    const float staminaTerm = std::pow(trace.staminaRatio, (std::max)(0.0f, settings.substantialStaminaExponent));
+    const float pressureTerm = (std::max)(0.0f, 1.0f - trace.pressure * Clamp(settings.substantialPressurePenalty, 0.0f, 1.0f));
+    trace.weight[static_cast<int>(OutingReason::Substantial)] =
+        (std::max)(0.0f, settings.reasonSubstantialWeight) * staminaTerm * pressureTerm * (std::max)(0.0f, agent.traits.spontaneity);
+
+    // エリア: 候補が無い間は、重み0(他の理由から、同じ乱数で選ぶのと同じ)。
+    trace.weight[static_cast<int>(OutingReason::Area)] = areaAvailable ? (std::max)(0.0f, settings.reasonAreaWeight) : 0.0f;
+
+    float total = 0.0f;
+    for (float w : trace.weight) { total += w; }
+    trace.total = total;
+
+    // 乱数は、重みの合計が0でも、いつも1回引く(乱数の消費を、状態によって変えない)。
+    trace.roll = random.Next01();
+    const std::vector<float> weights(trace.weight, trace.weight + kOutingReasonCount);
+    const int picked = PickWeightedIndex(weights, trace.roll);
+    trace.valid = (picked >= 0);
+    if (trace.valid)
+    {
+        trace.chosen = static_cast<OutingReason>(picked);
+        out = trace.chosen;
+    }
+    if (outTrace)
+    {
+        *outTrace = trace;
+    }
+    return trace.valid;
+}
+
+// ---------------------------------------------------------------------------
 // 外出の目的
 // ---------------------------------------------------------------------------
 OutingPurposeChoice ChoosePurpose(const ResidentAgent& agent, const ResidentSimSettings& settings, SimRandom& random, PurposeTrace* outTrace)
 {
-    // 判断の過程は、実際に引いた乱数をそのまま書き出す(traceの有無で、乱数の消費は変わらない)。
+    // 判断の過程は、実際に使った値・引いた乱数をそのまま書き出す(traceの有無で、乱数の消費は変わらない)。
     PurposeTrace trace;
     OutingPurposeChoice choice;
-    const bool lifeUnmet = IsLifeNeedUnmet(agent, settings);
-    const bool activityUnmet = IsActivityNeedUnmet(agent, settings);
-    trace.lifeUnmet = lifeUnmet;
-    trace.activityUnmet = activityUnmet;
-    choice.needDriven = lifeUnmet || activityUnmet;
+    trace.lifeStage = GetNeedStage(agent.lifeNeed, settings);
+    trace.activityStage = GetNeedStage(agent.activityNeed, settings);
+    trace.lifeUnmet = trace.lifeStage != NeedStage::Satisfied;
+    trace.activityUnmet = trace.activityStage != NeedStage::Satisfied;
 
-    if (choice.needDriven)
-    {
-        // 両方が不足なら、より不足している方(同じなら乱数)を優先する。
-        if (lifeUnmet && activityUnmet)
-        {
-            if (std::fabs(agent.lifeNeed - agent.activityNeed) < 0.001f)
-            {
-                const float roll = random.Next01();
-                trace.tieBreakDrawn = true;
-                trace.tieBreakRoll = roll;
-                choice.category = (roll < 0.5f) ? FacilityCategory::Daily : FacilityCategory::Leisure;
-            }
-            else { choice.category = (agent.lifeNeed < agent.activityNeed) ? FacilityCategory::Daily : FacilityCategory::Leisure; }
-        }
-        else
-        {
-            choice.category = lifeUnmet ? FacilityCategory::Daily : FacilityCategory::Leisure;
-        }
-    }
-    else
-    {
-        // 自発的な外出。需要の回復に限らないので、娯楽を多めに。
-        const float roll = random.Next01();
-        trace.categoryDrawn = true;
-        trace.categoryRoll = roll;
-        trace.leisureChance = 0.7f;
-        choice.category = (roll < 0.7f) ? FacilityCategory::Leisure : FacilityCategory::Daily;
-    }
+    // カテゴリ: 重み = 重要度 × 段階の補正。両方の需要が足りていても、同じ式(余暇が多めになる補正を、設定で持つ)。
+    trace.dailyWeight = (std::max)(0.0f, settings.dailyImportance) * (std::max)(0.0f, settings.dailyStageMultiplier[static_cast<int>(trace.lifeStage)]);
+    trace.leisureWeight = (std::max)(0.0f, settings.leisureImportance) * (std::max)(0.0f, settings.leisureStageMultiplier[static_cast<int>(trace.activityStage)]);
+    const float weightSum = trace.dailyWeight + trace.leisureWeight;
+    trace.leisureChance = (weightSum > 0.0f) ? trace.leisureWeight / weightSum : 0.0f;
+
+    // 乱数は、いつも2回(カテゴリ・利用目的)引く。
+    const float categoryRoll = random.Next01();
+    trace.categoryDrawn = true;
+    trace.categoryRoll = categoryRoll;
+    choice.category = (categoryRoll < trace.leisureChance) ? FacilityCategory::Leisure : FacilityCategory::Daily;
+    // 選んだカテゴリの需要が、不足していたか(不足による外出か、そうでない外出か)。
+    choice.needDriven = (choice.category == FacilityCategory::Daily) ? trace.lifeUnmet : trace.activityUnmet;
 
     if (choice.category == FacilityCategory::Daily)
     {
@@ -183,7 +249,8 @@ OutingPurposeChoice ChoosePurpose(const ResidentAgent& agent, const ResidentSimS
 // 施設の選び方
 // ---------------------------------------------------------------------------
 void ComputeFacilityWeightBreakdown(const ResidentAgent& agent, const FacilityDefinition& facility, UsagePurpose purpose,
-                                    float pathLength, const ResidentSimSettings& settings, FacilityWeightBreakdown& out)
+                                    float pathLength, const ResidentSimSettings& settings, FacilityWeightBreakdown& out,
+                                    OutingReason reason, float distanceScaleFactor)
 {
     const int purposeIndex = static_cast<int>(purpose);
     out.suitability = (purposeIndex >= 0 && purposeIndex < kUsagePurposeCount) ? facility.purposeSuitability[purposeIndex] : 1.0f;
@@ -197,10 +264,16 @@ void ComputeFacilityWeightBreakdown(const ResidentAgent& agent, const FacilityDe
     out.priceStrength = settings.priceStrength * agent.traits.priceSensitivity;
     out.priceFactor = 1.0f / (1.0f + out.priceStrength * out.priceRatio);
 
-    // 距離: 道のり(マス基準に直した値)が、距離の目安の分だけ離れるごとに、約37%(1/e)になる。
+    // 距離: 道のり(マス基準に直した値)が、距離の目安の分だけ離れると、約37%(1/e)になる(形 k=1 の時。連続的で、しきい値は無い)。
+    // 目安・形は、外出の理由ごと(手軽は、強く下がる。がっつりは、減り方が弱い)。
+    const int reasonIndex = (std::max)(0, (std::min)(static_cast<int>(reason), kOutingReasonCount - 1));
+    out.reason = static_cast<OutingReason>(reasonIndex);
     out.legacyDistance = pathLength / WorldScale::FromLegacy(1.0f);
-    out.distanceScale = (std::max)(0.1f, settings.distanceScaleLegacyCells * agent.traits.distanceTolerance);
-    out.distanceFactor = std::exp(-(std::max)(0.0f, out.legacyDistance) / out.distanceScale);
+    out.distanceScale = (std::max)(0.1f, settings.distanceScaleLegacyCells * agent.traits.distanceTolerance
+                                         * (std::max)(0.01f, settings.reasonDistanceScale[reasonIndex]) * (std::max)(0.01f, distanceScaleFactor));
+    out.distanceShape = (std::max)(0.1f, settings.reasonDistanceShape[reasonIndex]);
+    const float distanceRatio = (std::max)(0.0f, out.legacyDistance) / out.distanceScale;
+    out.distanceFactor = std::exp(-((out.distanceShape == 1.0f) ? distanceRatio : std::pow(distanceRatio, out.distanceShape)));
 
     out.product = (std::max)(0.0f, out.suitability) * out.qualityFactor * out.priceFactor * out.distanceFactor;
     // 到達できる候補を、無条件に0にしない(弱い候補も、ごくまれに選ばれる)。
@@ -209,23 +282,23 @@ void ComputeFacilityWeightBreakdown(const ResidentAgent& agent, const FacilityDe
 }
 
 float ComputeFacilityWeight(const ResidentAgent& agent, const FacilityDefinition& facility, UsagePurpose purpose,
-                            float pathLength, const ResidentSimSettings& settings)
+                            float pathLength, const ResidentSimSettings& settings, OutingReason reason, float distanceScaleFactor)
 {
     FacilityWeightBreakdown breakdown;
-    ComputeFacilityWeightBreakdown(agent, facility, purpose, pathLength, settings, breakdown);
+    ComputeFacilityWeightBreakdown(agent, facility, purpose, pathLength, settings, breakdown, reason, distanceScaleFactor);
     return breakdown.weight;
 }
 
-float RequiredStamina(const FacilityDefinition& facility, float pathLength, const ResidentSimSettings& settings)
+float FacilityUseStaminaCost(const FacilityDefinition& facility, int useIndex, const ResidentSimSettings& settings)
 {
-    const float legacyDistance = pathLength / WorldScale::FromLegacy(1.0f);
-    return facility.staminaCost + 2.0f * (std::max)(0.0f, legacyDistance) * settings.staminaPerLegacyCell;
+    // 2軒目以降は、少しずつ、高くなる(複雑な疲労の仕組みは、持たない)。
+    const float multiplier = 1.0f + (std::max)(0.0f, settings.additionalUseStaminaCostStep) * static_cast<float>((std::max)(0, useIndex));
+    return facility.staminaCost * multiplier;
 }
 
-float RequiredStaminaForWalk(const FacilityDefinition& facility, float totalWalkLength, const ResidentSimSettings& settings)
+float RequiredStamina(const FacilityDefinition& facility, int useIndex, const ResidentSimSettings& settings)
 {
-    const float legacyDistance = totalWalkLength / WorldScale::FromLegacy(1.0f);
-    return facility.staminaCost + (std::max)(0.0f, legacyDistance) * settings.staminaPerLegacyCell;
+    return FacilityUseStaminaCost(facility, useIndex, settings);
 }
 
 float ComputeRepeatVisitFactor(const ResidentAgent& agent, uint32_t facilityObjectId, bool needDrivenDaily, const ResidentSimSettings& settings)
@@ -258,7 +331,7 @@ StopoverBlock ExplainStopoverBlock(const ResidentAgent& agent, float hour, const
     if (!(agent.homeObjectId != 0))                       { return StopoverBlock::NoHome; }
     if (!(agent.outingStopCount < settings.maxStopovers)) { return StopoverBlock::MaxStops; }
     if (!(hour < settings.stopoverLatestHour))            { return StopoverBlock::TooLate; }
-    if (!(agent.stamina >= settings.stopoverMinStamina))  { return StopoverBlock::LowStamina; }
+    if (!(agent.stamina > 0.0f))                          { return StopoverBlock::LowStamina; } // 体力が0。少ない時は、確率が下がる(連続的)
     return StopoverBlock::None;
 }
 
@@ -267,11 +340,26 @@ bool CanConsiderStopover(const ResidentAgent& agent, float hour, const ResidentS
     return ExplainStopoverBlock(agent, hour, settings) == StopoverBlock::None;
 }
 
-float ComputeStopoverChance(const ResidentAgent& agent, const ResidentSimSettings& settings)
+float ComputeStopoverChance(const ResidentAgent& agent, const ResidentSimSettings& settings, StopoverChanceBreakdown* out)
 {
+    StopoverChanceBreakdown b;
     const float decay = Clamp(settings.stopoverChanceDecay, 0.0f, 1.0f);
-    const float chance = settings.stopoverBaseChance * std::pow(decay, static_cast<float>((std::max)(0, agent.outingStopCount)));
-    return Clamp(chance, 0.0f, 1.0f);
+    b.baseChance = settings.stopoverBaseChance;
+    b.countDecayFactor = std::pow(decay, static_cast<float>((std::max)(0, agent.outingStopCount)));
+    b.staminaRatio = StaminaRatio(agent, settings);
+    b.staminaFactor = std::pow(b.staminaRatio, (std::max)(0.0f, settings.stopoverStaminaExponent));
+    b.pressure = ComputeNeedPressure(agent, settings);
+    const float floorFactor = Clamp(settings.stopoverNeedFloor, 0.0f, 1.0f);
+    b.needFactor = floorFactor + (1.0f - floorFactor) * b.pressure;
+    const int reasonIndex = (std::max)(0, (std::min)(static_cast<int>(agent.outingReason), kOutingReasonCount - 1));
+    b.reason = static_cast<OutingReason>(reasonIndex);
+    b.reasonMultiplier = (std::max)(0.0f, settings.stopoverReasonMultiplier[reasonIndex]);
+    b.chance = Clamp(b.baseChance * b.countDecayFactor * b.staminaFactor * b.needFactor * b.reasonMultiplier, 0.0f, 1.0f);
+    if (out)
+    {
+        *out = b;
+    }
+    return b.chance;
 }
 
 float ComputeFoodChainAcceptChance(const ResidentAgent& agent, const FacilityDefinition& candidate, const ResidentSimSettings& settings)
@@ -314,6 +402,9 @@ int ChooseFacility(const ResidentAgent& agent, const std::vector<FacilityCandida
 
     // 不足による日用品の外出は、必要な買い物を妨げないよう、利用履歴による下げ幅を弱める。
     const bool needDrivenDaily = purpose.needDriven && purpose.category == FacilityCategory::Daily;
+    // 立ち寄り(2軒目以降)かどうか: 利用の何軒目か(体力の消費の増え方)と、距離の目安の倍率に使う。
+    const int useIndex = (std::max)(0, visitsThisOuting);
+    const float distanceScaleFactor = (useIndex > 0) ? settings.stopoverDistanceScaleFactor : 1.0f;
 
     for (const FacilityCandidate& candidate : candidates)
     {
@@ -336,7 +427,7 @@ int ChooseFacility(const ResidentAgent& agent, const std::vector<FacilityCandida
         {
             evaluation.reject = CandidateReject::VisitedThisOuting;
         }
-        else if (candidate.outOfRange)
+        else if (candidate.outOfRange && settings.stopoverMaxDistanceLegacyCells > 0.0f)
         {
             evaluation.reject = CandidateReject::OutOfRange;
         }
@@ -346,10 +437,8 @@ int ChooseFacility(const ResidentAgent& agent, const std::vector<FacilityCandida
         }
         else
         {
-            // 体力の判定に使った必要な体力を覚える(判定の式は、以前と同じ)。
-            evaluation.requiredStamina = (candidate.walkLength >= 0.0f)
-                ? RequiredStaminaForWalk(*facility, candidate.walkLength, settings)
-                : RequiredStamina(*facility, candidate.pathLength, settings);
+            // 体力の判定: その施設を使うのに必要な体力(P2-0: 移動の分は無い。2軒目以降は、少し高い)。
+            evaluation.requiredStamina = RequiredStamina(*facility, useIndex, settings);
             if (agent.stamina < evaluation.requiredStamina)
             {
                 evaluation.reject = CandidateReject::NotEnoughStamina;
@@ -357,7 +446,8 @@ int ChooseFacility(const ResidentAgent& agent, const std::vector<FacilityCandida
             else
             {
                 evaluation.repeatFactor = ComputeRepeatVisitFactor(agent, candidate.objectId, needDrivenDaily, settings);
-                ComputeFacilityWeightBreakdown(agent, *facility, purpose.purpose, candidate.pathLength, settings, evaluation.breakdown);
+                ComputeFacilityWeightBreakdown(agent, *facility, purpose.purpose, candidate.pathLength, settings, evaluation.breakdown,
+                                               purpose.reason, distanceScaleFactor);
                 evaluation.hasBreakdown = true;
                 const float baseWeight = evaluation.breakdown.weight;
                 evaluation.weightAfterRepeat = baseWeight * evaluation.repeatFactor;
@@ -405,11 +495,11 @@ int ChooseFacility(const ResidentAgent& agent, const std::vector<FacilityCandida
 // 利用の結果・時間・週
 // ---------------------------------------------------------------------------
 void ApplyFacilityUse(ResidentAgent& agent, const FacilityDefinition& facility, uint32_t facilityObjectId, int weekIndex, float hour,
-                      const ResidentSimSettings& /*settings*/)
+                      const ResidentSimSettings& settings, int useIndex)
 {
     agent.lifeNeed = Clamp(agent.lifeNeed + facility.lifeRecovery, 0.0f, 100.0f);
     agent.activityNeed = Clamp(agent.activityNeed + facility.activityRecovery, 0.0f, 100.0f);
-    agent.stamina = (std::max)(0.0f, agent.stamina - facility.staminaCost);
+    agent.stamina = (std::max)(0.0f, agent.stamina - FacilityUseStaminaCost(facility, useIndex, settings));
 
     VisitRecord record;
     record.facilityObjectId = facilityObjectId;
@@ -486,12 +576,6 @@ DirectX::XMFLOAT2 HomelessOffset(int index, float spacing)
     const float radius = spacing * std::sqrt(static_cast<float>(index));
     const float angle = kGoldenAngle * static_cast<float>(index);
     return DirectX::XMFLOAT2(std::cos(angle) * radius, std::sin(angle) * radius);
-}
-
-float RoadLossStaminaCost(float routeLength, const ResidentSimSettings& settings)
-{
-    const float legacyDistance = routeLength / WorldScale::FromLegacy(1.0f);
-    return (std::max)(0.0f, legacyDistance) * settings.staminaPerLegacyCell * (std::max)(0.0f, settings.roadLossStaminaCostScale);
 }
 
 void ApplyRoadLossPenalty(ResidentAgent& agent, bool stranded, const ResidentSimSettings& settings)

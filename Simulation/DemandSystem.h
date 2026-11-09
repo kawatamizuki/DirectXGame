@@ -144,7 +144,15 @@ struct ResidentDebugView
     UsagePurpose purpose = UsagePurpose::TopUp;
     int outingStopCount = 0;
     bool usedFoodLikeFacilityThisOuting = false;
+    OutingReason outingReason = OutingReason::Quick; // 今の外出の理由(外出中でなければ、直近の外出の理由)
     float visitHoursLeft = 0.0f;            // 施設の中に、あと何ゲーム時間いるか
+
+    // 「今、外出するなら」の見積り(P2-0。乱数は引かない。ResidentLogic の式の途中の値を、そのまま見せる)。
+    NeedStage lifeStage = NeedStage::Satisfied;
+    NeedStage activityStage = NeedStage::Satisfied;
+    OutingReasonTrace reasonPreview;        // 外出の理由の重み(エリアは、候補が無い間は0)。roll・chosen は意味を持たない
+    PurposeTrace purposePreview;            // カテゴリの重み(生活・余暇)と、余暇になる確率。roll は意味を持たない
+    StopoverChanceBreakdown stopoverPreview;// 今、立ち寄りを考えるなら、の確率の内訳
 
     // 需要・体力など。
     float lifeNeed = 0.0f;

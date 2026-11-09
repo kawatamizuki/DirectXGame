@@ -50,6 +50,7 @@ namespace
         case SimReason::HomeNoRoad:             return "自宅の近くに道路が無い";
         case SimReason::NoFacilityInCategory:   return "目的のカテゴリの施設が無い";
         case SimReason::NoPickableCandidate:    return "候補は有ったが全て除外された";
+        case SimReason::NoOutingReason:         return "外出の理由を選べなかった";
         case SimReason::StopNoHome:             return "帰る家が無い";
         case SimReason::StopMaxReached:         return "立ち寄りの回数が上限";
         case SimReason::StopTooLate:            return "時刻が遅い";
@@ -112,6 +113,7 @@ namespace
         add(ReasonJa(SimReason::HomeNoRoad), Reason(b.outingFailReason, SimReason::HomeNoRoad), started, 1);
         add(ReasonJa(SimReason::NoFacilityInCategory), Reason(b.outingFailReason, SimReason::NoFacilityInCategory), started, 1);
         add(ReasonJa(SimReason::NoPickableCandidate), Reason(b.outingFailReason, SimReason::NoPickableCandidate), started, 1, "到達不可・体力不足などで、全て除外");
+        add(ReasonJa(SimReason::NoOutingReason), Reason(b.outingFailReason, SimReason::NoOutingReason), started, 1, "全ての理由の重みが0(設定の不整合)");
         add("施設へ歩き始めた(出発)", b.departed, started);
         add("施設に着いた(主目的)", b.arrived, b.departed);
         add("主目的の利用が終わった", b.mainVisits, b.arrived);

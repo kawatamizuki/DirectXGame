@@ -251,7 +251,7 @@ namespace
             return Fmt("外出判定に当選(確率 %.1f%% > 乱数 %.4f)。%s", e.a * 100.0f, e.b,
                        e.reason == SimReason::OutingNeedDriven ? "需要の不足による外出" : "自発的な外出");
         case SimEventKind::PurposeChoice:
-            return stop + "外出の目的を決めた(内訳は[詳細])";
+            return stop + Fmt("外出の目的を決めた(理由: %s。内訳は[詳細])", OutingReasonName(static_cast<OutingReason>((std::max)(0, (std::min)(static_cast<int>(e.a), kOutingReasonCount - 1)))));
         case SimEventKind::FacilitySelect:
             if (e.result == SimEventResult::Success)
             {
@@ -259,6 +259,7 @@ namespace
             }
             return stop + "選べる施設が無かった(全候補が除外された)";
         case SimEventKind::OutingBlocked:
+            if (e.reason == SimReason::NoOutingReason) { return "外出の理由を選べず(全ての理由の重みが0)、出られなかった"; }
             return e.reason == SimReason::HomeNoRoad ? "自宅の近くに道路が無く、出られなかった" : "目的のカテゴリの施設が1軒も無く、出られなかった";
         case SimEventKind::MoveStart:
             return stop + Fmt("%sへ歩き始めた(道のり %.1f)", facility.c_str(), e.a);
@@ -1027,6 +1028,12 @@ void ResidentDebugPanel::DrawCurrentTab(DemandSystem& demand, const std::vector<
         Row("行き先", "なし");
     }
     Row("立ち寄り", Fmt("%d / %d 回%s", view.outingStopCount, settings.maxStopovers, view.usedFoodLikeFacilityThisOuting ? "  (今回の外出で食事系を使った)" : ""));
+    Row("外出の理由", OutingReasonName(view.outingReason));
+    {
+        const StopoverChanceBreakdown& sp = view.stopoverPreview;
+        Row("今、立ち寄りを考えるなら", Fmt("%.1f%% = 基本 %.0f%% × 回数 %.2f × 体力 %.2f × 需要 %.2f × 理由「%s」%.2f",
+                                          sp.chance * 100.0f, sp.baseChance * 100.0f, sp.countDecayFactor, sp.staminaFactor, sp.needFactor, OutingReasonName(sp.reason), sp.reasonMultiplier));
+    }
     if (view.state == ResidentAgentState::Visiting)
     {
         Row("滞在の残り", Fmt("%.2f ゲーム時間", view.visitHoursLeft));
@@ -1090,6 +1097,17 @@ void ResidentDebugPanel::DrawCurrentTab(DemandSystem& demand, const std::vector<
         }
         Row("1回の判定の確率", Fmt("%.1f%%", view.nextOutingChance * 100.0f));
         Row("理由", how);
+
+        // (P2-0)外出が決まった時の、理由・カテゴリの見積り(今の状態から。乱数は引かない)。
+        {
+            const OutingReasonTrace& rt = view.reasonPreview;
+            const PurposeTrace& pt = view.purposePreview;
+            const float total = (std::max)(rt.total, 1e-6f);
+            Row("需要の段階", Fmt("生活 %s / アクティビティ %s(切迫度 %.2f)", NeedStageName(view.lifeStage), NeedStageName(view.activityStage), rt.pressure));
+            Row("外出の理由の見積り", Fmt("手軽 %.0f%% / がっつり %.0f%% / エリア %.0f%%(体力の割合 %.2f。エリアは P2-A まで候補なし)",
+                                       rt.weight[0] / total * 100.0f, rt.weight[1] / total * 100.0f, rt.weight[2] / total * 100.0f, rt.staminaRatio));
+            Row("目的のカテゴリの見積り", Fmt("生活 %.0f%%(重み %.3f) / 余暇 %.0f%%(重み %.3f)", (1.0f - pt.leisureChance) * 100.0f, pt.dailyWeight, pt.leisureChance * 100.0f, pt.leisureWeight));
+        }
 
         const SimTickGate& gate = recorder.GetTickGate();
         if (gate.valid && !gate.canDepart)
@@ -1218,28 +1236,39 @@ void ResidentDebugPanel::DrawDecisionDetail(const SimDecisionDetail& detail, con
     {
         Heading("立ち寄りの抽選");
         const bool hit = detail.stopRoll >= 0.0f && detail.stopRoll < detail.stopChance;
-        Row("確率", Fmt("基本 %.0f%% × 減衰 %.2f ^ これまでの立ち寄り %d 回 = %.1f%%", s.stopoverBaseChance * 100.0f, s.stopoverChanceDecay, detail.stopIndex - 1, detail.stopChance * 100.0f));
+        const StopoverChanceBreakdown& sb = detail.stopBreakdown;
+        Row("確率", Fmt("基本 %.0f%% × 回数の減衰 %.2f^%d = %.3f × 体力 %.2f(割合 %.2f ^ %.2f) × 需要の補正 %.2f(切迫度 %.2f) × 理由「%s」の倍率 %.2f = %.1f%%",
+                       sb.baseChance * 100.0f, s.stopoverChanceDecay, detail.stopIndex - 1, sb.countDecayFactor, sb.staminaFactor, sb.staminaRatio, s.stopoverStaminaExponent,
+                       sb.needFactor, sb.pressure, OutingReasonName(sb.reason), sb.reasonMultiplier, detail.stopChance * 100.0f));
         Row("乱数", Fmt("%.4f  → %s", detail.stopRoll, hit ? "当選(乱数 < 確率)" : "外れ"));
+        ImGui::TextDisabled("利用の直後の、更新された需要・体力で判定しています。次のカテゴリも、この需要から選び直します。");
+    }
+
+    {
+        const OutingReasonTrace& rt = trace.reason;
+        if (detail.isStopover)
+        {
+            Heading("外出の理由(この外出で決めた物を、引き継ぐ)");
+            Row("理由", OutingReasonName(detail.purpose.reason));
+        }
+        else
+        {
+            Heading("外出の理由(P2-0)");
+            Row("重み", Fmt("手軽 %.3f / がっつり %.3f / エリア %.3f  (合計 %.3f)", rt.weight[0], rt.weight[1], rt.weight[2], rt.total));
+            Row("状態", Fmt("体力の割合 %.2f / 需要の切迫度 %.2f / エリアの候補 %s", rt.staminaRatio, rt.pressure, rt.areaAvailable ? "あり" : "なし(P2-Aまで、重み0)"));
+            Row("抽選", Fmt("乱数 %.4f → %s", rt.roll, rt.valid ? OutingReasonName(rt.chosen) : "選べる理由なし"));
+            ImGui::TextDisabled("がっつり = 基本 %.2f × 体力の割合^%.2f × (1 − 切迫度 × %.2f) × 自発性 %.2f / 手軽 = 基本 %.2f",
+                                s.reasonSubstantialWeight, s.substantialStaminaExponent, s.substantialPressurePenalty, detail.traits.spontaneity, s.reasonQuickWeight);
+        }
     }
 
     Heading("目的の決定");
     {
-        std::string how;
-        if (trace.categoryDrawn)
-        {
-            how = Fmt("需要は足りている → 自発的な外出。カテゴリは乱数 %.4f %s %.0f%% → %s", trace.categoryRoll,
-                      trace.categoryRoll < trace.leisureChance ? "<" : ">=", trace.leisureChance * 100.0f, FacilityCategoryName(detail.purpose.category));
-        }
-        else if (trace.lifeUnmet && trace.activityUnmet)
-        {
-            how = trace.tieBreakDrawn
-                ? Fmt("生活・アクティビティが同じだけ不足 → 乱数 %.4f で決定 → %s", trace.tieBreakRoll, FacilityCategoryName(detail.purpose.category))
-                : Fmt("両方不足 → より不足している方を優先 → %s", FacilityCategoryName(detail.purpose.category));
-        }
-        else
-        {
-            how = Fmt("%sが不足 → %s", trace.lifeUnmet ? "生活の需要" : "アクティビティの需要", FacilityCategoryName(detail.purpose.category));
-        }
+        std::string how = Fmt("生活 %s(重み %.3f = 重要度 %.2f × 補正 %.2f) / 余暇 %s(重み %.3f = 重要度 %.2f × 補正 %.2f) → 余暇の確率 %.1f%% / 乱数 %.4f %s → %s",
+                              NeedStageName(trace.lifeStage), trace.dailyWeight, s.dailyImportance, s.dailyStageMultiplier[static_cast<int>(trace.lifeStage)],
+                              NeedStageName(trace.activityStage), trace.leisureWeight, s.leisureImportance, s.leisureStageMultiplier[static_cast<int>(trace.activityStage)],
+                              trace.leisureChance * 100.0f, trace.categoryRoll, trace.categoryRoll < trace.leisureChance ? "<(余暇)" : ">=(生活)",
+                              FacilityCategoryName(detail.purpose.category));
         Row("カテゴリ", how);
         if (trace.purposeRoll >= 0.0f)
         {
@@ -1369,15 +1398,17 @@ void ResidentDebugPanel::DrawDecisionDetail(const SimDecisionDetail& detail, con
         ImGui::TextDisabled("  品質係数 = 施設の品質 %.2f ^ (品質の効き方 %.2f × 品質重視度 %.2f = %.3f) = %.4f", b.quality, s.qualityExponent, detail.traits.qualityWeight, b.qualityExponent, b.qualityFactor);
         ImGui::TextDisabled("  値段係数 = 1 ÷ (1 + (値段の効き方 %.2f × 価格感度 %.2f = %.3f) × (値段 %.0f円 ÷ 基準 %.0f円 = %.3f)) = %.4f",
                             s.priceStrength, detail.traits.priceSensitivity, b.priceStrength, b.priceYen, s.priceReferenceYen, b.priceRatio, b.priceFactor);
-        ImGui::TextDisabled("  距離係数 = exp(-道のり %.2f マス ÷ (距離の目安 %.1f × 距離許容度 %.2f = %.2f)) = %.4f",
-                            b.legacyDistance, s.distanceScaleLegacyCells, detail.traits.distanceTolerance, b.distanceScale, b.distanceFactor);
+        ImGui::TextDisabled("  距離係数 = exp(-(道のり %.2f マス ÷ 距離の目安 %.2f)^形 %.2f) = %.4f   [目安 = 基準 %.1f × 距離許容度 %.2f × 理由「%s」の倍率%s]",
+                            b.legacyDistance, b.distanceScale, b.distanceShape, b.distanceFactor, s.distanceScaleLegacyCells, detail.traits.distanceTolerance,
+                            OutingReasonName(b.reason), detail.isStopover ? " × 立ち寄りの倍率" : "");
         ImGui::TextWrapped("下限の適用 = max(%.5f, 重みの下限 %.4f) = %.5f", b.product, b.floorWeight, b.weight);
         ImGui::TextWrapped("再訪補正後の重み = 基本の重み %.5f × 直近利用履歴による倍率 %.3f = %.5f", b.weight, ev.repeatFactor, ev.weightAfterRepeat);
         ImGui::TextWrapped("最終の重み = max(再訪補正後 %.5f, 重みの下限 %.4f) = %.5f", ev.weightAfterRepeat, s.minimumWeight, ev.weight);
         ImGui::TextWrapped("選択確率 = 最終の重み %.5f ÷ 抽選対象の重みの合計 %.5f = %.2f%%", ev.weight, detail.choice.totalWeight, ev.chance * 100.0f);
         if (ev.requiredStamina >= 0.0f)
         {
-            ImGui::TextDisabled("体力の確認: 必要 %.1f ≦ 体力 %.1f(往復の移動と利用)", ev.requiredStamina, detail.stamina);
+            ImGui::TextDisabled("体力の確認: 必要 %.1f ≦ 体力 %.1f(施設の利用の分だけ。移動では体力を使わない%s)", ev.requiredStamina, detail.stamina,
+                                detail.isStopover ? "。2軒目以降は、少し高い" : "");
         }
         if (detail.needDrivenDaily)
         {
@@ -1390,9 +1421,14 @@ void ResidentDebugPanel::DrawDecisionDetail(const SimDecisionDetail& detail, con
         ImGui::TextDisabled("品質の効き方 %.2f / 値段の基準 %.0f円 / 値段の効き方 %.2f / 距離の目安 %.1f マス / 重みの下限 %.4f",
                             s.qualityExponent, s.priceReferenceYen, s.priceStrength, s.distanceScaleLegacyCells, s.minimumWeight);
         ImGui::TextDisabled("再訪: 直近 %d 回 / 直前の倍率 %.2f / 不足の日用品の割合 %.2f", s.repeatVisitWindow, s.repeatVisitWeightFactor, s.needDrivenDailyRepeatStrength);
-        ImGui::TextDisabled("立ち寄り: 最大 %d 回 / 基本 %.0f%% / 減衰 %.2f / 体力 %.0f 以上 / %.1f 時まで / 範囲 %.1f マス / 食事系 %.0f%%",
-                            s.maxStopovers, s.stopoverBaseChance * 100.0f, s.stopoverChanceDecay, s.stopoverMinStamina, s.stopoverLatestHour,
-                            s.stopoverMaxDistanceLegacyCells, s.foodChainAcceptChance * 100.0f);
+        ImGui::TextDisabled("立ち寄り: 最大 %d 回 / 基本 %.0f%% / 減衰 %.2f / 体力の指数 %.2f / %.1f 時まで / 範囲 %s / 食事系 %.0f%% / 2軒目以降の体力 +%.0f%%/軒",
+                            s.maxStopovers, s.stopoverBaseChance * 100.0f, s.stopoverChanceDecay, s.stopoverStaminaExponent, s.stopoverLatestHour,
+                            s.stopoverMaxDistanceLegacyCells > 0.0f ? Fmt("%.1f マス", s.stopoverMaxDistanceLegacyCells).c_str() : "上限なし",
+                            s.foodChainAcceptChance * 100.0f, s.additionalUseStaminaCostStep * 100.0f);
+        ImGui::TextDisabled("理由: 距離の目安の倍率 手軽 %.2f / がっつり %.2f / エリア %.2f、形 %.2f / %.2f / %.2f、立ち寄りの倍率 %.2f / %.2f / %.2f",
+                            s.reasonDistanceScale[0], s.reasonDistanceScale[1], s.reasonDistanceScale[2],
+                            s.reasonDistanceShape[0], s.reasonDistanceShape[1], s.reasonDistanceShape[2],
+                            s.stopoverReasonMultiplier[0], s.stopoverReasonMultiplier[1], s.stopoverReasonMultiplier[2]);
     }
 }
 

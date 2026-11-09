@@ -25,7 +25,7 @@
 enum class SimEventKind : uint8_t
 {
     OutingRoll,         // 外出判定に当選した(自宅で、外出を考え始めた)。a=外出の確率 b=引いた乱数。※不発(外れ)は、イベントにせず、住民ごとの集計に数える
-    PurposeChoice,      // 外出の目的(カテゴリ・利用目的)を決めた。detailIdに、乱数などの内訳
+    PurposeChoice,      // 外出の目的(カテゴリ・利用目的)を決めた。a=外出の理由(OutingReason)。detailIdに、乱数などの内訳
     FacilitySelect,     // 施設を重み付き抽選で選んだ(選べなかった場合も)。detailIdに、候補ごとの内訳。facilityIdは選ばれた施設
     OutingBlocked,      // 外出を考えたが、出られなかった(自宅の近くに道路が無い・目的の施設が無い)。reasonに理由
     MoveStart,          // 施設へ歩き始めた。a=経路の長さ(ワールド単位) facilityId=行き先
@@ -83,7 +83,8 @@ enum class SimReason : uint8_t
     DetourReturn,           // 迂回して帰る
     FacilityMissingOnArrival,// 着いたが、施設が無くなっていた
     TestApplied,            // (行動テスト)指示を適用した(確率の抽選を、当選にした・施設を指定した・帰宅させた など)
-    TestRejected            // (行動テスト)指示を、条件に合わず、拒否した(普通のルールの結果。異常ではない)
+    TestRejected,           // (行動テスト)指示を、条件に合わず、拒否した(普通のルールの結果。異常ではない)
+    NoOutingReason          // (P2-0)外出の理由を選べなかった(全ての理由の重みが0。設定の不整合など)
 };
 
 // 異常(不変条件の違反)の種類。ビットマスクで持つ(1u << 値)。値は、後から足すだけにする。
@@ -192,6 +193,7 @@ struct SimDecisionDetail
     // 立ち寄りの確率の抽選(isStopoverの時だけ)。
     float stopChance = 0.0f;                    // 寄る確率
     float stopRoll = -1.0f;                     // 引いた乱数
+    StopoverChanceBreakdown stopBreakdown;      // 立ち寄りの確率の内訳(P2-0。体力・需要・理由・回数の係数。isStopoverの時だけ)
 
     // 判断した時の、設定・住民の特徴・状態。
     ResidentSimSettings settings;

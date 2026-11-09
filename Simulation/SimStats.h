@@ -25,7 +25,7 @@ enum class SimStatScope : uint8_t
 constexpr size_t kSimStatScopeCount = 2;
 
 // SimReason の数(SimReason に値を足したら、ここも合わせる)。
-constexpr size_t kSimReasonCount = static_cast<size_t>(SimReason::TestRejected) + 1;
+constexpr size_t kSimReasonCount = static_cast<size_t>(SimReason::NoOutingReason) + 1;
 
 // 候補の除外の理由の数(CandidateReject の値の数)。
 constexpr size_t kSimCandidateRejectCount = static_cast<size_t>(CandidateReject::OutOfRange) + 1;
@@ -53,6 +53,7 @@ struct SimStatBucket
     SimRollTally outingRollLowStamina;  // 外出判定(足りているが、体力が足りない。確率は0なので、必ず不発)
     uint64_t outingStarted = 0;         // 外出を考え始めた(外出判定に当選した)
     uint64_t purposeChosen = 0;         // 目的を決めた(主目的)
+    std::array<uint64_t, kOutingReasonCount> outingReasonChosen{}; // 目的を決めた時の、外出の理由の別(P2-0。手軽/がっつり/エリア)
     uint64_t mainSelectOk = 0;          // 主目的の施設を選べた
     uint64_t outingFailed = 0;          // 出られなかった(OutingBlocked + 主目的の施設選びの失敗)。理由は outingFailReason(排他)
     std::array<uint64_t, kSimReasonCount> outingFailReason{};
