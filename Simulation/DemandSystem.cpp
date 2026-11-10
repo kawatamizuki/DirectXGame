@@ -3054,6 +3054,38 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
     }
 }
 
+SimPopulationSnapshot DemandSystem::GetPopulationSnapshot() const
+{
+    SimPopulationSnapshot out;
+    double stamina = 0.0, life = 0.0, activity = 0.0, satisfaction = 0.0;
+    for (const ResidentAgent& agent : m_agents)
+    {
+        ++out.residents;
+        switch (agent.state)
+        {
+        case ResidentAgentState::AtHome:   ++out.atHome; break;
+        case ResidentAgentState::Homeless: ++out.homeless; break;
+        case ResidentAgentState::Stranded: ++out.stranded; break;
+        default:                           ++out.outing; break;
+        }
+        stamina += agent.stamina;
+        life += agent.lifeNeed;
+        activity += agent.activityNeed;
+        satisfaction += agent.satisfaction;
+        if (IsLifeNeedUnmet(agent, m_settings)) { ++out.lifeUnmet; }
+        if (IsActivityNeedUnmet(agent, m_settings)) { ++out.activityUnmet; }
+    }
+    if (out.residents > 0)
+    {
+        const double n = static_cast<double>(out.residents);
+        out.avgStamina = static_cast<float>(stamina / n);
+        out.avgLifeNeed = static_cast<float>(life / n);
+        out.avgActivityNeed = static_cast<float>(activity / n);
+        out.avgSatisfaction = static_cast<float>(satisfaction / n);
+    }
+    return out;
+}
+
 DemandStats DemandSystem::GetStats() const
 {
     // 建物・住民の数は、直近のRunDemandTickの値。施設の利用の集計は、常に最新の値を返す。

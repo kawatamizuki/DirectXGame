@@ -216,6 +216,8 @@
     <ClCompile Include="DebugTools\GameRewindPanel.cpp" />
     <ClCompile Include="DebugTools\SimEndurance.cpp" />
     <ClCompile Include="DebugTools\SimEndurancePanel.cpp" />
+    <ClCompile Include="DebugTools\SimStatsLogger.cpp" />
+    <ClCompile Include="DebugTools\SimStatsLoggerPanel.cpp" />
     <ClCompile Include="DebugTools\MemoryPanel.cpp" />
     <ClCompile Include="DebugTools\AreaDebugPanel.cpp" />
     <ClCompile Include="DebugTools\SimStatsPanel.cpp" />
@@ -365,6 +367,8 @@
     <ClInclude Include="DebugTools\GameRewindPanel.h" />
     <ClInclude Include="DebugTools\SimEndurance.h" />
     <ClInclude Include="DebugTools\SimEndurancePanel.h" />
+    <ClInclude Include="DebugTools\SimStatsLogger.h" />
+    <ClInclude Include="DebugTools\SimStatsLoggerPanel.h" />
     <ClInclude Include="DebugTools\MemoryPanel.h" />
     <ClInclude Include="DebugTools\AreaDebugPanel.h" />
     <ClInclude Include="DebugTools\MemoryReport.h" />

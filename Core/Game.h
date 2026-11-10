@@ -26,6 +26,8 @@
 #include "GameRewindPanel.h"
 #include "SimEndurance.h"
 #include "SimEndurancePanel.h"
+#include "SimStatsLogger.h"
+#include "SimStatsLoggerPanel.h"
 #include "MemoryPanel.h"
 #include "AreaDebugPanel.h"
 #include "CityCameraController.h"
@@ -325,6 +327,10 @@ private:
     // 耐久試験・決定論テスト(長い期間を、画面を描かずに進めて、異常・負荷・決定論を調べる)。実行中は、時計と住民の更新を、これが決める。
     SimEndurance m_endurance;
     SimEndurancePanel m_endurancePanel;
+
+    // 放置して集める、行動の統計の出力(週ごとにファイルへ追記)。記録・出力は、乱数・住民の状態に触れない。
+    SimStatsLogger m_statsLogger;
+    SimStatsLoggerPanel m_statsLoggerPanel;
 
     // メモリの使用量と、その内訳(ゲーム本体 / デバッグ・検証の機能)を見るパネル。内訳は、BuildMemoryReport が、各機能から集める(約1秒ごと)。
     MemoryPanel m_memoryPanel;

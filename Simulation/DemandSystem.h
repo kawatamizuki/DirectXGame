@@ -128,6 +128,22 @@ struct DecisionLogEntry
     std::string note;                           // 補足(「食事系が続くので、寄らなかった」など)
 };
 
+// 住民全体の、今の様子の要約(統計の出力用。住民の内部を画面側へ見せないための橋渡し)。読むだけで、状態は変えない。
+struct SimPopulationSnapshot
+{
+    int residents = 0;                      // 住民の数
+    int atHome = 0;                         // 家にいる
+    int outing = 0;                         // 外出中(移動・利用・帰宅)
+    int stranded = 0;                       // 立ち往生
+    int homeless = 0;                       // 住居なし
+    float avgStamina = 0.0f;
+    float avgLifeNeed = 0.0f;               // 生活の需要の平均(0〜100。小さいほど不足)
+    float avgActivityNeed = 0.0f;
+    float avgSatisfaction = 0.0f;
+    int lifeUnmet = 0;                      // 生活の需要が不足(しきい値未満)の住民の数
+    int activityUnmet = 0;
+};
+
 // 住民1人の、デバッグ表示用の「今の値」のコピー(Editorの「住民デバッグ」パネル用)。過去の判断の値は、SimDebugRecorderの記録が持つ。
 // 住民の内部(ResidentAgent)を画面側へ見せないための橋渡し。
 struct ResidentDebugView
@@ -284,6 +300,11 @@ public:
     ResidentSimSettings& GetSettings() { return m_settings; }
     const ResidentSimSettings& GetSettings() const { return m_settings; }
     const FacilityLedger& GetLedger() const { return m_ledger; }
+
+    // 処理した週末の回数(週ごとの集計が、1週ぶん区切られた回数)。統計の出力が、週の区切りを見つけるのに使う。
+    int GetWeeksEnded() const { return m_weeksEnded; }
+    // 住民全体の、今の様子の要約(平均の体力・需要・満足度、状態の内訳)。
+    SimPopulationSnapshot GetPopulationSnapshot() const;
 
     // ---- 商業エリア(P2-C1) ----
     // 区画を読む窓口を渡す(読み取り専用。nullptrなら、区画が無い街として動く)。所有はしない。

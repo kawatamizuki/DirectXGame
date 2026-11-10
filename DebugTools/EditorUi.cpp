@@ -25,6 +25,7 @@ namespace
     constexpr const char* kPanelTimeline = "タイムライン";
     constexpr const char* kPanelEndurance = "耐久試験";
     constexpr const char* kPanelMemory = "メモリ";
+    constexpr const char* kPanelStatsLog = "統計の出力";
     constexpr const char* kPanelAreas = "商業エリア";
     constexpr const char* kPanelProfiler = "Profiler";
     constexpr const char* kPanelLog = "Log";
@@ -59,6 +60,7 @@ namespace
         { kPanelTimeline,       true,  nullptr }, // プレイ中のゲーム内時間を、シークバーで巻き戻し・進める
         { kPanelEndurance,      true,  nullptr }, // 長い期間を、画面を描かずに進めて、異常・負荷・決定論を調べる
         { kPanelMemory,         true,  nullptr }, // メモリの使用量と、その内訳(ゲーム本体 / デバッグ・検証の機能)
+        { kPanelStatsLog,       true,  nullptr }, // 放置して集める、行動の統計の出力(週ごとにファイルへ追記)
         { kPanelAreas,          true,  nullptr }, // 商業エリアの区画: 所属のしきい値・計画規模などの調整、区画ごとの状態・所属する施設・履歴・点検
         { kPanelProfiler,       true,  nullptr },
         { kPanelLog,            true,  nullptr },
@@ -337,6 +339,7 @@ void EditorUi::BuildDefaultLayout(unsigned int dockId, float width, float height
     ImGui::DockBuilderDockWindow(kPanelEndurance, bottom);
     ImGui::DockBuilderDockWindow(kPanelMemory, bottom);
     ImGui::DockBuilderDockWindow(kPanelAreas, bottom);
+    ImGui::DockBuilderDockWindow(kPanelStatsLog, bottom);
     ImGui::DockBuilderDockWindow(kPanelAudio, bottom);
 
     ImGui::DockBuilderFinish(dockId);

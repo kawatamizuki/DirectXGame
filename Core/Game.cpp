@@ -133,6 +133,7 @@ bool Game::Initialize(HWND hwnd)
     m_rewindPanel.SetOpenFlag(m_editorUi.PanelFlag("タイムライン"));
     m_endurancePanel.SetOpenFlag(m_editorUi.PanelFlag("耐久試験"));
     m_memoryPanel.SetOpenFlag(m_editorUi.PanelFlag("メモリ"));
+    m_statsLoggerPanel.SetOpenFlag(m_editorUi.PanelFlag("統計の出力"));
     m_areaDebugPanel.SetOpenFlag(m_editorUi.PanelFlag("商業エリア"));
 
     // 住民の判断・状態遷移の記録を有効にする(Editorのビルドだけ。Releaseでは無効のまま)。記録は、乱数・シミュレーションの結果を変えない。
@@ -375,7 +376,12 @@ bool Game::Initialize(HWND hwnd)
             m_demandSystem.Update(m_gameClock.GetScaledDeltaSeconds(), m_context, m_roadSystem.GetSegments());
         });
 
+    // 統計の出力(放置して集める)。観察者として、異常の数を数える。
+    m_statsLogger.Initialize(&m_demandSystem, &m_areas, &m_gameClock);
+
     // 「Editor > エディタ機能のON/OFF」に出すスイッチ。全て登録し終えてから、保存してある設定を読む。
+    m_editorUi.Settings().RegisterToggle("stats_log_auto", "ゲームを始めたら、行動の統計の出力を自動で始める", &m_statsLogger.autoStart,
+        "次の起動から有効。Saves/stats/ に、週ごとの統計(CSV)と要約を追記する(放置して、後から調べる用)");
     m_buildController.RegisterEditorToggles(m_editorUi.Settings());
     m_editorUi.Settings().RegisterToggle("grid_overlay", "床の格子線を表示", &m_showGridOverlay,
         "地面のマス目の線を描く(青マスの線も含む)");
@@ -478,6 +484,9 @@ void Game::Update()
 #ifdef ENABLE_EDITOR
     // Assetsからモデルをドラッグしている状態を読み取り、ゲームの画面の上で離されたら飾りを置く。
     UpdateAssetDragState();
+
+    // 行動の統計の出力(週が区切られたら、ファイルへ追記)。ゲームシーンで、耐久試験などが世界を差し替えていない間だけ。
+    m_statsLogger.Update(IsInGameScene() && !m_endurance.IsDriving());
 
     // 「住民デバッグ」の対象を、ゲームの選択(クリックした住民、またはクリックした住宅の住民)に連動させる。
     // ゲームシーンの外(タイトル画面)では、対象を外す。パネルを開いても、ゲーム内の時間は止めない。
@@ -2647,6 +2656,7 @@ void Game::Draw()
     Profiler::DrawDebugUI(m_objects, m_roadSystem, m_occupancyGrid, m_demandSystem, m_editorUi.PanelFlag("Profiler"));
     Debug::DrawDebugUI(m_editorUi.PanelFlag("Log"));
     m_memoryPanel.Draw([this]() { return BuildMemoryReport(); });
+    m_statsLoggerPanel.Draw(m_statsLogger, IsInGameScene() && !m_endurance.IsDriving());
     m_areaDebugPanel.Draw(m_areas, m_gameClock, m_demandSystem.GetAreaLedger());
 
     // ホバーのヒントとショートカット一覧。全てのパネルを描いた後。

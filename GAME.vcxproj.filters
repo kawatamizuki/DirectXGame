@@ -318,6 +318,12 @@
     <ClCompile Include="DebugTools\SimEndurancePanel.cpp">
       <Filter>ソース ファイル\DebugTools</Filter>
     </ClCompile>
+    <ClCompile Include="DebugTools\SimStatsLogger.cpp">
+      <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
+    <ClCompile Include="DebugTools\SimStatsLoggerPanel.cpp">
+      <Filter>ソース ファイル\DebugTools</Filter>
+    </ClCompile>
     <ClCompile Include="DebugTools\GameRewindPanel.cpp">
       <Filter>ソース ファイル\DebugTools</Filter>
     </ClCompile>
@@ -756,6 +762,12 @@
       <Filter>ヘッダー ファイル\DebugTools</Filter>
     </ClInclude>
     <ClInclude Include="DebugTools\SimEndurancePanel.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\SimStatsLogger.h">
+      <Filter>ヘッダー ファイル\DebugTools</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugTools\SimStatsLoggerPanel.h">
       <Filter>ヘッダー ファイル\DebugTools</Filter>
     </ClInclude>
     <ClInclude Include="DebugTools\GameRewindPanel.h">
