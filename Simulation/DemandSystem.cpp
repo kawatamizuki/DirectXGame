@@ -148,6 +148,8 @@ void DemandSystem::Reset()
     m_connectionLines.clear();
     m_ledger.Clear();
     m_areaLedger.Clear();
+    m_stopTally = StopoverTally{};
+    m_lastStopPull = 0.0f;
     m_areaOfFacility.clear();
     m_weeksEnded = 0;
     m_decisionLog.clear();
@@ -425,6 +427,7 @@ void DemandSystem::Save(Json& section, const SaveContext& context) const
             j.Set("purposeVisitors", t.purposeVisitors);
             j.Set("visits", t.visits);
             j.Set("sales", t.sales);
+            j.Set("stopovers", t.stopovers);
             return j;
         };
         for (const AreaRecord& record : m_areaLedger.GetRecords())
@@ -509,6 +512,7 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
                     t.purposeVisitors = (std::max)(0, j->GetInt("purposeVisitors", 0));
                     t.visits = (std::max)(0, j->GetInt("visits", 0));
                     t.sales = (std::max)(0, j->GetInt("sales", 0));
+                    t.stopovers = (std::max)(0, j->GetInt("stopovers", 0));
                 }
                 return t;
             };
@@ -995,8 +999,36 @@ bool DemandSystem::TryStartStopover(ResidentAgent& agent, GameContext& context, 
         RecordEvent(agent, context, SimEventKind::StopoverCheck, SimEventResult::NotMet, reason, currentFacility.id, 0.0f, 0.0f, 0.0f, stopIndex);
         return false;
     }
-    const float stopChance = ComputeStopoverChance(agent, m_settings);
+    // 引き寄せ(P2-C2): 今いる施設の近くに、今の需要・用途・体力で使える施設がいくつあるか。経路探索の前なので、直線距離で見る(軽い)。
+    const UsagePurpose lastPurpose = agent.purpose;   // 直前に使った用途(補完性の基準)
+    float pull = 0.0f;
+    {
+        std::vector<StopoverPullCandidate> nearby;
+        for (const GameObject& other : *context.objects)
+        {
+            if (other.kind != ObjectKind::Building || other.id == currentFacility.id || !FindFacilityDefinition(other.buildingType)) { continue; }
+            StopoverPullCandidate c;
+            c.objectId = other.id;
+            c.type = other.buildingType;
+            const float dx = other.transform.position.x - currentFacility.transform.position.x;
+            const float dz = other.transform.position.z - currentFacility.transform.position.z;
+            c.distance = std::sqrt(dx * dx + dz * dz);
+            nearby.push_back(c);
+        }
+        pull = ComputeStopoverPull(agent, lastPurpose, nearby, agent.outingStopCount + 1, m_settings);
+    }
+    m_lastStopPull = pull;
+    const float stopChance = ComputeStopoverChance(agent, m_settings, nullptr, pull);
     const float stopRoll = m_random.Next01(); // 乱数は、行動テストの強制の有無に関わらず、いつも1回引く
+    if (!testPlan)
+    {
+        // 診断用の集計(数えるだけ)。引き寄せが無かった場合の確率も並べて、補正で増えた分が見えるようにする。
+        ++m_stopTally.rolls;
+        if (stopRoll < stopChance) { ++m_stopTally.hits; }
+        m_stopTally.sumChance += stopChance;
+        m_stopTally.sumChanceWithoutPull += ComputeStopoverChance(agent, m_settings, nullptr, 0.0f);
+        m_stopTally.sumPull += pull;
+    }
     if (!(stopRoll < stopChance) && !testPlan)
     {
         // 記録: 抽選に外れた(a=確率 b=乱数)。
@@ -1057,6 +1089,10 @@ bool DemandSystem::TryStartStopover(ResidentAgent& agent, GameContext& context, 
 
     std::vector<FacilityCandidate> candidates;
     std::vector<RoutePlan> legPlans;
+    // 立ち寄り先の補正(P2-C2): 補完性(区画に依らない)と、同じ区画の補正(周知済みの区画)。別々に求めて、選ぶ時に頭打ちで合わせる。
+    const uint32_t hereArea = GetAreaOfFacility(currentFacility.id);
+    const float areaBoostFull = (std::max)(1.0f, m_settings.areaStopoverBoost);
+    const float areaBoostShare = (hereArea != 0 && IsAreaPublished(hereArea)) ? 1.0f : (std::max)(0.0f, (std::min)(1.0f, m_settings.areaUnpublishedBoostShare));
     for (const GameObject& other : *context.objects)
     {
         if (other.kind != ObjectKind::Building || other.id == currentFacility.id)
@@ -1072,6 +1108,11 @@ bool DemandSystem::TryStartStopover(ResidentAgent& agent, GameContext& context, 
         FacilityCandidate candidate;
         candidate.objectId = other.id;
         candidate.type = other.buildingType;
+        candidate.complementFactor = ComputeComplementFactor(agent, *definition, lastPurpose, m_settings);
+        if (hereArea != 0 && GetAreaOfFacility(other.id) == hereArea)
+        {
+            candidate.areaBoost = 1.0f + (areaBoostFull - 1.0f) * areaBoostShare;
+        }
 
         const RouteEndpoint candidateEndpoint = ToEndpoint(MakeBuildingSnapshot(other.id, other.transform.position, *m_roads, graph));
         RoutePlan leg = PlanRoute(hereEndpoint, candidateEndpoint, *m_roads, graph, *m_pathfinder, cache);
@@ -1204,6 +1245,23 @@ bool DemandSystem::TryStartStopover(ResidentAgent& agent, GameContext& context, 
     {
         --testPlan->forcedStopovers; // 強制した立ち寄りを、1回、始めた
         ++testPlan->stopoversStarted;
+    }
+    // 診断用の集計(数えるだけ)。同じ用途の連続・区画内の回遊・補完性/補正の平均を見られる。
+    {
+        const FacilityCandidate& picked = candidates[static_cast<size_t>(chosen)];
+        ++m_stopTally.started;
+        if (purpose.purpose == lastPurpose) { ++m_stopTally.startedSamePurpose; }
+        if (hereArea != 0)
+        {
+            ++m_stopTally.startedFromArea;
+            if (GetAreaOfFacility(picked.objectId) == hereArea)
+            {
+                ++m_stopTally.startedSameArea;
+                m_areaLedger.RecordAreaStopover(hereArea);
+            }
+        }
+        m_stopTally.sumComplement += picked.complementFactor;
+        m_stopTally.sumAffinity += evaluations[static_cast<size_t>(chosen)].affinity;
     }
 
     // 今いる施設 → 立ち寄り先 の経路で歩き始める。行き先の側が「施設」の向き(帰りは、立ち寄り先から家へ、作り直す)。
@@ -1885,7 +1943,7 @@ uint64_t DemandSystem::RecordDecisionDetail(const ResidentAgent& agent, const Ga
     detail.stopRoll = stopRoll;
     if (isStopover)
     {
-        ComputeStopoverChance(agent, m_settings, &detail.stopBreakdown); // 判断した時の、体力・需要・理由・回数の係数(同じ式の、途中の値)
+        ComputeStopoverChance(agent, m_settings, &detail.stopBreakdown, m_lastStopPull); // 判断した時の、体力・需要・理由・回数の係数(同じ式の、途中の値)
     }
     detail.settings = m_settings;          // 判断の時の設定(後でスライダーを動かしても、この判断の計算は読み返せる)
     detail.traits = agent.traits;
@@ -3052,6 +3110,16 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
             m_lastStats.strandedCount++;
         }
     }
+}
+
+bool DemandSystem::IsAreaPublished(uint32_t areaId) const
+{
+    if (!m_areaSource || areaId == 0) { return false; }
+    for (const CommercialArea& area : m_areaSource->GetAreas())
+    {
+        if (area.id == areaId) { return area.published; }
+    }
+    return false;
 }
 
 SimPopulationSnapshot DemandSystem::GetPopulationSnapshot() const

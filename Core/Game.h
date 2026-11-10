@@ -53,6 +53,7 @@
 #include "RoadSystem.h"
 #include "DijkstraPathfinder.h"
 #include "DemandSystem.h"
+#include "AreaIndicators.h"
 
 class Game
 {

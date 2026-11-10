@@ -203,6 +203,9 @@ struct FacilityCandidate
     bool reachable = false;         // 道路でつながっていて、経路が見つかったか
     float pathLength = 0.0f;        // 今いる所(自宅、立ち寄りの時は今いる施設)から施設までの道のり(ワールド単位)。reachableの時だけ意味を持つ。距離の重みに使う
     bool outOfRange = false;        // 立ち寄りの範囲(今いる施設からの道のりの上限。設定で0なら、上限なし)の外か
+    // ---- 立ち寄りの補正(P2-C2。主目的の施設選びでは、いつも1) ----
+    float complementFactor = 1.0f;  // 補完性の倍率(区画に依らない。ComputeComplementFactor)
+    float areaBoost = 1.0f;         // 今いる施設と同じ区画の施設への倍率(補完性とは別。周知済みの区画だけ)
 };
 
 // 候補を選ばれなかった理由。
@@ -243,6 +246,7 @@ struct CandidateEvaluation
     FacilityCandidate candidate;
     CandidateReject reject = CandidateReject::None;
     float repeatFactor = 1.0f;      // 利用履歴による重みの倍率(1=下がらない。直近に同じ施設を使っていると、1未満)
+    float affinity = 1.0f;          // 立ち寄りの補正 = min(補完性 × エリア内の補正, 上限)。主目的の施設選びでは1(P2-C2)
     float weight = 0.0f;            // 選択の重み(rejectがNoneの時だけ、0より大きい)。repeatFactorを掛けた後の値
     float chance = 0.0f;            // 選ばれる確率(重み / 重みの合計)
     bool chosen = false;
@@ -328,11 +332,51 @@ struct StopoverChanceBreakdown
     float needFactor = 1.0f;        // 需要の補正 = 下限 + (1 − 下限) × 切迫度
     OutingReason reason = OutingReason::Quick;
     float reasonMultiplier = 1.0f;  // 理由の倍率
+    float pull = 0.0f;              // 近くの使える施設の引き寄せ(0〜1。P2-C2。判定した時だけ。プレビューでは0)
+    float pullMultiplier = 1.0f;    // 引き寄せによる倍率 = 1 + 引き寄せの強さ × 引き寄せ
     float chance = 0.0f;            // 結果 = 各係数の積(0〜1に収める)
 };
 
-// 立ち寄る確率 = 基本 × 回数の減衰 × 体力の係数 × 需要の補正 × 理由の倍率(体力・需要は、今の値。利用の直後の、更新された値で、判定する)。
-float ComputeStopoverChance(const ResidentAgent& agent, const ResidentSimSettings& settings, StopoverChanceBreakdown* out = nullptr);
+// 立ち寄る確率 = 基本 × 回数の減衰 × 体力の係数 × 需要の補正 × 理由の倍率 × 引き寄せの倍率(体力・需要は、今の値。利用の直後の、更新された値で、判定する)。
+// pull: 近くの使える施設の引き寄せ(ComputeStopoverPull の結果。0=補正なし)。
+float ComputeStopoverChance(const ResidentAgent& agent, const ResidentSimSettings& settings, StopoverChanceBreakdown* out = nullptr, float pull = 0.0f);
+
+// ---- 立ち寄りの補完性と引き寄せ(P2-C2) ----
+// 補完性: 今使った用途(lastPurpose)とは違う用途を、満たせる施設ほど、高い。区画への所属には依らない。
+//  新しさ(novelty) = 1 − 候補の「今使った用途への適性」÷ 候補の最大の適性(同じ用途が一番の強みなら0、別の用途が強みなら1に近い)。同じ大分類でも、買い足しとまとめ買いのように、用途が違えば高くなる。
+//  需要の項 = 下限 + (1 − 下限) × 不足の割合(候補のカテゴリの需要。満たされていても、下限の分は、自発的な追加利用の余地として残る)。
+//  倍率 = 1 + 補完性の強さ × 新しさ × 需要の項(1以上)。
+struct ComplementBreakdown
+{
+    float novelty = 0.0f;           // 新しさ(0〜1)
+    float needGap = 0.0f;           // 候補のカテゴリの需要の不足の割合(0〜1)
+    float needTerm = 0.0f;          // 需要の項 = 下限 + (1 − 下限) × 不足の割合
+    float factor = 1.0f;            // 倍率
+};
+float ComputeComplementFactor(const ResidentAgent& agent, const FacilityDefinition& candidate, UsagePurpose lastPurpose,
+                              const ResidentSimSettings& settings, ComplementBreakdown* out = nullptr);
+
+// 補完性 × エリア内の補正 を、上限で頭打ちにした倍率(二重に強くならない)。
+float ComputeStopoverAffinity(float complementFactor, float areaBoost, const ResidentSimSettings& settings);
+
+// 引き寄せ: 今いる施設の近くに、今の需要・用途・体力で使える施設が、いくつあるか。発生率だけに効かせる(控えめ)。
+struct StopoverPullCandidate
+{
+    uint32_t objectId = 0;
+    BuildingType type = BuildingType::Shop;
+    float distance = 0.0f;          // 今いる施設からの距離(ワールド単位。経路探索の前なので、直線距離。道のりより短めになる)
+};
+
+struct StopoverPullBreakdown
+{
+    int considered = 0;             // 数えた候補(今の外出で使っていない施設)の数
+    int usable = 0;                 // うち、体力が足りる施設の数
+    float sum = 0.0f;               // 候補の魅力の合計 = Σ(距離の重み × 需要の項 × 適性 × 新しさの項)
+    float pull = 0.0f;              // 引き寄せ = 1 − exp(−飽和 × 合計)
+    float multiplier = 1.0f;        // 発生率の倍率 = 1 + 強さ × 引き寄せ
+};
+float ComputeStopoverPull(const ResidentAgent& agent, UsagePurpose lastPurpose, const std::vector<StopoverPullCandidate>& nearby,
+                          int visitsThisOuting, const ResidentSimSettings& settings, StopoverPullBreakdown* out = nullptr);
 
 // 同じ外出で食事系を使った後に、別の食事系の施設へ寄る時の、実際に寄る確率(それ以外は1)。
 float ComputeFoodChainAcceptChance(const ResidentAgent& agent, const FacilityDefinition& candidate, const ResidentSimSettings& settings);

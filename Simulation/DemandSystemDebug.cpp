@@ -309,6 +309,19 @@ void DemandSystem::DrawSettingsTab()
         ImGui::SliderFloat("適合の下限", &s.areaFitFloor, 0.0f, 1.0f, "%.2f");
         ImGui::SliderFloat("充実度の魅力の増え方", &s.areaCoverageGain, 0.0f, 1.0f, "%.2f");
     }
+    if (ImGui::CollapsingHeader("立ち寄りの補完性・エリア内の立ち寄り(P2-C2)"))
+    {
+        ImGui::TextDisabled("発生率(寄るか)と、候補の重み(どこへ寄るか)は、別々に、控えめに補正する。乱数の引く回数は変わらない");
+        ImGui::SliderFloat("引き寄せの強さ(発生率 最大+)", &s.stopoverPullGain, 0.0f, 1.0f, "%.2f");
+        ImGui::SliderFloat("引き寄せの飽和", &s.stopoverPullSaturation, 0.1f, 5.0f, "%.2f");
+        ImGui::SliderFloat("引き寄せで、同じ用途の候補を残す割合", &s.stopoverPullNoveltyFloor, 0.0f, 1.0f, "%.2f");
+        ImGui::SliderFloat("補完性の強さ(候補の重み 最大+)", &s.complementGain, 0.0f, 2.0f, "%.2f");
+        ImGui::SliderFloat("需要が満たされていても残る余地", &s.complementNeedFloor, 0.0f, 1.0f, "%.2f");
+        ImGui::SliderFloat("同じ区画の施設の倍率(周知済み)", &s.areaStopoverBoost, 1.0f, 3.0f, "%.2f");
+        ImGui::SliderFloat("未周知の区画での補正の割合", &s.areaUnpublishedBoostShare, 0.0f, 1.0f, "%.2f");
+        ImGui::SliderFloat("補完性 × エリア内 の上限", &s.stopoverAffinityCap, 1.0f, 4.0f, "%.2f");
+        ImGui::TextDisabled("補完性は、区画に所属していなくても働く(近くの映画館とカフェなど)。エリア内の補正は、別の物で、両方の積を上限で頭打ちにする");
+    }
     if (ImGui::CollapsingHeader("体力"))
     {
         ImGui::TextDisabled("移動では、体力を消費しない。施設を使う時だけ消費(帰宅は、体力0でもできる)");

@@ -1,7 +1,9 @@
 ﻿#include "AreaDebugPanel.h"
 #include <algorithm>
 #include <string>
+#include "AreaIndicators.h"
 #include "AreaLedger.h"
+#include "DemandSystem.h"
 #include "CommercialAreaManager.h"
 #include "GameClock.h"
 #include "imgui.h"
@@ -34,8 +36,9 @@ namespace
     }
 }
 
-void AreaDebugPanel::Draw(CommercialAreaManager& areas, const GameClock& clock, const AreaLedger& ledger)
+void AreaDebugPanel::Draw(CommercialAreaManager& areas, const GameClock& clock, const DemandSystem& demand)
 {
+    const AreaLedger& ledger = demand.GetAreaLedger();
     if (m_open && !*m_open)
     {
         return;
@@ -97,6 +100,23 @@ void AreaDebugPanel::Draw(CommercialAreaManager& areas, const GameClock& clock, 
             {
                 const int left = GraceWeeksLeft(area, week, s);
                 ImGui::Text("周知した週: 第%d週 / 猶予の残り: %d週 / 計画規模(周知時): %d", area.publishedWeek, left, area.plannedCapacity);
+            }
+            {
+                // 4つの指標(P2-C2)。予測が何を基準にした値かを、内訳つきで見せる。実績の割り算は、分母が0なら「未計測」。
+                const AreaIndicators ind = ComputeAreaIndicators(areas.CompositionOf(area.id), area.published, ledger.Find(area.id), demand.GetSettings());
+                auto show = [](const IndicatorValue& v, const char* format) -> std::string
+                {
+                    if (!v.measured) { return "未計測"; }
+                    char text[48]; std::snprintf(text, sizeof(text), format, v.value); return text;
+                };
+                ImGui::Text("集客力(予測) %.3f = 適合 %.3f × 充実度の魅力 %.3f × 周知の倍率 %.2f × 評判 %.2f", ind.attractionPredicted, ind.predictedFit, ind.predictedCoverage, ind.predictedPublish, ind.predictedReputation);
+                ImGui::TextDisabled("  予測の基準: 区画の抽選(ChooseArea)の重みから、距離(住民ごと)と今の目的(1つの用途)を除いた物。適合 = 4用途の「供給量÷頭打ち(下限あり、上限1)」の平均");
+                ImGui::Text("集客力(実績) 先週の来訪者 %s 人 / 通算 %s 人", show(ind.visitorsLastWeek, "%.0f").c_str(), show(ind.visitorsTotal, "%.0f").c_str());
+                ImGui::Text("回遊性 豊富さ(予測) %.2f(%d軒・用途 %d種類) / 実績: 1人あたりの利用施設数 先週 %s・通算 %s / 区画内の立ち寄り(通算) %d 回", ind.richness, ind.storeCount, ind.coveredPurposes,
+                            show(ind.visitsPerVisitorLastWeek, "%.2f").c_str(), show(ind.visitsPerVisitorTotal, "%.2f").c_str(), ind.stopoversTotal);
+                ImGui::Text("消費効率 1人あたりの実売上 先週 %s 円・通算 %s 円", show(ind.salesPerVisitorLastWeek, "%.0f").c_str(), show(ind.salesPerVisitorTotal, "%.0f").c_str());
+                ImGui::Text("評判 %.2f(P2-Dまで固定)", ind.reputation);
+                if (!ind.consistent) { ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "集計の不整合: 来訪者 > 延べ利用、または 目的の来訪者 > 来訪者(重複して数えている疑い)"); }
             }
             const std::string tableId = "構成##" + std::to_string(area.id);
             DrawCompositionTable(areas.CompositionOf(area.id), tableId.c_str());
@@ -170,6 +190,20 @@ void AreaDebugPanel::Draw(CommercialAreaManager& areas, const GameClock& clock, 
             }
             ImGui::EndTable();
         }
+    }
+
+    // 立ち寄りの判定の集計(P2-C2。診断用。保存しない・世界を読み込み直すとリセット)。補正の効き方を、放置して確かめる。
+    if (ImGui::CollapsingHeader("立ち寄りの補正の効き方(P2-C2の診断)"))
+    {
+        const StopoverTally& t = demand.GetStopoverTally();
+        ImGui::Text("確率の抽選 %llu 回 / 当選 %llu 回(%.1f%%)", static_cast<unsigned long long>(t.rolls), static_cast<unsigned long long>(t.hits), t.rolls ? 100.0 * static_cast<double>(t.hits) / static_cast<double>(t.rolls) : 0.0);
+        ImGui::Text("期待される当選 %.1f 回(引き寄せ込み) / 引き寄せが無かった場合 %.1f 回 → 補正で増えた期待 %+.1f 回(%+.1f%%)", t.sumChance, t.sumChanceWithoutPull, t.sumChance - t.sumChanceWithoutPull,
+                    t.sumChanceWithoutPull > 0.0 ? 100.0 * (t.sumChance / t.sumChanceWithoutPull - 1.0) : 0.0);
+        ImGui::Text("引き寄せの平均 %.3f", t.rolls ? t.sumPull / static_cast<double>(t.rolls) : 0.0);
+        ImGui::Text("立ち寄りを始めた %llu 回: 同じ用途の連続 %llu 回(%.1f%%) / 区画の施設から寄り始めた %llu 回、うち同じ区画の施設へ %llu 回(%.1f%%)",
+                    static_cast<unsigned long long>(t.started), static_cast<unsigned long long>(t.startedSamePurpose), t.started ? 100.0 * static_cast<double>(t.startedSamePurpose) / static_cast<double>(t.started) : 0.0,
+                    static_cast<unsigned long long>(t.startedFromArea), static_cast<unsigned long long>(t.startedSameArea), t.startedFromArea ? 100.0 * static_cast<double>(t.startedSameArea) / static_cast<double>(t.startedFromArea) : 0.0);
+        ImGui::Text("寄り先の補完性の倍率の平均 %.3f / 補正(補完性×エリア内、頭打ち後)の平均 %.3f", t.started ? t.sumComplement / static_cast<double>(t.started) : 0.0, t.started ? t.sumAffinity / static_cast<double>(t.started) : 0.0);
     }
 
     // 区画ごとの、来訪・利用・売上の集計(P2-C1)。「目的にした人数」と「実際に使った人数」は、別の数字。差=エリアに向かったが、使わなかった人。

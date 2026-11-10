@@ -1241,6 +1241,8 @@ void ResidentDebugPanel::DrawDecisionDetail(const SimDecisionDetail& detail, con
         Row("確率", Fmt("基本 %.0f%% × 回数の減衰 %.2f^%d = %.3f × 体力 %.2f(割合 %.2f ^ %.2f) × 需要の補正 %.2f(切迫度 %.2f) × 理由「%s」の倍率 %.2f = %.1f%%",
                        sb.baseChance * 100.0f, s.stopoverChanceDecay, detail.stopIndex - 1, sb.countDecayFactor, sb.staminaFactor, sb.staminaRatio, s.stopoverStaminaExponent,
                        sb.needFactor, sb.pressure, OutingReasonName(sb.reason), sb.reasonMultiplier, detail.stopChance * 100.0f));
+        Row("引き寄せ(P2-C2)", Fmt("近くの使える施設の引き寄せ %.3f → 発生率の倍率 x%.3f(= 1 + 強さ %.2f × 引き寄せ)。確率の式の最後に掛かっています(区画には依らない)",
+                                 sb.pull, sb.pullMultiplier, s.stopoverPullGain));
         Row("乱数", Fmt("%.4f  → %s", detail.stopRoll, hit ? "当選(乱数 < 確率)" : "外れ"));
         ImGui::TextDisabled("利用の直後の、更新された需要・体力で判定しています。次のカテゴリも、この需要から選び直します。");
     }
@@ -1371,13 +1373,14 @@ void ResidentDebugPanel::DrawDecisionDetail(const SimDecisionDetail& detail, con
     const ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollX | ImGuiTableFlags_SizingFixedFit;
     // 高さは、行数に合わせる(横スクロールを付けると、指定しない限り、残りの高さいっぱいに広がってしまうため)。
     const float tableHeight = (static_cast<float>(detail.evaluations.size()) + 1.0f) * ImGui::GetTextLineHeightWithSpacing() + ImGui::GetStyle().ScrollbarSize + 8.0f;
-    if (ImGui::BeginTable("##candidates", 9, flags, ImVec2(0.0f, tableHeight)))
+    if (ImGui::BeginTable("##candidates", 10, flags, ImVec2(0.0f, tableHeight)))
     {
         ImGui::TableSetupColumn("候補");
         ImGui::TableSetupColumn("道のり(マス)");
         ImGui::TableSetupColumn("採否");
         ImGui::TableSetupColumn("基本の重み");
         ImGui::TableSetupColumn("再訪倍率");
+        ImGui::TableSetupColumn("補正(補完×エリア)");
         ImGui::TableSetupColumn("最終の重み");
         ImGui::TableSetupColumn("選択確率");
         ImGui::TableSetupColumn("抽選の範囲");
@@ -1406,6 +1409,8 @@ void ResidentDebugPanel::DrawDecisionDetail(const SimDecisionDetail& detail, con
             if (ev.hasBreakdown) { ImGui::Text("%.4f", ev.breakdown.weight); } else { ImGui::TextDisabled("-"); }
             ImGui::TableNextColumn();
             if (ev.hasBreakdown) { ImGui::Text("x %.3f", ev.repeatFactor); } else { ImGui::TextDisabled("-"); }
+            ImGui::TableNextColumn();
+            if (ev.hasBreakdown) { ImGui::Text("x %.3f (%.2f x %.2f)", ev.affinity, ev.candidate.complementFactor, ev.candidate.areaBoost); } else { ImGui::TextDisabled("-"); }
             ImGui::TableNextColumn();
             if (ev.hasBreakdown) { ImGui::Text("%.4f", ev.weight); } else { ImGui::TextDisabled("-"); }
             ImGui::TableNextColumn();
@@ -1469,7 +1474,12 @@ void ResidentDebugPanel::DrawDecisionDetail(const SimDecisionDetail& detail, con
                             b.legacyDistance, b.distanceScale, b.distanceShape, b.distanceFactor, s.distanceScaleLegacyCells, detail.traits.distanceTolerance,
                             OutingReasonName(b.reason), detail.isStopover ? " × 立ち寄りの倍率" : "");
         ImGui::TextWrapped("下限の適用 = max(%.5f, 重みの下限 %.4f) = %.5f", b.product, b.floorWeight, b.weight);
-        ImGui::TextWrapped("再訪補正後の重み = 基本の重み %.5f × 直近利用履歴による倍率 %.3f = %.5f", b.weight, ev.repeatFactor, ev.weightAfterRepeat);
+        ImGui::TextWrapped("再訪補正後の重み = 基本の重み %.5f × 直近利用履歴による倍率 %.3f × 立ち寄りの補正 %.3f = %.5f", b.weight, ev.repeatFactor, ev.affinity, ev.weightAfterRepeat);
+        if (detail.isStopover)
+        {
+            ImGui::TextDisabled("  立ち寄りの補正 = min(補完性 %.3f × 同じ区画の補正 %.3f, 上限 %.2f) = %.3f   [補完性は区画に依らない。主目的の施設選びでは 1]",
+                                ev.candidate.complementFactor, ev.candidate.areaBoost, s.stopoverAffinityCap, ev.affinity);
+        }
         ImGui::TextWrapped("最終の重み = max(再訪補正後 %.5f, 重みの下限 %.4f) = %.5f", ev.weightAfterRepeat, s.minimumWeight, ev.weight);
         ImGui::TextWrapped("選択確率 = 最終の重み %.5f ÷ 抽選対象の重みの合計 %.5f = %.2f%%", ev.weight, detail.choice.totalWeight, ev.chance * 100.0f);
         if (ev.requiredStamina >= 0.0f)

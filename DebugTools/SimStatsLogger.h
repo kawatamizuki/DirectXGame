@@ -5,6 +5,7 @@
 #include <string>
 #include "SimDebugRecorder.h"
 #include "SimStats.h"
+#include "DemandSystem.h"
 
 class CommercialAreaManager;
 class DemandSystem;
@@ -76,6 +77,7 @@ private:
     int m_weeksEndedSeen = 0;           // 最後に見た、週末の回数
     bool m_autoTried = false;           // 自動開始を試した(手動で止めた後に、勝手に再開しないため)
     std::chrono::steady_clock::time_point m_startTime{};
+    StopoverTally m_prevTally;          // 前回の行の時点の、立ち寄りの判定の集計(P2-C2)
     SimStatBucket m_prev;               // 前回の行の時点の、通算(今の週の差を出す基準)
     uint64_t m_anomalyTotal = 0;
     std::array<uint64_t, 32> m_anomalyByKind{};

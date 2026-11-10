@@ -418,7 +418,7 @@ bool CanConsiderStopover(const ResidentAgent& agent, float hour, const ResidentS
     return ExplainStopoverBlock(agent, hour, settings) == StopoverBlock::None;
 }
 
-float ComputeStopoverChance(const ResidentAgent& agent, const ResidentSimSettings& settings, StopoverChanceBreakdown* out)
+float ComputeStopoverChance(const ResidentAgent& agent, const ResidentSimSettings& settings, StopoverChanceBreakdown* out, float pull)
 {
     StopoverChanceBreakdown b;
     const float decay = Clamp(settings.stopoverChanceDecay, 0.0f, 1.0f);
@@ -432,12 +432,94 @@ float ComputeStopoverChance(const ResidentAgent& agent, const ResidentSimSetting
     const int reasonIndex = (std::max)(0, (std::min)(static_cast<int>(agent.outingReason), kOutingReasonCount - 1));
     b.reason = static_cast<OutingReason>(reasonIndex);
     b.reasonMultiplier = (std::max)(0.0f, settings.stopoverReasonMultiplier[reasonIndex]);
-    b.chance = Clamp(b.baseChance * b.countDecayFactor * b.staminaFactor * b.needFactor * b.reasonMultiplier, 0.0f, 1.0f);
+    // 引き寄せ(P2-C2): 近くに使える施設が複数あると、少し寄りやすい。控えめ(最大 +強さ)。体力・回数の係数は、上で既に掛かっている(二重に数えない)。
+    b.pull = Clamp(pull, 0.0f, 1.0f);
+    b.pullMultiplier = 1.0f + (std::max)(0.0f, settings.stopoverPullGain) * b.pull;
+    b.chance = Clamp(b.baseChance * b.countDecayFactor * b.staminaFactor * b.needFactor * b.reasonMultiplier * b.pullMultiplier, 0.0f, 1.0f);
     if (out)
     {
         *out = b;
     }
     return b.chance;
+}
+
+namespace
+{
+    // 候補の、最大の用途適性(元の値)。
+    float MaxSuitability(const FacilityDefinition& facility)
+    {
+        float best = 0.0f;
+        for (int p = 0; p < kUsagePurposeCount; ++p) { best = (std::max)(best, facility.purposeSuitability[p]); }
+        return best;
+    }
+
+    // 候補のカテゴリの需要の不足の割合(0〜1)。
+    float NeedGapOf(const ResidentAgent& agent, FacilityCategory category)
+    {
+        const float need = (category == FacilityCategory::Daily) ? agent.lifeNeed : agent.activityNeed;
+        return Clamp(1.0f - need / 100.0f, 0.0f, 1.0f);
+    }
+
+    float NoveltyOf(const FacilityDefinition& candidate, UsagePurpose lastPurpose)
+    {
+        const float best = MaxSuitability(candidate);
+        if (!(best > 0.0f)) { return 0.0f; }
+        const int index = static_cast<int>(lastPurpose);
+        const float same = (index >= 0 && index < kUsagePurposeCount) ? candidate.purposeSuitability[index] : best;
+        return Clamp(1.0f - same / best, 0.0f, 1.0f);
+    }
+}
+
+float ComputeComplementFactor(const ResidentAgent& agent, const FacilityDefinition& candidate, UsagePurpose lastPurpose,
+                              const ResidentSimSettings& settings, ComplementBreakdown* out)
+{
+    ComplementBreakdown b;
+    b.novelty = NoveltyOf(candidate, lastPurpose);
+    b.needGap = NeedGapOf(agent, candidate.category);
+    const float floorTerm = Clamp(settings.complementNeedFloor, 0.0f, 1.0f);
+    b.needTerm = floorTerm + (1.0f - floorTerm) * b.needGap;
+    b.factor = 1.0f + (std::max)(0.0f, settings.complementGain) * b.novelty * b.needTerm;
+    if (out) { *out = b; }
+    return b.factor;
+}
+
+float ComputeStopoverAffinity(float complementFactor, float areaBoost, const ResidentSimSettings& settings)
+{
+    const float product = (std::max)(0.0f, complementFactor) * (std::max)(0.0f, areaBoost);
+    return (std::min)(product, (std::max)(1.0f, settings.stopoverAffinityCap));
+}
+
+float ComputeStopoverPull(const ResidentAgent& agent, UsagePurpose lastPurpose, const std::vector<StopoverPullCandidate>& nearby,
+                          int visitsThisOuting, const ResidentSimSettings& settings, StopoverPullBreakdown* out)
+{
+    StopoverPullBreakdown b;
+    const int useIndex = (std::max)(0, visitsThisOuting);
+    const float noveltyFloor = Clamp(settings.stopoverPullNoveltyFloor, 0.0f, 1.0f);
+    const float floorTerm = Clamp(settings.complementNeedFloor, 0.0f, 1.0f);
+    for (const StopoverPullCandidate& c : nearby)
+    {
+        // 今の外出で、もう使った施設は、数えない(戻らない)。
+        bool visited = false;
+        for (size_t i = 0; i < agent.history.size() && static_cast<int>(i) < visitsThisOuting; ++i)
+        {
+            if (agent.history[i].facilityObjectId == c.objectId) { visited = true; break; }
+        }
+        const FacilityDefinition* facility = FindFacilityDefinition(c.type);
+        if (visited || facility == nullptr) { continue; }
+        ++b.considered;
+        // 体力が足りない施設は、使えない(利用に必要な体力)。
+        if (agent.stamina < RequiredStamina(*facility, useIndex, settings)) { continue; }
+        ++b.usable;
+        const float distanceFactor = ComputeDistanceFactor(agent, c.distance, settings, agent.outingReason, settings.stopoverDistanceScaleFactor);
+        const float needTerm = floorTerm + (1.0f - floorTerm) * NeedGapOf(agent, facility->category);
+        const float suit = Clamp(MaxSuitability(*facility) / 2.0f, 0.0f, 1.0f);
+        const float noveltyTerm = noveltyFloor + (1.0f - noveltyFloor) * NoveltyOf(*facility, lastPurpose);
+        b.sum += distanceFactor * needTerm * suit * noveltyTerm;
+    }
+    b.pull = 1.0f - std::exp(-(std::max)(0.0f, settings.stopoverPullSaturation) * b.sum);
+    b.multiplier = 1.0f + (std::max)(0.0f, settings.stopoverPullGain) * b.pull;
+    if (out) { *out = b; }
+    return b.pull;
 }
 
 float ComputeFoodChainAcceptChance(const ResidentAgent& agent, const FacilityDefinition& candidate, const ResidentSimSettings& settings)
@@ -528,7 +610,9 @@ int ChooseFacility(const ResidentAgent& agent, const std::vector<FacilityCandida
                                                purpose.reason, distanceScaleFactor);
                 evaluation.hasBreakdown = true;
                 const float baseWeight = evaluation.breakdown.weight;
-                evaluation.weightAfterRepeat = baseWeight * evaluation.repeatFactor;
+                // 立ち寄り(2軒目以降)だけ、補完性・エリア内の補正(頭打ちあり)を掛ける。主目的の施設選びでは1。
+                evaluation.affinity = (useIndex > 0) ? ComputeStopoverAffinity(candidate.complementFactor, candidate.areaBoost, settings) : 1.0f;
+                evaluation.weightAfterRepeat = baseWeight * evaluation.repeatFactor * evaluation.affinity;
                 // 履歴で下げても、到達できる候補を、無条件に0にはしない(下限を守る)。
                 evaluation.weight = (std::max)(evaluation.weightAfterRepeat, settings.minimumWeight);
             }

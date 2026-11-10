@@ -19,6 +19,7 @@ struct AreaTally
     int purposeVisitors = 0;
     int visits = 0;
     int sales = 0;
+    int stopovers = 0;          // 区画の中の施設から、同じ区画の別の施設へ、立ち寄りを始めた回数(P2-C2。区画内の回遊)
 
     void Clear() { *this = AreaTally{}; }
 };
@@ -37,6 +38,9 @@ class AreaLedger
 public:
     // エリア目的の外出が、実際に始まった(目的地の区画が決まって、出発した)。
     void RecordAreaOuting(uint32_t areaId);
+
+    // 区画の中の施設から、同じ区画の別の施設への、立ち寄りが始まった(P2-C2)。
+    void RecordAreaStopover(uint32_t areaId);
 
     // 区画の中の施設の利用が、1回終わった。price: 施設の値段(売上)。
     // firstInOuting: この外出で、この区画の利用が、初めてか(trueなら、来訪者に数える)。

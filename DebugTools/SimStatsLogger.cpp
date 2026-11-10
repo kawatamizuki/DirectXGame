@@ -173,6 +173,7 @@ bool SimStatsLogger::Start()
     m_lastWeekLogged = 0;
     m_weeksEndedSeen = m_demand->GetWeeksEnded();
     m_prev = m_demand->GetBehaviorStats().Scope(SimStatScope::Normal).total;
+    m_prevTally = m_demand->GetStopoverTally();
     m_anomalyTotal = 0;
     m_anomalyByKind.fill(0);
     m_startTime = std::chrono::steady_clock::now();
@@ -205,7 +206,8 @@ bool SimStatsLogger::OpenFolder()
                "outings,reason_quick,reason_substantial,reason_area,outing_failed,departed,main_visits,returned_home,"
                "stop_considered,stop_started,stop_visits,visits,revenue,stamina_used,"
                "area_outings,area_visitors,area_purpose_visitors,area_visits,area_sales,"
-               "standalone_visits,standalone_sales,facility_visits,facility_sales,area_visit_share,anomalies\n";
+               "standalone_visits,standalone_sales,facility_visits,facility_sales,area_visit_share,anomalies,"
+               "area_stopovers,area_visits_per_visitor,stop_rolls,stop_hits,stop_expected,stop_expected_without_pull,stop_started,stop_same_purpose,stop_from_area,stop_same_area\n";
     }
     {
         std::ofstream out(m_folder + "/facilities.csv");
@@ -259,6 +261,7 @@ void SimStatsLogger::Update(bool canRun)
         m_worldReset = false;
         m_weeksEndedSeen = weeksEnded;
         m_prev = m_demand->GetBehaviorStats().Scope(SimStatScope::Normal).total;
+        m_prevTally = m_demand->GetStopoverTally();
         Note("世界が差し替わったので、基準を取り直した(週末の回数 " + std::to_string(weeksEnded) + ")");
         return;
     }
@@ -295,7 +298,7 @@ void SimStatsLogger::WriteWeekRows()
         }
     }
 
-    long long areaOutings = 0, areaVisitors = 0, areaPurposeVisitors = 0, areaLedgerVisits = 0, areaLedgerSales = 0;
+    long long areaOutings = 0, areaVisitors = 0, areaPurposeVisitors = 0, areaLedgerVisits = 0, areaLedgerSales = 0, areaStopovers = 0;
     {
         std::ofstream ar(m_folder + "/areas.csv", std::ios::app);
         for (const AreaRecord& rec : m_demand->GetAreaLedger().GetRecords())
@@ -306,6 +309,7 @@ void SimStatsLogger::WriteWeekRows()
             areaOutings += rec.lastWeek.areaOutings;
             areaVisitors += rec.lastWeek.visitors;
             areaPurposeVisitors += rec.lastWeek.purposeVisitors;
+            areaStopovers += rec.lastWeek.stopovers;
             areaLedgerVisits += rec.lastWeek.visits;
             areaLedgerSales += rec.lastWeek.sales;
             if (ar)
@@ -356,7 +360,20 @@ void SimStatsLogger::WriteWeekRows()
         << revenue << "," << stamina << ","
         << areaOutings << "," << areaVisitors << "," << areaPurposeVisitors << "," << areaVisits << "," << areaSales << ","
         << standaloneVisits << "," << standaloneSales << "," << facilityVisits << "," << facilitySales << ","
-        << share << "," << m_anomalyTotal << "\n";
+        << share << "," << m_anomalyTotal << ",";
+    {
+        // 区画内の立ち寄りと、1人あたりの利用施設数(来訪者が0人なら空欄=未計測。0とは別)、立ち寄りの判定の差分(P2-C2)。
+        const StopoverTally& tally = m_demand->GetStopoverTally();
+        out << areaStopovers << ",";
+        if (areaVisitors > 0) { char v[32]; std::snprintf(v, sizeof(v), "%.3f", static_cast<double>(areaVisits) / static_cast<double>(areaVisitors)); out << v; }
+        out << ",";
+        char e[64];
+        out << Sub(tally.rolls, m_prevTally.rolls) << "," << Sub(tally.hits, m_prevTally.hits) << ",";
+        std::snprintf(e, sizeof(e), "%.2f,%.2f", tally.sumChance - m_prevTally.sumChance, tally.sumChanceWithoutPull - m_prevTally.sumChanceWithoutPull);
+        out << e << "," << Sub(tally.started, m_prevTally.started) << "," << Sub(tally.startedSamePurpose, m_prevTally.startedSamePurpose) << ","
+            << Sub(tally.startedFromArea, m_prevTally.startedFromArea) << "," << Sub(tally.startedSameArea, m_prevTally.startedSameArea) << "\n";
+        m_prevTally = tally;
+    }
 
     m_prev = cur;
     ++m_rows;
@@ -492,6 +509,18 @@ void SimStatsLogger::WriteSummary()
         }
     }
 
+    out << "\n== 立ち寄りの補正の効き方(P2-C2。世界を読み込み直すとリセット) ==\n";
+    {
+        const StopoverTally& t = m_demand->GetStopoverTally();
+        std::snprintf(line, sizeof(line), "確率の抽選 %llu 回 / 当選 %llu 回 / 期待 %.1f 回(引き寄せが無かった場合 %.1f 回)/ 引き寄せの平均 %.3f\n",
+                      (unsigned long long)t.rolls, (unsigned long long)t.hits, t.sumChance, t.sumChanceWithoutPull, t.rolls ? t.sumPull / static_cast<double>(t.rolls) : 0.0);
+        out << line;
+        std::snprintf(line, sizeof(line), "立ち寄りを始めた %llu 回: 同じ用途の連続 %llu (%.1f%%) / 区画の施設から %llu 回、うち同じ区画の施設へ %llu (%.1f%%) / 補完性の平均 %.3f / 補正の平均 %.3f\n",
+                      (unsigned long long)t.started, (unsigned long long)t.startedSamePurpose, Percent(t.startedSamePurpose, t.started),
+                      (unsigned long long)t.startedFromArea, (unsigned long long)t.startedSameArea, Percent(t.startedSameArea, t.startedFromArea),
+                      t.started ? t.sumComplement / static_cast<double>(t.started) : 0.0, t.started ? t.sumAffinity / static_cast<double>(t.started) : 0.0);
+        out << line;
+    }
     out << "\n== 異常(記録中) ==\n";
     out << "合計 " << m_anomalyTotal << "\n";
     for (size_t i = 1; i < m_anomalyByKind.size(); ++i)

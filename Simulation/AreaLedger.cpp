@@ -21,6 +21,15 @@ void AreaLedger::RecordAreaOuting(uint32_t areaId)
     ++record.total.areaOutings;
 }
 
+void AreaLedger::RecordAreaStopover(uint32_t areaId)
+{
+    if (areaId == 0) { return; }
+    AreaRecord& record = GetOrCreate(areaId);
+    ++record.thisWeek.stopovers;
+    ++record.thisMonth.stopovers;
+    ++record.total.stopovers;
+}
+
 void AreaLedger::RecordVisit(uint32_t areaId, int price, bool firstInOuting, bool areaWasPurpose)
 {
     if (areaId == 0) { return; }

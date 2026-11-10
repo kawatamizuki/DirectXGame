@@ -2335,6 +2335,27 @@ AreaPanelModel Game::BuildAreaPanelModel() const
         value("同じ用途の店の重なり", overlap.empty() ? "なし" : overlap);
     }
 
+    // 4つの指標(P2-C2)。予測(行先としての選ばれやすさ)と実績(実際の来訪・利用・売上)を分けて見せる。0人の時は「未計測」(0とは別)。
+    {
+        const AreaIndicators ind = ComputeAreaIndicators(m_areas.CompositionOf(area->id), area->published, m_demandSystem.GetAreaLedger().Find(area->id), m_demandSystem.GetSettings());
+        auto measured = [](const IndicatorValue& v, const char* format) -> std::string
+        {
+            if (!v.measured) { return "未計測"; }
+            char text[48];
+            std::snprintf(text, sizeof(text), format, v.value);
+            return text;
+        };
+        header("4つの指標");
+        char buffer[96];
+        std::snprintf(buffer, sizeof(buffer), "予測 %.2f(周知 x%.1f)", ind.attractionPredicted, ind.predictedPublish);
+        value("集客力", std::string(buffer) + " / 先週の来訪者 " + measured(ind.visitorsLastWeek, "%.0f") + " 人", (std::min)(1.0f, ind.attractionPredicted / 1.3f));
+        std::snprintf(buffer, sizeof(buffer), "豊富さ %.2f(%d軒・用途 %d種類)", ind.richness, ind.storeCount, ind.coveredPurposes);
+        value("回遊性", std::string(buffer) + " / 1人あたり " + measured(ind.visitsPerVisitorLastWeek, "%.2f") + " 軒", ind.richness);
+        value("消費効率", "1人あたりの実売上 " + measured(ind.salesPerVisitorLastWeek, "%.0f") + " 円(先週)");
+        value("評判", "固定 " + measured({ true, ind.reputation }, "%.1f") + "(更新は P2-D)");
+        note("指標について", "実績は、実際に施設を使った人だけで数えます(入店していない施設への売上配分はありません)。来訪者が0人の間は「未計測」です。");
+    }
+
     header("周知");
     if (area->published)
     {
@@ -2657,7 +2678,7 @@ void Game::Draw()
     Debug::DrawDebugUI(m_editorUi.PanelFlag("Log"));
     m_memoryPanel.Draw([this]() { return BuildMemoryReport(); });
     m_statsLoggerPanel.Draw(m_statsLogger, IsInGameScene() && !m_endurance.IsDriving());
-    m_areaDebugPanel.Draw(m_areas, m_gameClock, m_demandSystem.GetAreaLedger());
+    m_areaDebugPanel.Draw(m_areas, m_gameClock, m_demandSystem);
 
     // ホバーのヒントとショートカット一覧。全てのパネルを描いた後。
     m_editorUi.EndFrame(editorFrame);

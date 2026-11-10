@@ -1,6 +1,6 @@
 ﻿#pragma once
 
-class AreaLedger;
+class DemandSystem;
 class CommercialAreaManager;
 class GameClock;
 
@@ -11,7 +11,7 @@ class AreaDebugPanel
 {
 public:
     void SetOpenFlag(bool* open) { m_open = open; }
-    void Draw(CommercialAreaManager& areas, const GameClock& clock, const AreaLedger& ledger);
+    void Draw(CommercialAreaManager& areas, const GameClock& clock, const DemandSystem& demand);
 
 private:
     bool* m_open = nullptr;

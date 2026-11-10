@@ -128,6 +128,23 @@ struct DecisionLogEntry
     std::string note;                           // 補足(「食事系が続くので、寄らなかった」など)
 };
 
+// 立ち寄りの判定の集計(P2-C2。保存しない・世界を読み込み直すとリセットされる。補正の効き方を、放置して確かめるための、診断用の数字)。
+// 乱数・住民の状態には触れない(数えるだけ)。
+struct StopoverTally
+{
+    uint64_t rolls = 0;                 // 立ち寄りの確率の抽選の回数(条件を通った時だけ。行動テストの強制は含めない)
+    uint64_t hits = 0;                  // うち、当選
+    double sumChance = 0.0;             // 確率(引き寄せの補正を含む)の合計 = 期待される当選の数
+    double sumChanceWithoutPull = 0.0;  // 引き寄せの補正が無かった場合の確率の合計(差 = 補正で増えた期待の数)
+    double sumPull = 0.0;               // 引き寄せ(0〜1)の合計
+    uint64_t started = 0;               // 立ち寄りを始めた回数
+    uint64_t startedSamePurpose = 0;    // うち、直前に使った用途と同じ用途で寄った(同じ用途の連続)
+    uint64_t startedSameArea = 0;       // うち、今いる施設と同じ区画の施設へ寄った(区画内の回遊)
+    uint64_t startedFromArea = 0;       // うち、区画の施設から寄り始めた(区画外へ寄った分も含む)
+    double sumComplement = 0.0;         // 寄り先の補完性の倍率の合計(平均 = ÷ started)
+    double sumAffinity = 0.0;           // 寄り先の補正(補完性 × エリア内、頭打ち後)の合計
+};
+
 // 住民全体の、今の様子の要約(統計の出力用。住民の内部を画面側へ見せないための橋渡し)。読むだけで、状態は変えない。
 struct SimPopulationSnapshot
 {
@@ -311,7 +328,10 @@ public:
     void SetAreaSource(const IAreaSource* source) { m_areaSource = source; }
     // 区画ごとの、エリア目的の外出人数・来訪者数・延べ利用回数・実売上の集計。
     const AreaLedger& GetAreaLedger() const { return m_areaLedger; }
-    // 施設が、直近の更新(約3秒ごと)の時点で、どの区画に所属しているか(0=どの区画にも所属しない)。
+    // 立ち寄りの判定の集計(P2-C2。診断用)。
+    const StopoverTally& GetStopoverTally() const { return m_stopTally; }
+    // 区画が周知済みか(区画が無ければ false)。
+    bool IsAreaPublished(uint32_t areaId) const;    // 施設が、直近の更新(約3秒ごと)の時点で、どの区画に所属しているか(0=どの区画にも所属しない)。
     uint32_t GetAreaOfFacility(uint32_t facilityObjectId) const
     {
         const auto it = m_areaOfFacility.find(facilityObjectId);
@@ -551,6 +571,8 @@ private:
     ResidentSimSettings m_settings;         // 調整用の設定
     SimRandom m_random{ 12345 };            // 施設選びなどの乱数(settings.seedから)
     FacilityLedger m_ledger;                // 施設ごとの来訪者数・売上
+    StopoverTally m_stopTally;              // 立ち寄りの判定の集計(P2-C2。保存しない)
+    float m_lastStopPull = 0.0f;            // 直近の立ち寄りの判定で使った、引き寄せ(判断の内訳の記録用。乱数・結果には影響しない)
     AreaLedger m_areaLedger;                // 商業エリアの区画ごとの、外出・来訪者・利用・売上(P2-C1)
     const IAreaSource* m_areaSource = nullptr; // 区画を読む窓口(読み取り専用。所有しない)
     std::unordered_map<uint32_t, uint32_t> m_areaOfFacility; // 施設のid → 所属する区画のid(直近の更新の時点。保存しない)
