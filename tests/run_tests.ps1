@@ -30,7 +30,7 @@ $common = @(
     "Simulation\SimTest.cpp", "Simulation\SimStats.cpp", "Simulation\SimRunDigest.cpp",
     "Simulation\SimInvariantMonitor.cpp", "Simulation\FacilityData.cpp", "Simulation\FacilityLedger.cpp",
     "Simulation\CommercialArea.cpp", "Simulation\CommercialAreaManager.cpp", "Simulation\AreaLedger.cpp", "Simulation\AreaIndicators.cpp", "Simulation\AreaReputation.cpp", "Simulation\RoadProximity.cpp",
-    "Object\BuildingType.cpp", "Field\OrientedRectangleOverlap.cpp", "Core\GameClock.cpp", "Scenario\Json.cpp"
+    "Object\BuildingType.cpp", "Field\OrientedRectangleOverlap.cpp", "Core\GameClock.cpp", "Scenario\Json.cpp", "Scenario\PathGuard.cpp", "Scenario\AtomicFile.cpp", "Scenario\TestMapStore.cpp"
 ) | ForEach-Object { Join-Path $root $_ }
 
 $includes = @("Simulation", "Core", "Field", "Object", "Math", "Graphics", "Scenario", "DebugTools", "UI") |

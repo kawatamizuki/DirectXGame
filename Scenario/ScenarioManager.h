@@ -31,6 +31,8 @@ public:
     // プレイヤーのクイックセーブの保存先(Git管理しない)と、ゲーム開始時に読み込む初期マップ(Git管理する)。
     static constexpr const char* kQuickSavePath = "Saves/quicksave.json";
     static constexpr const char* kStartScenarioPath = "Scenarios/tutorial.json";
+    // テストマップの置き場(TestMapStore の既定の場所と同じ)。通常のセーブ(Save)は、この中へ書けない(元のテストマップを、誤って上書きしないため)。
+    static constexpr const char* kTestMapsDirectory = "TestMaps";
 
     ScenarioManager();
     ~ScenarioManager();
@@ -51,7 +53,13 @@ public:
 
     // 今の街をpathに保存する。成功したらtrue。messageに結果(または失敗の理由)が入る。
     // 一時ファイルに書いてから置き換えるので、書き込み中に落ちても、前のセーブは壊れない。
+    // ただし、保護したフォルダ(既定: TestMaps/ とその下)の中のパスには、書かない(パスの書き方を変えても、すり抜けられない。PathGuard)。
     bool Save(const std::string& path, std::string& message);
+
+    // pathが、保護したフォルダの中を指すか(通常のセーブが、書いてはいけない場所か)。
+    bool IsProtectedPath(const std::string& path) const;
+    // 保護するフォルダを足す(既定で、テストマップの置き場が入っている)。
+    void AddProtectedDirectory(const std::string& directory) { m_protectedDirectories.push_back(directory); }
 
     // pathのセーブデータを読み込み、街をその状態に置き換える。成功したらtrue。
     // ファイルの読み込み・構文・内容の検証が全て成功してから街を消すので、失敗しても今の街は壊れない。
@@ -97,6 +105,7 @@ private:
     GridOrientationRegistry* m_orientationRegistry = nullptr;
 
     std::vector<ISaveable*> m_saveables;
+    std::vector<std::string> m_protectedDirectories;   // 通常のセーブが書けないフォルダ
 
     std::unique_ptr<ISnapshotFormat> m_defaultFormat; // 既定のJSON形式
     const ISnapshotFormat* m_format = nullptr;        // 使っている形式(既定か、差し替えられたもの)

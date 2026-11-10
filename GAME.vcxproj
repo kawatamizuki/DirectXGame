@@ -147,6 +147,9 @@
     <ClCompile Include="Scenario\ScenarioFile.cpp" />
     <ClCompile Include="Scenario\WorldSnapshot.cpp" />
     <ClCompile Include="Scenario\ScenarioManager.cpp" />
+    <ClCompile Include="Scenario\PathGuard.cpp" />
+    <ClCompile Include="Scenario\AtomicFile.cpp" />
+    <ClCompile Include="Scenario\TestMapStore.cpp" />
     <ClCompile Include="Core\Window.cpp" />
     <ClCompile Include="DebugTools\Debug.cpp" />
     <ClCompile Include="DebugTools\DebugEditor.cpp" />
@@ -281,6 +284,9 @@
     <ClInclude Include="Scenario\Json.h" />
     <ClInclude Include="Scenario\JsonFormat.h" />
     <ClInclude Include="Scenario\ScenarioManager.h" />
+    <ClInclude Include="Scenario\PathGuard.h" />
+    <ClInclude Include="Scenario\AtomicFile.h" />
+    <ClInclude Include="Scenario\TestMapStore.h" />
     <ClInclude Include="Scenario\ScenarioFile.h" />
     <ClInclude Include="Scenario\WorldSnapshot.h" />
     <ClInclude Include="Field\WorldScale.h" />

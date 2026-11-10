@@ -101,3 +101,7 @@ dist/
 
 # カフェのモデル(CGTrader Royalty Free License)の派生物。元の素材を、元の形で渡してはいけない条件のため、Gitに入れない(THIRD_PARTY_LICENSES.md)
 Assets/Models/Stores/cafe/*.png
+
+# テストマップ: 正式に採用した物(TestMaps/*.json)はGit管理する。作成途中・試作(TestMaps/Drafts/)と、検証結果(TestResults/)は、Git管理しない。
+TestMaps/Drafts/
+TestResults/

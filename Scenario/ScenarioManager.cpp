@@ -15,6 +15,8 @@
 #include "ModelCache.h"
 #include "JsonFormat.h"
 #include "ScenarioFile.h"
+#include "PathGuard.h"
+#include "AtomicFile.h"
 #include "Debug.h"
 #include "imgui.h"
 
@@ -22,6 +24,7 @@ ScenarioManager::ScenarioManager()
     : m_defaultFormat(std::make_unique<JsonFormat>())
 {
     m_format = m_defaultFormat.get();
+    m_protectedDirectories.push_back(kTestMapsDirectory);   // テストマップの元ファイルは、通常のセーブでは、書き換えられない
     std::snprintf(m_pathBuffer, sizeof(m_pathBuffer), "%s", kQuickSavePath);
 }
 
@@ -327,8 +330,23 @@ bool ScenarioManager::ReadFileBytes(const std::string& path, std::string& bytes,
     return true;
 }
 
+bool ScenarioManager::IsProtectedPath(const std::string& path) const
+{
+    for (const std::string& directory : m_protectedDirectories)
+    {
+        if (PathGuard::IsInsideDirectory(path, directory)) { return true; }
+    }
+    return false;
+}
+
 bool ScenarioManager::Save(const std::string& path, std::string& message)
 {
+    if (IsProtectedPath(path))
+    {
+        message = "保存できません: 保護されたフォルダ(テストマップの置き場)の中です。テストマップは、「テストマップ」パネルから保存してください: " + path;
+        m_lastMessage = message;
+        return false;
+    }
     WorldSnapshot snapshot;
     CaptureSnapshot(snapshot);
 
@@ -344,46 +362,11 @@ bool ScenarioManager::Save(const std::string& path, std::string& message)
     }
 
     // 一時ファイルに書き切ってから置き換える(書き込み中に落ちても、前のセーブが壊れない)。
-    std::error_code ec;
-    std::filesystem::path target(path);
-    if (target.has_parent_path())
+    std::string writeError;
+    if (!WriteFileAtomic(path, bytes, writeError))
     {
-        std::filesystem::create_directories(target.parent_path(), ec);
-        if (ec)
-        {
-            message = "保存に失敗しました: フォルダを作れません: " + target.parent_path().string();
-            m_lastMessage = message;
-            return false;
-        }
-    }
-
-    std::string tempPath = path + ".tmp";
-    {
-        std::ofstream file(tempPath, std::ios::binary | std::ios::trunc);
-        if (!file)
-        {
-            message = "保存に失敗しました: 一時ファイルを作れません: " + tempPath;
-            m_lastMessage = message;
-            return false;
-        }
-        file.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-        file.flush();
-        if (!file)
-        {
-            message = "保存に失敗しました: 書き込みに失敗しました(ディスクの空きを確認してください)";
-            m_lastMessage = message;
-            file.close();
-            std::filesystem::remove(tempPath, ec);
-            return false;
-        }
-    }
-
-    std::filesystem::rename(tempPath, target, ec);
-    if (ec)
-    {
-        message = "保存に失敗しました: ファイルを置き換えられません: " + ec.message();
+        message = "保存に失敗しました: " + writeError;
         m_lastMessage = message;
-        std::filesystem::remove(tempPath, ec);
         return false;
     }
 
@@ -521,12 +504,7 @@ void ScenarioManager::DrawDebugUI(bool* open)
         Load(m_pathBuffer, message);
     }
 
-    // 今の街を、ゲーム開始時の初期マップ(Git管理する)として保存する/読み込む。
-    if (ImGui::Button("Save as tutorial map"))
-    {
-        Save(kStartScenarioPath, message);
-    }
-    ImGui::SameLine();
+    // 初期マップ(Git管理する Scenarios/tutorial.json)は、誤って上書きしないよう、ここからは、保存できない(読み込みだけ)。編集が必要になったら、確認つきの専用の操作を、別に作る。
     if (ImGui::Button("Load tutorial map"))
     {
         Load(kStartScenarioPath, message);
