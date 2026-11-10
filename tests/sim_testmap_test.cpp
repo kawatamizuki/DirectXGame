@@ -14,6 +14,7 @@
 #include "AtomicFile.h"
 #include "Json.h"
 #include "PathGuard.h"
+#include "TestMapSession.h"
 #include "TestMapStore.h"
 
 #ifndef NOMINMAX
@@ -317,6 +318,186 @@ static void TestStore(const fs::path& sandbox)
     CHECK(!store.SaveNew("will_fail", meta, TestMapFolder::Official, message));
 }
 
+// ---- 配置の指紋(時間で変わる状態は含めない) ----
+static std::string LayoutWorld(int roads, int buildings, int clockMinute, float reputation, bool published)
+{
+    Json root = Json::MakeObject();
+    root.Set("version", 1);
+    root.Set("cellSize", 0.5);
+    Json r = Json::MakeArray();
+    for (int i = 0; i < roads; ++i) { Json road = Json::MakeObject(); road.Set("width", 1); road.Set("id", i); r.Push(std::move(road)); }
+    root.Set("roads", std::move(r));
+    Json b = Json::MakeArray();
+    for (int i = 0; i < buildings; ++i) { Json bld = Json::MakeObject(); bld.Set("type", "Shop"); bld.Set("n", i); b.Push(std::move(bld)); }
+    root.Set("buildings", std::move(b));
+    Json state = Json::MakeObject();
+    Json clock = Json::MakeObject(); clock.Set("minute", clockMinute);
+    state.Set("clock", std::move(clock));
+    Json areas = Json::MakeObject();
+    Json list = Json::MakeArray();
+    Json area = Json::MakeObject();
+    area.Set("id", 1); area.Set("minX", 0.0); area.Set("minZ", 0.0); area.Set("maxX", 4.0); area.Set("maxZ", 4.0); area.Set("published", published);
+    area.Set("reputation", reputation);                      // 時間で変わる
+    list.Push(std::move(area));
+    areas.Set("areas", std::move(list));
+    state.Set("commercialAreas", std::move(areas));
+    root.Set("state", std::move(state));
+    return root.Dump(true);
+}
+
+static void TestLayoutFingerprint()
+{
+    std::uint64_t base = 0, same = 0, moreBuildings = 0, moreRoads = 0, otherPublished = 0, full1 = 0, full2 = 0;
+    CHECK(TestMapStore::ComputeLayoutFingerprint(LayoutWorld(2, 3, 100, 1.0f, true), base));
+    // 時間で変わる状態(時計・評判)が違っても、配置は同じ。
+    CHECK(TestMapStore::ComputeLayoutFingerprint(LayoutWorld(2, 3, 999, 0.7f, true), same) && same == base);
+    // 建物・道路・周知の有無が違えば、配置が違う。
+    CHECK(TestMapStore::ComputeLayoutFingerprint(LayoutWorld(2, 4, 100, 1.0f, true), moreBuildings) && moreBuildings != base);
+    CHECK(TestMapStore::ComputeLayoutFingerprint(LayoutWorld(3, 3, 100, 1.0f, true), moreRoads) && moreRoads != base);
+    CHECK(TestMapStore::ComputeLayoutFingerprint(LayoutWorld(2, 3, 100, 1.0f, false), otherPublished) && otherPublished != base);
+    // 街の全体の指紋は、時間で変わる状態も含む(初期状態の同一性)。
+    CHECK(TestMapStore::ComputeFingerprint(LayoutWorld(2, 3, 100, 1.0f, true), full1) && TestMapStore::ComputeFingerprint(LayoutWorld(2, 3, 999, 1.0f, true), full2) && full1 != full2);
+    std::uint64_t dummy = 0;
+    CHECK(!TestMapStore::ComputeLayoutFingerprint("not json", dummy));
+}
+
+// ---- 読み込み前の街の控え・元の街に戻す・配置の変更の検出 ----
+static void TestSession(const fs::path& sandbox)
+{
+    const fs::path root = sandbox / "session" / "TestMaps";
+    TestMapStore store(root.string());
+    TestMapSession session(store);
+
+    std::string world = LayoutWorld(1, 1, 10, 1.0f, true);       // 今の(ユーザーの)街
+    bool loadFails = false;
+    TestMapWorldIO io;
+    io.capture = [&](std::string& bytes, std::string&) { bytes = world; return true; };
+    io.loadFile = [&](const std::string& path, std::string& message)
+    {
+        if (loadFails) { message = "読めない"; return false; }
+        // 実際のゲームと同じく、読み込んだ街は、ファイルの中身(メタ情報つき)になる。
+        world = Slurp(path);
+        message = "ok";
+        return true;
+    };
+    store.SetWorldIO(io);
+    TestMapSessionIO sio;
+    sio.capture = io.capture;
+    sio.loadBytes = [&](const std::string& bytes, const std::string&, std::string&) { world = bytes; return true; };
+    session.SetIO(sio);
+
+    std::string message;
+    const std::string userCity = world;
+    // テストマップを2つ作る(街の配置が違う)。
+    world = LayoutWorld(2, 2, 10, 1.0f, true);
+    CHECK(store.SaveNew("map_a", TestMapMeta{}, TestMapFolder::Official, message));
+    world = LayoutWorld(3, 5, 10, 1.0f, true);
+    CHECK(store.SaveNew("map_b", TestMapMeta{}, TestMapFolder::Draft, message));
+    world = userCity;
+    const std::string fileA = Slurp(root / "map_a.json");
+    const std::string fileB = Slurp(root / "Drafts" / "map_b.json");
+
+    // 最初は、控えが無い。使用中でもない。
+    CHECK(!session.HasOriginal() && !session.Active().valid);
+    bool modified = true;
+    CHECK(!session.IsLayoutModified(modified));                   // 使用中でなければ、調べられない
+
+    // 読み込み: 今の街が、控えられる。使用中の情報が入る。
+    CHECK(session.Load("map_a", message));
+    CHECK(session.HasOriginal() && session.Active().valid && session.Active().id == "map_a");
+    CHECK(world != userCity);
+    CHECK(session.IsLayoutModified(modified) && !modified);       // 読み込んだ直後は、元と同じ配置
+    // 時間が進んだ(時計・評判)だけでは、「変更あり」にならない。
+    world = LayoutWorld(2, 2, 555, 0.6f, true);
+    CHECK(session.IsLayoutModified(modified) && !modified);
+    // 建築した(建物を足した)ら、「変更あり」になる。
+    world = LayoutWorld(2, 3, 555, 0.6f, true);
+    CHECK(session.IsLayoutModified(modified) && modified);
+
+    // 別のテストマップへ移る: 控えは、最初の街のまま(テストマップ上の変更を、控えない)。
+    CHECK(session.Load("map_b", message));
+    CHECK(session.Active().id == "map_b");
+    // 元の街へ戻す: 最初の街に、そっくり戻る。使用中・控えは、消える。
+    CHECK(session.RestoreOriginal(message));
+    CHECK(world == userCity);
+    CHECK(!session.HasOriginal() && !session.Active().valid);
+    CHECK(!session.RestoreOriginal(message));                     // 控えが無ければ、戻せない
+
+    // 元のテストマップのファイルは、一切、変わっていない(読み込み・建築・戻す、の後でも)。
+    CHECK(Slurp(root / "map_a.json") == fileA && Slurp(root / "Drafts" / "map_b.json") == fileB);
+
+    // 読み込みに失敗した時: 街は、そのまま。控えも使用中も、作らない。
+    loadFails = true;
+    world = userCity;
+    CHECK(!session.Load("map_a", message));
+    CHECK(world == userCity && !session.HasOriginal() && !session.Active().valid);
+    loadFails = false;
+    CHECK(!session.Load("missing", message) && !session.HasOriginal());
+
+    // 控えを取った後で、読み込みに失敗(2つ目)しても、最初の控えは、そのまま。
+    CHECK(session.Load("map_a", message));
+    loadFails = true;
+    CHECK(!session.Load("map_b", message));
+    CHECK(session.HasOriginal() && session.Active().id == "map_a");
+    loadFails = false;
+    // 戻す時に、街の入れ替えに失敗したら、控えを残す(もう一度、試せる)。
+    TestMapSessionIO failingRestore;
+    failingRestore.capture = io.capture;
+    failingRestore.loadBytes = [](const std::string&, const std::string&, std::string& m) { m = "失敗"; return false; };
+    session.SetIO(failingRestore);
+    CHECK(!session.RestoreOriginal(message) && session.HasOriginal());
+    session.SetIO(sio);
+    CHECK(session.RestoreOriginal(message) && world == userCity);
+
+    // 使用中のテストマップを、削除・名前変更した時の、使用中の情報。
+    CHECK(session.Load("map_a", message));
+    CHECK(store.Rename("map_a", "map_a2", message) && session.Active().id == "map_a2");
+    CHECK(store.Delete("map_a2", message) && !session.Active().valid);
+    CHECK(session.HasOriginal());                                 // 控えは、残る(元の街へ戻せる)
+    CHECK(session.RestoreOriginal(message) && world == userCity);
+
+    // 街の入出力が無い時は、何もせず、断る(落ちない)。
+    TestMapSession bare(store);
+    CHECK(!bare.Load("map_b", message) && !bare.RestoreOriginal(message));
+
+    // クイックセーブ(F5/F9)の保存先: テストマップ使用中は、普段のクイックセーブとは、別のファイル。使っていなければ、普段のファイル。
+    const std::string normalQuickSave = "Saves/quicksave.json";
+    CHECK(session.QuickSavePath(normalQuickSave) == normalQuickSave);
+    CHECK(session.Load("map_b", message));
+    CHECK(session.QuickSavePath(normalQuickSave) == TestMapSession::kQuickSavePath);
+    CHECK(session.QuickSavePath(normalQuickSave) != normalQuickSave);
+    CHECK(PathGuard::IsInsideDirectory(session.QuickSavePath(normalQuickSave), normalQuickSave) == false);   // 普段のクイックセーブとは、別のファイル
+    // 使用をやめる(別のセーブを読み込んだ時・「使用をやめる」): 使用中の表示も、控えも、消える。街は、そのまま。
+    const std::string cityBefore = world;
+    session.EndSession();
+    CHECK(!session.Active().valid && !session.HasOriginal() && world == cityBefore);
+    CHECK(session.QuickSavePath(normalQuickSave) == normalQuickSave);
+    CHECK(!session.RestoreOriginal(message));
+}
+
+// ---- 特定のファイルへの保存を止める(普段のクイックセーブを守る): ScenarioManager::SetBlockedSavePath が使う判定 ----
+static void TestBlockedFile(const fs::path& sandbox)
+{
+    const fs::path saves = sandbox / "blocked" / "Saves";
+    fs::create_directories(saves);
+    const std::string blocked = (saves / "quicksave.json").string();
+    auto isBlocked = [&](const std::string& path) { return PathGuard::IsInsideDirectory(path, blocked); };
+    CHECK(isBlocked(blocked));
+    std::string upper = blocked;
+    for (char& c : upper) { c = static_cast<char>(std::toupper(static_cast<unsigned char>(c))); }
+    CHECK(isBlocked(upper));
+    CHECK(isBlocked((saves / ".." / "Saves" / "quicksave.json").string()));
+    std::string slashed = blocked;
+    for (char& c : slashed) { if (c == '\\') { c = '/'; } }
+    CHECK(isBlocked(slashed));
+    CHECK(isBlocked(blocked + " "));                                          // 末尾の空白(Windowsは、同じファイルとして扱う)
+    CHECK(isBlocked(blocked + "."));
+    // 同じフォルダの、別のファイルは、止めない(テスト用のクイックセーブ・普通のセーブ)。
+    CHECK(!isBlocked((saves / "quicksave_testmap.json").string()));
+    CHECK(!isBlocked((saves / "quicksave.json.bak").string()));
+    CHECK(!isBlocked((saves / "my_save.json").string()));
+}
+
 int main()
 {
     const fs::path sandbox = fs::temp_directory_path() / ("GAME_testmap_test_" + std::to_string(::GetCurrentProcessId()));
@@ -328,6 +509,9 @@ int main()
     TestPathGuard(sandbox);
     TestAtomicFile(sandbox);
     TestStore(sandbox);
+    TestLayoutFingerprint();
+    TestSession(sandbox);
+    TestBlockedFile(sandbox);
 
     fs::remove_all(sandbox, ec);
     if (g_fail == 0) { std::printf("ALL PASSED\n"); return 0; }

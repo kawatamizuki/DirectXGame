@@ -11,6 +11,7 @@
 #include "GameObjectFactory.h"
 #include "EditorGuard.h"
 #include "FacilityData.h"
+#include "PathGuard.h"
 #include <algorithm>
 #include <cfloat>
 #include <cstdio>
@@ -134,6 +135,7 @@ bool Game::Initialize(HWND hwnd)
     m_endurancePanel.SetOpenFlag(m_editorUi.PanelFlag("耐久試験"));
     m_memoryPanel.SetOpenFlag(m_editorUi.PanelFlag("メモリ"));
     m_statsLoggerPanel.SetOpenFlag(m_editorUi.PanelFlag("統計の出力"));
+    m_testMapPanel.SetOpenFlag(m_editorUi.PanelFlag("テストマップ"));
     m_areaDebugPanel.SetOpenFlag(m_editorUi.PanelFlag("商業エリア"));
 
     // 住民の判断・状態遷移の記録を有効にする(Editorのビルドだけ。Releaseでは無効のまま)。記録は、乱数・シミュレーションの結果を変えない。
@@ -381,6 +383,18 @@ bool Game::Initialize(HWND hwnd)
     // 統計の出力(放置して集める)。観察者として、異常の数を数える。
     m_statsLogger.Initialize(&m_demandSystem, &m_areas, &m_gameClock);
 
+    // テストマップ: 街の入出力を、既存のセーブ・ロード(ScenarioManager)につなぐ。保存・読み込みの検証は、既存のセーブと同じ物。
+    {
+        TestMapWorldIO io;
+        io.capture = [this](std::string& bytes, std::string& message) { return m_scenarioManager.CaptureBytes(bytes, message); };
+        io.loadFile = [this](const std::string& path, std::string& message) { return m_scenarioManager.Load(path, message); };
+        m_testMaps.SetWorldIO(io);
+        TestMapSessionIO sessionIo;
+        sessionIo.capture = io.capture;
+        sessionIo.loadBytes = [this](const std::string& bytes, const std::string& label, std::string& message) { return m_scenarioManager.LoadFromBytes(bytes, label, message, false); };
+        m_testMapSession.SetIO(sessionIo);
+    }
+
     // 「Editor > エディタ機能のON/OFF」に出すスイッチ。全て登録し終えてから、保存してある設定を読む。
     m_editorUi.Settings().RegisterToggle("stats_log_auto", "ゲームを始めたら、行動の統計の出力を自動で始める", &m_statsLogger.autoStart,
         "次の起動から有効。Saves/stats/ に、週ごとの統計(CSV)と要約を追記する(放置して、後から調べる用)");
@@ -489,6 +503,7 @@ void Game::Update()
 
     // 行動の統計の出力(週が区切られたら、ファイルへ追記)。ゲームシーンで、耐久試験などが世界を差し替えていない間だけ。
     m_statsLogger.Update(IsInGameScene() && !m_endurance.IsDriving());
+    UpdateTestMapSaveGuard();   // テストマップ使用中は、普段のクイックセーブを守る
 
     // 「住民デバッグ」の対象を、ゲームの選択(クリックした住民、またはクリックした住宅の住民)に連動させる。
     // ゲームシーンの外(タイトル画面)では、対象を外す。パネルを開いても、ゲーム内の時間は止めない。
@@ -1181,10 +1196,10 @@ void Game::ApplyMenuCommand(const MenuCommand& command)
         m_context.placementTool = PlacementTool::None;
         break;
     case MenuCommandType::Save:
-        m_scenarioManager.Save(ScenarioManager::kQuickSavePath, m_menuStatus);
+        QuickSave(m_menuStatus);
         break;
     case MenuCommandType::Load:
-        m_scenarioManager.Load(ScenarioManager::kQuickSavePath, m_menuStatus);
+        QuickLoad(m_menuStatus);
         break;
     case MenuCommandType::SetVolume:
     {
@@ -1403,11 +1418,71 @@ void Game::HandleScenarioHotkeys()
     std::string message;
     if (m_inputManager.IsKeyPressed(VK_F5))
     {
-        m_scenarioManager.Save(ScenarioManager::kQuickSavePath, message);
+        QuickSave(message);
     }
     if (m_inputManager.IsKeyPressed(VK_F9))
     {
-        m_scenarioManager.Load(ScenarioManager::kQuickSavePath, message);
+        QuickLoad(message);
+    }
+}
+
+void Game::QuickSave(std::string& message)
+{
+    const bool testMode = m_testMapSession.Active().valid;
+    const std::string path = m_testMapSession.QuickSavePath(ScenarioManager::kQuickSavePath);
+    const bool ok = m_scenarioManager.Save(path, message);
+    if (testMode)
+    {
+        // テストマップ使用中は、別のファイルへ保存した、と、はっきり知らせる(普段のクイックセーブは、変わらない)。
+        m_noticeText = ok ? "テストマップ使用中: テスト用のクイックセーブへ保存しました(普段のクイックセーブは、変わりません)"
+                          : "保存できませんでした: " + message;
+        m_noticeSecondsLeft = 4.0f;
+    }
+}
+
+void Game::QuickLoad(std::string& message)
+{
+    const bool testMode = m_testMapSession.Active().valid;
+    const std::string path = m_testMapSession.QuickSavePath(ScenarioManager::kQuickSavePath);
+    const bool ok = m_scenarioManager.Load(path, message);
+    if (testMode)
+    {
+        m_noticeText = ok ? "テストマップ使用中: テスト用のクイックセーブを読み込みました"
+                          : "テスト用のクイックセーブを読み込めませんでした(まだ、保存していない場合は、F5で保存してください)";
+        m_noticeSecondsLeft = 4.0f;
+    }
+}
+
+void Game::UpdateTestMapSaveGuard()
+{
+    // テストマップ使用中は、普段のクイックセーブへ、保存できない(「Scenario」パネルの「Save」ボタンなど、他の入口からも)。
+    if (m_testMapSession.Active().valid)
+    {
+        m_scenarioManager.SetBlockedSavePath(ScenarioManager::kQuickSavePath,
+                                             "テストマップ使用中は、普段のクイックセーブを守るため、ここへは保存できません(F5はテスト用のクイックセーブへ保存します)");
+    }
+    else
+    {
+        m_scenarioManager.SetBlockedSavePath(std::string(), std::string());
+    }
+
+    // ファイルからの読み込みが、あった(F9・「Scenario」パネル・初期マップなど)。テストマップのファイルと、テスト用のクイックセーブ以外を読み込んだら、
+    // 街は、もう、テストマップではない: 使用を終える(読み込む前の街の控えも、捨てる)。
+    if (m_scenarioManager.LoadSerial() != m_seenLoadSerial)
+    {
+        m_seenLoadSerial = m_scenarioManager.LoadSerial();
+        if (m_testMapSession.Active().valid)
+        {
+            const std::string& loaded = m_scenarioManager.LastLoadPath();
+            const bool isTestMapFile = PathGuard::IsInsideDirectory(loaded, ScenarioManager::kTestMapsDirectory);
+            const bool isTestQuickSave = PathGuard::IsInsideDirectory(loaded, TestMapSession::kQuickSavePath);
+            if (!isTestMapFile && !isTestQuickSave)
+            {
+                m_testMapSession.EndSession();
+                m_noticeText = "別のセーブを読み込んだので、テストマップの使用を終えました(F5は、普段のクイックセーブへ戻ります)";
+                m_noticeSecondsLeft = 5.0f;
+            }
+        }
     }
 }
 
@@ -2694,6 +2769,16 @@ void Game::Draw()
     Debug::DrawDebugUI(m_editorUi.PanelFlag("Log"));
     m_memoryPanel.Draw([this]() { return BuildMemoryReport(); });
     m_statsLoggerPanel.Draw(m_statsLogger, IsInGameScene() && !m_endurance.IsDriving());
+    {
+        // テストマップで、街を入れ替えてよいか: ゲームシーンで、耐久試験・乱数の再現・タイムラインが、動いていない時。
+        const char* whyNot = "";
+        bool canOperate = true;
+        if (!IsInGameScene()) { canOperate = false; whyNot = "ゲームシーンの中だけ、保存・読み込みできます。"; }
+        else if (m_endurance.IsDriving()) { canOperate = false; whyNot = "耐久試験が動いている間は、街を入れ替えられません。"; }
+        else if (m_repro.GetState() != SimReproState::Idle) { canOperate = false; whyNot = "「乱数・再現」の記録・再生が動いている間は、街を入れ替えられません。"; }
+        else if (m_rewind.IsEnabled()) { canOperate = false; whyNot = "「タイムライン」がONの間は、街を入れ替えられません(OFFにしてください)。"; }
+        m_testMapPanel.Draw(m_testMaps, m_testMapSession, canOperate, whyNot);
+    }
     m_areaDebugPanel.Draw(m_areas, m_gameClock, m_demandSystem);
 
     // ホバーのヒントとショートカット一覧。全てのパネルを描いた後。

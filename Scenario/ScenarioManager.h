@@ -56,6 +56,14 @@ public:
     // ただし、保護したフォルダ(既定: TestMaps/ とその下)の中のパスには、書かない(パスの書き方を変えても、すり抜けられない。PathGuard)。
     bool Save(const std::string& path, std::string& message);
 
+    // 特定のファイルへの、通常のセーブを、一時的に止める(例: テストマップ使用中は、普段のクイックセーブを、守る)。空なら、止めない。
+    // pathの書き方を変えても、すり抜けられない(PathGuard)。止めている間に、そのファイルへ Save すると、失敗して、reason を知らせる。
+    void SetBlockedSavePath(const std::string& path, const std::string& reason) { m_blockedSavePath = path; m_blockedReason = reason; }
+
+    // 直近に、ファイルから読み込んだ(Load が成功した)パスと、その回数。メモリからの読み込み(巻き戻し・耐久試験・元の街に戻す)は、数えない。
+    const std::string& LastLoadPath() const { return m_lastLoadPath; }
+    unsigned LoadSerial() const { return m_loadSerial; }
+
     // pathが、保護したフォルダの中を指すか(通常のセーブが、書いてはいけない場所か)。
     bool IsProtectedPath(const std::string& path) const;
     // 保護するフォルダを足す(既定で、テストマップの置き場が入っている)。
@@ -106,6 +114,10 @@ private:
 
     std::vector<ISaveable*> m_saveables;
     std::vector<std::string> m_protectedDirectories;   // 通常のセーブが書けないフォルダ
+    std::string m_blockedSavePath;                     // 一時的に、通常のセーブを止めているファイル(空=止めていない)
+    std::string m_blockedReason;
+    std::string m_lastLoadPath;                        // 直近に、ファイルから読み込んだパス
+    unsigned m_loadSerial = 0;                         // ファイルからの読み込みが、成功した回数
 
     std::unique_ptr<ISnapshotFormat> m_defaultFormat; // 既定のJSON形式
     const ISnapshotFormat* m_format = nullptr;        // 使っている形式(既定か、差し替えられたもの)

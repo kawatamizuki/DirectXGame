@@ -341,6 +341,12 @@ bool ScenarioManager::IsProtectedPath(const std::string& path) const
 
 bool ScenarioManager::Save(const std::string& path, std::string& message)
 {
+    if (!m_blockedSavePath.empty() && PathGuard::IsInsideDirectory(path, m_blockedSavePath))
+    {
+        message = "保存できません: " + m_blockedReason + ": " + path;
+        m_lastMessage = message;
+        return false;
+    }
     if (IsProtectedPath(path))
     {
         message = "保存できません: 保護されたフォルダ(テストマップの置き場)の中です。テストマップは、「テストマップ」パネルから保存してください: " + path;
@@ -393,7 +399,13 @@ bool ScenarioManager::Load(const std::string& path, std::string& message)
         m_lastMessage = message;
         return false;
     }
-    return LoadFromBytes(bytes, path, message, false);
+    const bool loaded = LoadFromBytes(bytes, path, message, false);
+    if (loaded)
+    {
+        m_lastLoadPath = path;
+        ++m_loadSerial;
+    }
+    return loaded;
 }
 
 bool ScenarioManager::LoadFromBytes(const std::string& bytes, const std::string& label, std::string& message, bool quiet)

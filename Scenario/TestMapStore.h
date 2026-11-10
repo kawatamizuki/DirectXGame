@@ -68,6 +68,9 @@ public:
     static bool IsValidId(const std::string& id, std::string* why = nullptr);
     // 街の部分の指紋(ファイルの内容から、メタ情報 "testMap" を除いて計算する)。JSONとして読めなければ false。
     static bool ComputeFingerprint(const std::string& fileBytes, std::uint64_t& out);
+    // 街の「配置」の指紋: 道路・建物・青マス・飾り・商業エリアの形(位置・大きさ・周知の有無)だけ。住民・時計・評判など、時間で変わる状態は、含めない。
+    // 「今の街が、読み込んだテストマップと、同じ配置か(建築・編集で、変えていないか)」を調べるのに使う。
+    static bool ComputeLayoutFingerprint(const std::string& fileBytes, std::uint64_t& out);
 
     // 全てのテストマップ(正式 → 下書き。それぞれ id の順)。壊れたファイルは valid=false で出す。
     std::vector<TestMapEntry> List() const;
@@ -93,7 +96,8 @@ public:
         bool valid = false;
         std::string id;
         std::string name;
-        std::uint64_t fingerprint = 0;
+        std::uint64_t fingerprint = 0;         // 初期状態の指紋(街の全体)
+        std::uint64_t layoutFingerprint = 0;   // 配置の指紋(読み込んだ時点)
     };
     const ActiveMap& Active() const { return m_active; }
     void ClearActive() { m_active = ActiveMap{}; }

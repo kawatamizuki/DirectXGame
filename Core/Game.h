@@ -28,6 +28,9 @@
 #include "SimEndurancePanel.h"
 #include "SimStatsLogger.h"
 #include "SimStatsLoggerPanel.h"
+#include "TestMapStore.h"
+#include "TestMapSession.h"
+#include "TestMapPanel.h"
 #include "MemoryPanel.h"
 #include "AreaDebugPanel.h"
 #include "CityCameraController.h"
@@ -83,6 +86,12 @@ private:
 
     // 今、ゲームシーンか(タイトル画面ではないか)。街の更新・描画は、ゲームシーンの間だけ行う。
     bool IsInGameScene() const;
+
+    // クイックセーブ・クイックロード(F5/F9・メニュー)。テストマップ使用中は、普段のクイックセーブ(Saves/quicksave.json)を守るため、別のファイル(Saves/quicksave_testmap.json)を使う。
+    void QuickSave(std::string& message);
+    void QuickLoad(std::string& message);
+    // テストマップ使用中の、普段のクイックセーブの保護と、別のセーブを読み込んだ時の、使用の終了(毎フレーム)。
+    void UpdateTestMapSaveGuard();
 
     // 今、タイトル画面か。タイトル画面では、背景に初期マップの街を出し、スタート・終了のメニューを出す。
     bool IsInTitleScene() const;
@@ -332,6 +341,12 @@ private:
     // 放置して集める、行動の統計の出力(週ごとにファイルへ追記)。記録・出力は、乱数・住民の状態に触れない。
     SimStatsLogger m_statsLogger;
     SimStatsLoggerPanel m_statsLoggerPanel;
+
+    // テストマップ(手作業で作った街を、名前を付けて保存し、何度でも、同じ初期状態から読み込む)。元のテストマップのファイルは、通常のセーブでは、書き換えられない。
+    TestMapStore m_testMaps;
+    TestMapSession m_testMapSession{ m_testMaps };    // 読み込む前の街の控え・元の街に戻す・配置の変更の検出
+    TestMapPanel m_testMapPanel;
+    unsigned m_seenLoadSerial = 0;                    // 最後に見た、ファイルからの読み込みの回数(別のセーブを読み込んだ時の検出用)
 
     // メモリの使用量と、その内訳(ゲーム本体 / デバッグ・検証の機能)を見るパネル。内訳は、BuildMemoryReport が、各機能から集める(約1秒ごと)。
     MemoryPanel m_memoryPanel;

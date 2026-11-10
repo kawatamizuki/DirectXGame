@@ -150,6 +150,8 @@
     <ClCompile Include="Scenario\PathGuard.cpp" />
     <ClCompile Include="Scenario\AtomicFile.cpp" />
     <ClCompile Include="Scenario\TestMapStore.cpp" />
+    <ClCompile Include="Scenario\TestMapSession.cpp" />
+    <ClCompile Include="DebugTools\TestMapPanel.cpp" />
     <ClCompile Include="Core\Window.cpp" />
     <ClCompile Include="DebugTools\Debug.cpp" />
     <ClCompile Include="DebugTools\DebugEditor.cpp" />
@@ -287,6 +289,8 @@
     <ClInclude Include="Scenario\PathGuard.h" />
     <ClInclude Include="Scenario\AtomicFile.h" />
     <ClInclude Include="Scenario\TestMapStore.h" />
+    <ClInclude Include="Scenario\TestMapSession.h" />
+    <ClInclude Include="DebugTools\TestMapPanel.h" />
     <ClInclude Include="Scenario\ScenarioFile.h" />
     <ClInclude Include="Scenario\WorldSnapshot.h" />
     <ClInclude Include="Field\WorldScale.h" />

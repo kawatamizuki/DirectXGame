@@ -148,6 +148,47 @@ bool TestMapStore::IsValidId(const std::string& id, std::string* why)
     return true;
 }
 
+bool TestMapStore::ComputeLayoutFingerprint(const std::string& fileBytes, std::uint64_t& out)
+{
+    Json root;
+    std::string error;
+    if (!Json::Parse(fileBytes, root, error) || !root.IsObject())
+    {
+        return false;
+    }
+    Json layout = Json::MakeObject();
+    for (const char* key : { "cellSize", "lengthUnit", "roads", "buildings", "orientationCells", "props" })
+    {
+        if (const Json* value = root.Find(key)) { layout.Set(key, *value); }
+    }
+    // 商業エリア: 区画の形と、周知の有無だけ(評判・履歴など、時間で変わる物は除く)。
+    if (const Json* state = root.Find("state"))
+    {
+        if (const Json* areas = state->Find("commercialAreas"))
+        {
+            if (const Json* list = areas->Find("areas"))
+            {
+                Json simple = Json::MakeArray();
+                if (list->IsArray())
+                {
+                    for (size_t i = 0; i < list->Size(); ++i)
+                    {
+                        Json item = Json::MakeObject();
+                        for (const char* key : { "id", "minX", "minZ", "maxX", "maxZ", "published" })
+                        {
+                            if (const Json* value = list->At(i).Find(key)) { item.Set(key, *value); }
+                        }
+                        simple.Push(std::move(item));
+                    }
+                }
+                layout.Set("commercialAreas", std::move(simple));
+            }
+        }
+    }
+    out = Fnv1a(layout.Dump(false));
+    return true;
+}
+
 bool TestMapStore::ComputeFingerprint(const std::string& fileBytes, std::uint64_t& out)
 {
     Json root;
@@ -401,5 +442,8 @@ bool TestMapStore::Load(const std::string& id, std::string& message)
     m_active.id = entry.id;
     m_active.name = entry.meta.name;
     m_active.fingerprint = entry.fingerprint;
+    m_active.layoutFingerprint = 0;
+    std::string fileBytes, readError;
+    if (ReadFileBytes(path, fileBytes, readError)) { ComputeLayoutFingerprint(fileBytes, m_active.layoutFingerprint); }
     return true;
 }
