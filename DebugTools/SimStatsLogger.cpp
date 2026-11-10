@@ -221,7 +221,8 @@ bool SimStatsLogger::OpenFolder()
         WriteBom(out);
         out << "week_ended,area_id,published,members,store_count,covered_purposes,"
                "outings,visitors,purpose_visitors,not_used,visits,sales,"
-               "total_outings,total_visitors,total_purpose_visitors,total_visits,total_sales\n";
+               "total_outings,total_visitors,total_purpose_visitors,total_visits,total_sales,"
+               "reputation,reputation_target,plan_term,use_term,plan_state,below_minimum_since,achieved_history,need_nominal,need_actual,area_stopovers,resolved_outings,succeeded_outings\n";
     }
     {
         std::ofstream out(m_folder + "/notes.txt");
@@ -317,9 +318,20 @@ void SimStatsLogger::WriteWeekRows()
                 ar << weeksEnded << "," << rec.areaId << "," << (area ? (area->published ? 1 : 0) : -1) << ","
                    << (members ? members->facilityIds.size() : 0) << "," << composition.storeCount << "," << composition.coveredPurposes << ","
                    << rec.lastWeek.areaOutings << "," << rec.lastWeek.visitors << "," << rec.lastWeek.purposeVisitors << ","
-                   << (std::max)(0, rec.lastWeek.areaOutings - rec.lastWeek.purposeVisitors) << ","
+                   << (std::max)(0, rec.lastWeek.areaResolved - rec.lastWeek.areaSucceeded) << ","
                    << rec.lastWeek.visits << "," << rec.lastWeek.sales << ","
-                   << rec.total.areaOutings << "," << rec.total.visitors << "," << rec.total.purposeVisitors << "," << rec.total.visits << "," << rec.total.sales << "\n";
+                   << rec.total.areaOutings << "," << rec.total.visitors << "," << rec.total.purposeVisitors << "," << rec.total.visits << "," << rec.total.sales << ",";
+                // 評判(P2-D): 値と、その内訳(計画の履行の項と実際の利用の項は別)、状態、過去の最高到達(履歴)。需要の集計は、利用成功率とは別の列。
+                char rep[160];
+                if (area)
+                {
+                    std::snprintf(rep, sizeof(rep), "%.4f,%.4f,%.4f,%.4f,%d,%d,%d,", area->reputation, area->lastReputationTarget, area->lastPlanTerm, area->lastUseTerm,
+                                  area->lastPlanState, area->belowMinimumSinceWeek, static_cast<int>(area->achieved));
+                    ar << rep;
+                }
+                else { ar << ",,,,,,,"; }
+                std::snprintf(rep, sizeof(rep), "%.1f,%.1f,%d,%d,%d", rec.lastWeek.needNominal, rec.lastWeek.needActual, rec.lastWeek.stopovers, rec.lastWeek.areaResolved, rec.lastWeek.areaSucceeded);
+                ar << rep << "\n";
             }
         }
     }
@@ -484,10 +496,10 @@ void SimStatsLogger::WriteSummary()
     for (const AreaRecord& rec : m_demand->GetAreaLedger().GetRecords())
     {
         const CommercialArea* area = m_areas ? m_areas->Find(rec.areaId) : nullptr;
-        std::snprintf(line, sizeof(line), "  区画 #%u (%s): 目的にした人数 %d / 来訪者 %d / 目的の来訪者 %d / 向かったが使っていない %d / 延べ利用 %d / 売上 %d\n", rec.areaId,
+        std::snprintf(line, sizeof(line), "  区画 #%u (%s): 目的にした人数 %d / 来訪者 %d / 目的の来訪者 %d / 結果が決まった外出のうち使えなかった %d / 延べ利用 %d / 売上 %d\n", rec.areaId,
                       area ? (area->published ? "周知済み" : "未周知") : "削除済み",
                       rec.total.areaOutings, rec.total.visitors, rec.total.purposeVisitors,
-                      (std::max)(0, rec.total.areaOutings - rec.total.purposeVisitors), rec.total.visits, rec.total.sales);
+                      (std::max)(0, rec.total.areaResolved - rec.total.areaSucceeded), rec.total.visits, rec.total.sales);
         out << line;
     }
 

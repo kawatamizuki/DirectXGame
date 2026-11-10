@@ -97,6 +97,7 @@ bool CommercialAreaManager::DeleteArea(uint32_t id, int currentWeek)
             record.withdrawnWeek = currentWeek;
             record.plannedCapacity = area.plannedCapacity;
             record.achieved = area.achieved;
+            record.reputation = area.reputation;
             m_withdrawn.push_back(record);
         }
         m_areas.erase(m_areas.begin() + static_cast<std::ptrdiff_t>(i));
@@ -124,8 +125,11 @@ bool CommercialAreaManager::Publish(uint32_t id, int currentWeek)
     }
     area->published = true;
     area->publishedWeek = currentWeek;
-    area->plannedCapacity = m_settings.plannedCapacity;    // 周知した時の計画規模で固定する
+    area->plannedCapacity = (std::max)(m_settings.plannedCapacity, m_settings.minProgressStores);    // 周知した時の計画規模で固定する(最低進捗を下回る計画規模は、最低進捗に引き上げる)
     area->achieved = AreaMilestone::None;
+    area->reputation = 1.0f;                               // 周知した時点で、評判は中立から始まる(P2-D)
+    area->belowMinimumSinceWeek = 0;
+    area->metMinimumStreakWeeks = 0;
     area->history.push_back({ currentWeek, AreaHistoryKind::Published });
     return true;
 }
@@ -160,6 +164,41 @@ void CommercialAreaManager::Refresh(const std::vector<AreaFacility>& facilities)
         {
             area.achieved = progress.current;
         }
+    }
+}
+
+void CommercialAreaManager::UpdateReputations(int currentWeek, const std::unordered_map<uint32_t, int>& storesByArea, const AreaLedger& ledger)
+{
+    for (CommercialArea& area : m_areas)
+    {
+        if (!area.published)
+        {
+            continue;
+        }
+        const auto it = storesByArea.find(area.id);
+        const int stores = it == storesByArea.end() ? 0 : it->second;
+        // 過去の最高到達(履歴)。減らない。
+        const AreaMilestone reached = ComputeAreaProgress(stores, area.plannedCapacity, m_settings).current;
+        if (static_cast<int>(reached) > static_cast<int>(area.achieved)) { area.achieved = reached; }
+
+        AreaUsageWeek usage;
+        if (const AreaRecord* record = ledger.Find(area.id))
+        {
+            usage.resolvedOutings = record->lastWeek.areaResolved;
+            usage.succeededOutings = record->lastWeek.areaSucceeded;
+            usage.visits = record->lastWeek.visits;
+            usage.needNominal = record->lastWeek.needNominal;
+            usage.needActual = record->lastWeek.needActual;
+        }
+        const AreaReputationResult r = EvaluateAreaReputation(area, currentWeek, stores, usage, m_settings);
+        area.reputation = r.newReputation;
+        area.belowMinimumSinceWeek = r.belowMinimumSinceWeek;
+        area.metMinimumStreakWeeks = r.metMinimumStreakWeeks;
+        area.lastReputationTarget = r.target;
+        area.lastPlanTerm = r.planTerm;
+        area.lastUseTerm = r.useTerm;
+        area.lastReputationDelta = r.delta;
+        area.lastPlanState = static_cast<int>(r.planState);
     }
 }
 
@@ -232,6 +271,14 @@ void CommercialAreaManager::Save(Json& section, const SaveContext& /*context*/) 
         item.Set("publishedWeek", area.publishedWeek);
         item.Set("plannedCapacity", area.plannedCapacity);
         item.Set("achieved", static_cast<int>(area.achieved));
+        item.Set("reputation", area.reputation);
+        item.Set("belowMinimumSinceWeek", area.belowMinimumSinceWeek);
+        item.Set("metMinimumStreakWeeks", area.metMinimumStreakWeeks);
+        item.Set("lastReputationTarget", area.lastReputationTarget);
+        item.Set("lastPlanTerm", area.lastPlanTerm);
+        item.Set("lastUseTerm", area.lastUseTerm);
+        item.Set("lastReputationDelta", area.lastReputationDelta);
+        item.Set("lastPlanState", area.lastPlanState);
         Json history = Json::MakeArray();
         for (const AreaHistoryEntry& entry : area.history)
         {
@@ -254,6 +301,7 @@ void CommercialAreaManager::Save(Json& section, const SaveContext& /*context*/) 
         item.Set("withdrawnWeek", record.withdrawnWeek);
         item.Set("plannedCapacity", record.plannedCapacity);
         item.Set("achieved", static_cast<int>(record.achieved));
+        item.Set("reputation", record.reputation);
         withdrawn.Push(std::move(item));
     }
     section.Set("withdrawn", std::move(withdrawn));
@@ -286,6 +334,15 @@ void CommercialAreaManager::Load(const Json& section, int /*version*/, const Loa
                 area.publishedWeek = item.GetInt("publishedWeek", 0);
                 area.plannedCapacity = (std::max)(0, item.GetInt("plannedCapacity", m_settings.plannedCapacity));
                 area.achieved = ReadEnum<AreaMilestone>(item, "achieved", static_cast<int>(AreaMilestone::Complete), AreaMilestone::None);
+                // 評判(P2-D)。古いセーブ(無い項目)は、中立の1.0・計測なしで読む。範囲外の値は、範囲に収める。
+                area.reputation = (std::max)(m_settings.reputationMin, (std::min)(m_settings.reputationMax, item.GetFloat("reputation", 1.0f)));
+                area.belowMinimumSinceWeek = (std::max)(0, item.GetInt("belowMinimumSinceWeek", 0));
+                area.metMinimumStreakWeeks = (std::max)(0, item.GetInt("metMinimumStreakWeeks", 0));
+                area.lastReputationTarget = item.GetFloat("lastReputationTarget", area.reputation);
+                area.lastPlanTerm = item.GetFloat("lastPlanTerm", 0.0f);
+                area.lastUseTerm = item.GetFloat("lastUseTerm", 0.0f);
+                area.lastReputationDelta = item.GetFloat("lastReputationDelta", 0.0f);
+                area.lastPlanState = (std::max)(0, (std::min)(static_cast<int>(AreaPlanState::Shortfall), item.GetInt("lastPlanState", 0)));
                 if (const Json* history = item.Find("history"))
                 {
                     if (history->IsArray())
@@ -324,6 +381,7 @@ void CommercialAreaManager::Load(const Json& section, int /*version*/, const Loa
                 record.withdrawnWeek = item.GetInt("withdrawnWeek", 0);
                 record.plannedCapacity = (std::max)(0, item.GetInt("plannedCapacity", 0));
                 record.achieved = ReadEnum<AreaMilestone>(item, "achieved", static_cast<int>(AreaMilestone::Complete), AreaMilestone::None);
+                record.reputation = item.GetFloat("reputation", 1.0f);
                 m_withdrawn.push_back(record);
                 maxId = (std::max)(maxId, record.areaId);
             }

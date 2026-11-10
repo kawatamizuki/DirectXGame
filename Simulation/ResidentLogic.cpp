@@ -291,7 +291,7 @@ int ChooseArea(const ResidentAgent& agent, const std::vector<AreaCandidate>& can
         AreaCandidateEvaluation e;
         e.candidate = candidate;
         e.publishFactor = candidate.published ? settings.areaPublishedFactor : settings.areaUnpublishedFactor;
-        e.reputation = settings.areaReputation;
+        e.reputation = settings.areaReputation * (std::max)(0.0f, candidate.reputation);
         if (!(e.publishFactor > 0.0f)) { e.reject = AreaReject::NotAvailable; }
         else if (candidate.memberCount <= 0) { e.reject = AreaReject::NoMember; }
         else if (candidate.usableCount <= 0) { e.reject = AreaReject::NoUsableMember; }

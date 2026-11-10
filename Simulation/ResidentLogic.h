@@ -104,6 +104,7 @@ struct AreaCandidate
     float nearestPathLength = 0.0f;     // 使える所属施設までの、道のりの最小(ワールド単位。usableCountが0より大きい時だけ意味を持つ)
     float supplyForPurpose = 0.0f;      // 使える所属施設の、今回の利用目的への適性(元の値)の合計
     int coveredPurposes = 0;            // 区画全体の、用途の充実度(P2-B)
+    float reputation = 1.0f;            // この区画の評判(P2-D。1.0が中立)
 };
 
 enum class AreaReject : uint8_t
@@ -124,7 +125,7 @@ struct AreaCandidateEvaluation
     float publishFactor = 0.0f;         // 周知の倍率
     float fitFactor = 0.0f;             // 今の目的への適合 = 供給量 ÷ 頭打ち(下限あり。1が上限)
     float coverageFactor = 0.0f;        // 充実度の魅力 = 1 + 増え方 × (充実度 − 1) ÷ (用途の数 − 1)
-    float reputation = 0.0f;            // 評判(P2-Dまで1.0)
+    float reputation = 0.0f;            // 評判 = 設定の全体の倍率(areaReputation。既定1.0) × この区画の評判(P2-D)
     float weight = 0.0f;                // 重み(rejectがNoneの時だけ、0より大きい)
     float chance = 0.0f;                // 選ばれる確率(重み ÷ 合計)
     bool chosen = false;

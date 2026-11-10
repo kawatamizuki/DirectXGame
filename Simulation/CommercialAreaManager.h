@@ -3,6 +3,9 @@
 #include "CommercialArea.h"
 #include "ISaveable.h"
 #include "IAreaSource.h"
+#include "AreaLedger.h"
+#include "AreaReputation.h"
+#include <unordered_map>
 
 // 商業エリアの区画を持ち、仮置き・移動・削除・周知を行う(P2-A)。ISaveableなので、"commercialAreas" の区画として保存・復元される。
 //  ・区画の操作は、ゲームのオブジェクト・画面を知らない(位置と週を渡すだけ)。画面の操作は Field/AreaToolController が行う。
@@ -46,6 +49,11 @@ public:
 
     const std::vector<AreaMembers>& Members() const { return m_members; }
     const AreaMembers* MembersOf(uint32_t id) const;
+
+    // 週末の評判の更新(P2-D)。周知した区画だけが変わる(非公開の仮置きは変わらない)。
+    // storesByArea: 区画ごとの、今の所属店舗数(住民の行動が使っている所属。画面の更新に依らない)。ledger: 先週の集計(週末の区切りの後)。
+    // 達成状態(過去の最高到達)も、ここで、店舗数から引き上げる(画面を描かない試験でも、履歴が残る)。乱数を使わない。
+    void UpdateReputations(int currentWeek, const std::unordered_map<uint32_t, int>& storesByArea, const AreaLedger& ledger);
 
     // 区画の施設構成の評価(P2-B。直近の Refresh の結果。保存しない。住民の行動には、まだ、影響しない)。区画が無ければ、店なしの評価。
     AreaComposition CompositionOf(uint32_t id) const;

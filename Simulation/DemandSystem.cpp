@@ -450,6 +450,10 @@ void DemandSystem::Save(Json& section, const SaveContext& context) const
             j.Set("visits", t.visits);
             j.Set("sales", t.sales);
             j.Set("stopovers", t.stopovers);
+            j.Set("areaResolved", t.areaResolved);
+            j.Set("areaSucceeded", t.areaSucceeded);
+            j.Set("needNominal", t.needNominal);
+            j.Set("needActual", t.needActual);
             return j;
         };
         for (const AreaRecord& record : m_areaLedger.GetRecords())
@@ -535,6 +539,10 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
                     t.visits = (std::max)(0, j->GetInt("visits", 0));
                     t.sales = (std::max)(0, j->GetInt("sales", 0));
                     t.stopovers = (std::max)(0, j->GetInt("stopovers", 0));
+                    t.areaResolved = (std::max)(0, j->GetInt("areaResolved", 0));
+                    t.areaSucceeded = (std::max)(0, (std::min)(t.areaResolved, j->GetInt("areaSucceeded", 0)));
+                    t.needNominal = (std::max)(0.0f, j->GetFloat("needNominal", 0.0f));
+                    t.needActual = (std::max)(0.0f, j->GetFloat("needActual", 0.0f));
                 }
                 return t;
             };
@@ -864,6 +872,13 @@ void DemandSystem::ProcessClockEvents(GameContext& context)
         const bool monthEnds = (m_weeksEnded % GameClock::kWeeksPerMonth) == 0;
         m_ledger.OnWeekEnd(monthEnds);
         m_areaLedger.OnWeekEnd(monthEnds);   // 商業エリアの区画ごとの集計も、同じ区切り(週・月)
+        if (m_areaWeekEnd)
+        {
+            // 評判の更新(P2-D)。所属店舗数は、住民の行動が使っている所属から数える。
+            std::unordered_map<uint32_t, int> storesByArea;
+            for (const auto& pair : m_areaOfFacility) { ++storesByArea[pair.second]; }
+            m_areaWeekEnd(context.clock->GetWeekCount(), storesByArea, m_areaLedger);
+        }
     }
 
     // 週の始まり(起床): 体力の回復。
@@ -922,6 +937,7 @@ void DemandSystem::FinishVisit(ResidentAgent& agent, GameContext& context, GameO
         const float hour = context.clock ? context.clock->GetTimeOfDayHours() : 12.0f;
         const int week = context.clock ? context.clock->GetWeekCount() : 1;
         const float lifeBefore = agent.lifeNeed;
+        const float activityBefore = agent.activityNeed;
         const float staminaBefore = agent.stamina;
         ApplyFacilityUse(agent, *facility, facilityObj->id, week, hour, m_settings, agent.outingStopCount); // 何軒目の利用か(2軒目以降は、体力の消費が少し増える)
         agent.usedFoodLikeFacilityThisOuting = agent.usedFoodLikeFacilityThisOuting || facility->foodLike;
@@ -941,7 +957,12 @@ void DemandSystem::FinishVisit(ResidentAgent& agent, GameContext& context, GameO
             {
                 const bool first = std::find(agent.areasCountedThisOuting.begin(), agent.areasCountedThisOuting.end(), areaId) == agent.areasCountedThisOuting.end();
                 if (first) { agent.areasCountedThisOuting.push_back(areaId); }
-                m_areaLedger.RecordVisit(areaId, facility->pricePerVisit, first, agent.outingAreaId == areaId);
+                // 需要への貢献(P2-D): 施設の標準の回復量と、実際に回復した量(需要が満たされていると、標準より少ない)。評判の材料。
+                const float nominal = facility->lifeRecovery + facility->activityRecovery;
+                const float actual = (agent.lifeNeed - lifeBefore) + (agent.activityNeed - activityBefore);
+                m_areaLedger.RecordVisit(areaId, facility->pricePerVisit, first, agent.outingAreaId == areaId, nominal, (std::max)(0.0f, actual));
+                // エリアを目的にした外出が、その区画の施設を、初めて使えた: 結果が決まった(成功)。失敗は、使えずに外出が終わった時(EndAreaOuting)。
+                if (first && agent.outingAreaId == areaId) { m_areaLedger.RecordAreaOutingResult(areaId, true); }
             }
         }
         if (context.economy)
@@ -1365,8 +1386,7 @@ void DemandSystem::BecomeHomeless(ResidentAgent& agent, GameContext& context)
     agent.visitHoursLeft = 0.0f;
     agent.outingStopCount = 0;
     agent.usedFoodLikeFacilityThisOuting = false;
-    agent.outingAreaId = 0;
-    agent.areasCountedThisOuting.clear();
+    EndAreaOuting(agent);
 
     // 同じ位置に、既に立っている住居なしの住民の数だけ、ずらす(重ならないように)。
     int sameSpot = 0;
@@ -1406,8 +1426,7 @@ void DemandSystem::AbortOutingToDemolishedFacility(ResidentAgent& agent, GameCon
     agent.visitHoursLeft = 0.0f;
     agent.outingStopCount = 0;
     agent.usedFoodLikeFacilityThisOuting = false;
-    agent.outingAreaId = 0;
-    agent.areasCountedThisOuting.clear();
+    EndAreaOuting(agent);
     agent.segmentIndices.clear();
 
     if (agent.state == ResidentAgentState::ReturningHome)
@@ -1581,8 +1600,7 @@ void DemandSystem::BecomeStranded(ResidentAgent& agent, GameContext& context, co
     agent.visitHoursLeft = 0.0f;
     agent.outingStopCount = 0;
     agent.usedFoodLikeFacilityThisOuting = false;
-    agent.outingAreaId = 0;
-    agent.areasCountedThisOuting.clear();
+    EndAreaOuting(agent);
     agent.lastDecisionNote = "道路が無くなり、帰れなくなった(立ち往生)";
     if (applyPenalty)
     {
@@ -1843,8 +1861,7 @@ void DemandSystem::UpdateAgentMovement(float deltaTime, GameContext& context)
                 agent.currentWaypointIndex = 0;
                 agent.outingStopCount = 0;
                 agent.usedFoodLikeFacilityThisOuting = false;
-                agent.outingAreaId = 0;
-                agent.areasCountedThisOuting.clear();
+                EndAreaOuting(agent);
                 obj->visible = false;
             }
         };
@@ -2380,8 +2397,7 @@ void DemandSystem::ProcessImmediateTestPlans(GameContext& context)
             agent->visitHoursLeft = 0.0f;
             agent->outingStopCount = 0;
             agent->usedFoodLikeFacilityThisOuting = false;
-            agent->outingAreaId = 0;
-            agent->areasCountedThisOuting.clear();
+            EndAreaOuting(*agent);
             agent->lastDecisionNote = "テストで、帰宅させられた";
             StartReturnFromHere(*agent, context, false);
             if (agent->state == ResidentAgentState::AtHome)
@@ -2927,6 +2943,7 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
                     AreaCandidate ac;
                     ac.areaId = areas[a].id;
                     ac.published = areas[a].published;
+                    ac.reputation = areas[a].reputation;    // 区画ごとの評判(P2-D)
                     ac.memberCount = static_cast<int>(areaMembers[a].facilityIds.size());
                     std::vector<BuildingType> memberTypes;
                     std::vector<size_t> indices;
@@ -3135,6 +3152,18 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
             m_lastStats.strandedCount++;
         }
     }
+}
+
+void DemandSystem::EndAreaOuting(ResidentAgent& agent)
+{
+    // エリアを目的にした外出が終わる(帰宅・中断・立ち往生・テストでの帰宅)。その区画の施設を、一度も使えなかったなら、「使えなかった」で、結果が決まる。
+    if (agent.outingAreaId != 0)
+    {
+        const bool used = std::find(agent.areasCountedThisOuting.begin(), agent.areasCountedThisOuting.end(), agent.outingAreaId) != agent.areasCountedThisOuting.end();
+        if (!used) { m_areaLedger.RecordAreaOutingResult(agent.outingAreaId, false); }
+    }
+    agent.outingAreaId = 0;
+    agent.areasCountedThisOuting.clear();
 }
 
 bool DemandSystem::IsAreaPublished(uint32_t areaId) const

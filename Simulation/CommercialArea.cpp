@@ -279,23 +279,54 @@ const char* AreaCharacterName(AreaCharacter character)
     return "?";
 }
 
+AreaThresholds ComputeAreaThresholds(int plannedCapacity, const CommercialAreaSettings& settings)
+{
+    AreaThresholds t;
+    t.minStores = (std::max)(0, settings.minProgressStores);
+    if (plannedCapacity <= 0)
+    {
+        // 計画規模が無い(0): 完成は、ない。拡大は、最低進捗以上。
+        t.completeStores = 0;
+        t.expandedStores = (std::max)(t.minStores, settings.expandedRangeStores);
+        return t;
+    }
+    t.completeStores = (std::max)(plannedCapacity, t.minStores);
+    t.expandedStores = (std::max)(t.minStores, (std::min)(settings.expandedRangeStores, t.completeStores));
+    return t;
+}
+
+const char* DescribeAreaSettingsConflict(const CommercialAreaSettings& settings)
+{
+    if (settings.plannedCapacity < settings.minProgressStores)
+    {
+        return "計画規模が最低進捗より小さい: 判定では、計画の完成を最低進捗まで引き上げて扱う(最低進捗を満たさずに、完成にならない)";
+    }
+    if (settings.expandedRangeStores < settings.minProgressStores || settings.expandedRangeStores > settings.plannedCapacity)
+    {
+        return "来訪範囲の拡大の店舗数が、最低進捗〜計画規模の外: 判定では、その間に収めて扱う";
+    }
+    return nullptr;
+}
+
 AreaProgress ComputeAreaProgress(int storeCount, int plannedCapacity, const CommercialAreaSettings& settings)
 {
     AreaProgress progress;
+    const AreaThresholds t = ComputeAreaThresholds(plannedCapacity, settings);
     progress.storeCount = (std::max)(0, storeCount);
-    progress.plannedCapacity = (std::max)(0, plannedCapacity);
+    progress.plannedCapacity = t.completeStores;      // 整合させた計画規模(計画規模が最低進捗より小さければ、最低進捗)
     progress.ratio = progress.plannedCapacity > 0
         ? (std::min)(1.0f, static_cast<float>(progress.storeCount) / static_cast<float>(progress.plannedCapacity))
         : 0.0f;
-    if (progress.plannedCapacity > 0 && progress.storeCount >= progress.plannedCapacity)
+    // 段階は、順序が保たれた、整合したしきい値で判定する(最低進捗を満たさずに、拡大・完成にならない)。
+    if (t.completeStores > 0 && progress.storeCount >= t.completeStores)
     {
         progress.current = AreaMilestone::Complete;
     }
-    else if (progress.storeCount >= settings.expandedRangeStores)
+    else if (progress.storeCount >= t.expandedStores && progress.storeCount >= t.minStores)
     {
         progress.current = AreaMilestone::Expanded;
     }
-    else if (progress.storeCount >= settings.minProgressStores)
+    else if (progress.storeCount >= t.minStores)
     {
         progress.current = AreaMilestone::Minimum;
     }

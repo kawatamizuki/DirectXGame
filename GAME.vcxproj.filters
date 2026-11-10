@@ -252,6 +252,9 @@
     <ClCompile Include="Simulation\AreaIndicators.cpp">
       <Filter>ソース ファイル\Simulation</Filter>
     </ClCompile>
+    <ClCompile Include="Simulation\AreaReputation.cpp">
+      <Filter>ソース ファイル\Simulation</Filter>
+    </ClCompile>
     <ClCompile Include="UI\GameMenu.cpp">
       <Filter>ソース ファイル\UI</Filter>
     </ClCompile>
@@ -675,6 +678,9 @@
       <Filter>ヘッダー ファイル\Simulation</Filter>
     </ClInclude>
     <ClInclude Include="Simulation\AreaIndicators.h">
+      <Filter>ヘッダー ファイル\Simulation</Filter>
+    </ClInclude>
+    <ClInclude Include="Simulation\AreaReputation.h">
       <Filter>ヘッダー ファイル\Simulation</Filter>
     </ClInclude>
     <ClInclude Include="Simulation\IAreaSource.h">

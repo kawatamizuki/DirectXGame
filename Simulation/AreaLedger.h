@@ -19,6 +19,13 @@ struct AreaTally
     int purposeVisitors = 0;
     int visits = 0;
     int sales = 0;
+    // 利用成功率の、同じ集団(P2-D)。「結果が決まった外出」だけを、決まった週に、分子・分母とも数える(出発の週と利用の週が違っても、ずれない)。
+    //  成功 = エリアを目的にした外出で、その区画の施設を、実際に使えた(最初の利用の時)。失敗 = 使えずに、外出が終わった(帰宅・中断・立ち往生)。
+    //  成功率 = areaSucceeded ÷ areaResolved(必ず0〜1)。areaOutings(出発した人数)とは、別の数字。
+    int areaResolved = 0;       // 結果が決まった、エリアを目的にした外出の数
+    int areaSucceeded = 0;      // うち、使えた数(areaResolved 以下)
+    float needNominal = 0.0f;   // 区画内の利用の、施設の標準の回復量(生活+余暇)の合計(P2-D。評判の「需要への貢献」の材料)
+    float needActual = 0.0f;    // 区画内の利用で、実際に回復した需要の合計(住民の需要が満たされていると、標準より少ない)
     int stopovers = 0;          // 区画の中の施設から、同じ区画の別の施設へ、立ち寄りを始めた回数(P2-C2。区画内の回遊)
 
     void Clear() { *this = AreaTally{}; }
@@ -39,13 +46,17 @@ public:
     // エリア目的の外出が、実際に始まった(目的地の区画が決まって、出発した)。
     void RecordAreaOuting(uint32_t areaId);
 
+    // エリアを目的にした外出の、結果が決まった(P2-D)。success=true: 区画の施設を使えた(最初の利用) / false: 使えずに、外出が終わった。分子・分母は、同じ週に、一緒に数える。
+    void RecordAreaOutingResult(uint32_t areaId, bool success);
+
     // 区画の中の施設から、同じ区画の別の施設への、立ち寄りが始まった(P2-C2)。
     void RecordAreaStopover(uint32_t areaId);
 
     // 区画の中の施設の利用が、1回終わった。price: 施設の値段(売上)。
     // firstInOuting: この外出で、この区画の利用が、初めてか(trueなら、来訪者に数える)。
     // areaWasPurpose: この外出が、この区画を目的にしたものか(firstInOuting の時だけ、purposeVisitors に数える)。
-    void RecordVisit(uint32_t areaId, int price, bool firstInOuting, bool areaWasPurpose);
+    // needNominal / needActual: この利用の、施設の標準の回復量と、実際に回復した需要(P2-D。両方0なら、需要の集計には入れない)。
+    void RecordVisit(uint32_t areaId, int price, bool firstInOuting, bool areaWasPurpose, float needNominal = 0.0f, float needActual = 0.0f);
 
     // 週末: 今の週を、直前の週へ移す。月末(monthEnds==true)なら、月の集計も0に戻す。
     void OnWeekEnd(bool monthEnds);

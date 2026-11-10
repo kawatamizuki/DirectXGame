@@ -328,6 +328,11 @@ public:
     void SetAreaSource(const IAreaSource* source) { m_areaSource = source; }
     // 区画ごとの、エリア目的の外出人数・来訪者数・延べ利用回数・実売上の集計。
     const AreaLedger& GetAreaLedger() const { return m_areaLedger; }
+    // 週末の区切り(区画の集計が、今週から先週へ移った直後)に呼ぶ関数(P2-D。区画の評判の更新に使う)。住民の更新の中で呼ぶので、画面を描かない試験(耐久試験)でも動く。
+    // 引数: 通算の週 / 区画ごとの、今の所属店舗数(住民の行動が使っている所属) / 区画の集計。nullなら何もしない。乱数・住民の状態には触れない。
+    using AreaWeekEndCallback = std::function<void(int, const std::unordered_map<uint32_t, int>&, const AreaLedger&)>;
+    void SetAreaWeekEndCallback(AreaWeekEndCallback callback) { m_areaWeekEnd = std::move(callback); }
+
     // 立ち寄りの判定の集計(P2-C2。診断用)。
     const StopoverTally& GetStopoverTally() const { return m_stopTally; }
     // 区画が周知済みか(区画が無ければ false)。
@@ -508,6 +513,8 @@ private:
 
     // 主目的の施設を使い終わった住民が、低い確率で、近くの施設に立ち寄る(P1)。立ち寄るなら、その施設へ歩き始めて、trueを返す。
     // 範囲(今いる施設から)・体力(立ち寄り先 + 家までの帰り)・時刻・食事系の連続は、設定とResidentLogicの関数で判定する。currentFacilityは、今いる施設。
+    // エリアを目的にした外出の終わり(P2-D): 使えなかったなら、結果(失敗)を数えて、外出の区画の記録を消す。
+    void EndAreaOuting(ResidentAgent& agent);
     bool TryStartStopover(ResidentAgent& agent, GameContext& context, const GameObject& currentFacility);
 
     // 外出の途中(立ち寄りへ向かう途中など)で、行き先が無くなった時に、今の位置から家へ帰り始める(道が無ければ立ち往生)。位置は飛ばさない。
@@ -571,6 +578,7 @@ private:
     ResidentSimSettings m_settings;         // 調整用の設定
     SimRandom m_random{ 12345 };            // 施設選びなどの乱数(settings.seedから)
     FacilityLedger m_ledger;                // 施設ごとの来訪者数・売上
+    AreaWeekEndCallback m_areaWeekEnd;      // 週末に、区画の評判を更新する(P2-D。保存しない)
     StopoverTally m_stopTally;              // 立ち寄りの判定の集計(P2-C2。保存しない)
     float m_lastStopPull = 0.0f;            // 直近の立ち寄りの判定で使った、引き寄せ(判断の内訳の記録用。乱数・結果には影響しない)
     AreaLedger m_areaLedger;                // 商業エリアの区画ごとの、外出・来訪者・利用・売上(P2-C1)

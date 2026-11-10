@@ -181,6 +181,7 @@
     <ClCompile Include="Simulation\CommercialAreaManager.cpp" />
     <ClCompile Include="Simulation\AreaLedger.cpp" />
     <ClCompile Include="Simulation\AreaIndicators.cpp" />
+    <ClCompile Include="Simulation\AreaReputation.cpp" />
     <ClCompile Include="UI\GameUI.cpp" />
     <ClCompile Include="UI\ProceduralUISkin.cpp" />
     <ClCompile Include="UI\UIRenderer.cpp" />
@@ -322,6 +323,7 @@
     <ClInclude Include="Simulation\CommercialAreaManager.h" />
     <ClInclude Include="Simulation\AreaLedger.h" />
     <ClInclude Include="Simulation\AreaIndicators.h" />
+    <ClInclude Include="Simulation\AreaReputation.h" />
     <ClInclude Include="Simulation\IAreaSource.h" />
     <ClInclude Include="UI\GameUI.h" />
     <ClInclude Include="UI\ProceduralUISkin.h" />

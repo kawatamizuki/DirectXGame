@@ -21,6 +21,17 @@ void AreaLedger::RecordAreaOuting(uint32_t areaId)
     ++record.total.areaOutings;
 }
 
+void AreaLedger::RecordAreaOutingResult(uint32_t areaId, bool success)
+{
+    if (areaId == 0) { return; }
+    AreaRecord& record = GetOrCreate(areaId);
+    for (AreaTally* tally : { &record.thisWeek, &record.thisMonth, &record.total })
+    {
+        ++tally->areaResolved;
+        if (success) { ++tally->areaSucceeded; }
+    }
+}
+
 void AreaLedger::RecordAreaStopover(uint32_t areaId)
 {
     if (areaId == 0) { return; }
@@ -30,7 +41,7 @@ void AreaLedger::RecordAreaStopover(uint32_t areaId)
     ++record.total.stopovers;
 }
 
-void AreaLedger::RecordVisit(uint32_t areaId, int price, bool firstInOuting, bool areaWasPurpose)
+void AreaLedger::RecordVisit(uint32_t areaId, int price, bool firstInOuting, bool areaWasPurpose, float needNominal, float needActual)
 {
     if (areaId == 0) { return; }
     AreaRecord& record = GetOrCreate(areaId);
@@ -38,6 +49,8 @@ void AreaLedger::RecordVisit(uint32_t areaId, int price, bool firstInOuting, boo
     {
         ++tally->visits;
         tally->sales += price;
+        tally->needNominal += needNominal;
+        tally->needActual += needActual;
         if (firstInOuting)
         {
             ++tally->visitors;

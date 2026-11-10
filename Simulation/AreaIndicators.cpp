@@ -17,7 +17,7 @@ namespace
     }
 }
 
-AreaIndicators ComputeAreaIndicators(const AreaComposition& composition, bool published, const AreaRecord* record, const ResidentSimSettings& settings)
+AreaIndicators ComputeAreaIndicators(const AreaComposition& composition, bool published, const AreaRecord* record, const ResidentSimSettings& settings, float reputation)
 {
     AreaIndicators out;
 
@@ -32,7 +32,9 @@ AreaIndicators ComputeAreaIndicators(const AreaComposition& composition, bool pu
     const float coverage = static_cast<float>((std::max)(0, composition.coveredPurposes - 1)) / static_cast<float>((std::max)(1, kUsagePurposeCount - 1));
     out.predictedCoverage = 1.0f + (std::max)(0.0f, settings.areaCoverageGain) * Clamp01(coverage);
     out.predictedPublish = published ? settings.areaPublishedFactor : settings.areaUnpublishedFactor;
-    out.predictedReputation = settings.areaReputation;
+    const bool hasReputation = reputation >= 0.0f;
+    const float areaReputation = hasReputation ? reputation : 1.0f;
+    out.predictedReputation = settings.areaReputation * areaReputation;
     out.attractionPredicted = out.predictedFit * out.predictedCoverage * out.predictedPublish * out.predictedReputation;
 
     // 回遊性の予測(立ち寄り先の豊富さ)。
@@ -43,8 +45,8 @@ AreaIndicators ComputeAreaIndicators(const AreaComposition& composition, bool pu
         : 0.0f;
 
     // 実績。記録が無い(台帳に、まだ何も積まれていない)なら、全て未計測。
-    out.reputation = settings.areaReputation;
-    out.reputationFixed = true;
+    out.reputation = areaReputation;
+    out.reputationFixed = !hasReputation;
     if (record)
     {
         out.visitorsLastWeek = { true, static_cast<float>(record->lastWeek.visitors) };
@@ -57,7 +59,7 @@ AreaIndicators ComputeAreaIndicators(const AreaComposition& composition, bool pu
         for (const AreaTally* t : { &record->thisWeek, &record->lastWeek, &record->thisMonth, &record->total })
         {
             // 来訪者(1人1回)は、延べ利用(施設ごと)以下。目的の来訪者は、来訪者以下。
-            if (t->visitors > t->visits || t->purposeVisitors > t->visitors) { out.consistent = false; }
+            if (t->visitors > t->visits || t->purposeVisitors > t->visitors || t->areaSucceeded > t->areaResolved) { out.consistent = false; }
         }
     }
     return out;

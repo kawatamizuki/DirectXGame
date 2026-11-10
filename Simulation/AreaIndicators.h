@@ -38,12 +38,13 @@ struct AreaIndicators
     IndicatorValue salesPerVisitorTotal;
 
     // ---- 評判 ----
-    float reputation = 1.0f;            // P2-Dまで、固定
-    bool reputationFixed = true;
+    float reputation = 1.0f;            // 区画の評判(P2-D。週末に更新される)
+    bool reputationFixed = false;       // true=固定値(区画の評判を渡さなかった時)
 
     // 集計の整合(来訪者 <= 延べ利用 など)。falseなら、集計が重複している疑い。
     bool consistent = true;
 };
 
 // record: 区画の台帳の記録(まだ無ければ nullptr)。
-AreaIndicators ComputeAreaIndicators(const AreaComposition& composition, bool published, const AreaRecord* record, const ResidentSimSettings& settings);
+// reputation: 区画の評判(CommercialArea::reputation)。渡さなければ、中立の1.0(固定)。
+AreaIndicators ComputeAreaIndicators(const AreaComposition& composition, bool published, const AreaRecord* record, const ResidentSimSettings& settings, float reputation = -1.0f);

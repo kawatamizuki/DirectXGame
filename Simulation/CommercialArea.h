@@ -45,6 +45,23 @@ struct CommercialAreaSettings
     float strongSuitability = 1.0f;         // 「その用途に強い」とみなす、適性の元の値(現在の施設は、強い用途が1つずつ: 1.6 / 1.6 / 2.0 / 1.8。次に高いのは 0.8)
     float dailyFocusedShare = 0.7f;         // 日用品寄りの割合が、これ以上なら「日用品特化」(仮。ラベルを付けるだけで、優劣は無い)
     float leisureFocusedShare = 0.3f;       // 日用品寄りの割合が、これ以下なら「娯楽特化」(その間は「混合」)
+
+    // ---- 評判(P2-D)。週末に、目標値へ少しずつ近づける。目標値 = 1.0 + 計画の履行の項 + 実際の利用の項。数値は全て仮 ----
+    float reputationMin = 0.5f;             // 評判の下限
+    float reputationMax = 1.2f;             // 評判の上限
+    float reputationDropPerWeek = 0.03f;    // 1週に下がる量の上限(急な大幅減点を避ける)
+    float reputationRecoverPerWeek = 0.02f; // 1週に回復する量の上限
+    // 計画の履行(現在の店舗数で評価する。過去の最高到達段階だけでは、達成済みとしない)
+    float planPenaltyMax = 0.4f;            // 店舗数が0の時の、目標値からの減点(最低進捗までの不足の割合に比例)
+    float planCompleteBonus = 0.05f;        // 今、計画規模の店舗数がそろっている時の、目標値への加点
+    int reorganizeGraceWeeks = 4;           // 一度最低進捗に届いた後、店舗数が下回ってから、減点が始まるまでの猶予(再整備の猶予。初回の開発猶予 graceWeeks とは別)
+    int recoveryHoldWeeks = 2;              // 再整備の猶予の計測を、取り消すために、最低進捗を保っていなければならない週数(一時的な操作で、猶予を引き延ばせない)
+    // 実際の利用(先週の、エリアを目的にした外出・区画内の利用から決める。猶予中でも、働く。計画の履行とは独立)
+    int useMinSamples = 5;                  // 各項を使うのに必要な、最低のサンプル数(人数・利用回数)。足りない週は、その項は0
+    float useSuccessWeight = 0.04f;         // 利用成功率の項の最大(±)。補助的な指標
+    float useSuccessNeutral = 0.85f;        // 成功率がこれなら、項は0(ほぼ100%に固定されても、小さな加点で頭打ち)
+    float useNeedWeight = 0.06f;            // 需要への貢献の項の最大(0〜+)
+    float useNeedNeutral = 0.5f;            // 利用で実際に回復した需要 ÷ 施設の標準の回復量 が、これ以下なら、項は0(需要が満たされていても、減点しない。加点も無い)
 };
 
 // 周知後の履歴の種類。周知後の移設・撤回・規模変更が、進捗のリセットや罰則逃れにならないように、記録を残す(実際の減点は P2-D)。
@@ -81,6 +98,16 @@ struct CommercialArea
     int plannedCapacity = 8;                // 周知した時の計画規模(周知した後に設定を変えても、この値で数える。契約した計画上の規模)
     AreaMilestone achieved = AreaMilestone::None; // 達成状態(周知した後に、一度でも届いた段階)
     std::vector<AreaHistoryEntry> history;  // 周知後の履歴
+
+    // ---- 評判(P2-D。保存される。周知した区画だけが変わる) ----
+    float reputation = 1.0f;                // 評判(1.0が中立)
+    int belowMinimumSinceWeek = 0;          // 最低進捗を下回り始めた週(0=下回っていない)。再整備の猶予の計測の始点。一時的な操作では取り消されない(AreaReputation.h)
+    int metMinimumStreakWeeks = 0;          // 最低進捗を保っている週数(連続)。recoveryHoldWeeks 以上で、上の計測を取り消す
+    float lastReputationTarget = 1.0f;      // 直近の更新の目標値(表示・デバッグ用)
+    float lastPlanTerm = 0.0f;              // 同じく、計画の履行の項
+    float lastUseTerm = 0.0f;               // 同じく、実際の利用の項(成功率の項 + 需要への貢献の項)
+    float lastReputationDelta = 0.0f;       // 直近の更新での、評判の変化量
+    int lastPlanState = 0;                  // 直近の更新での、計画の履行の状態(AreaPlanState)
 };
 
 // 削除した(撤回した)周知済みの区画の記録(撤回で罰則を逃れていないかを、後から調べられるように残す)。
@@ -91,6 +118,7 @@ struct WithdrawnAreaRecord
     int withdrawnWeek = 0;
     int plannedCapacity = 0;
     AreaMilestone achieved = AreaMilestone::None;
+    float reputation = 1.0f;                // 撤回した時の評判(責任逃れを防ぐため、記録に残す。P2-D)
 };
 
 // ---- 所属の判定の入力(ゲームのオブジェクトに依存しない) ----
@@ -179,6 +207,20 @@ struct AreaProgress
     float ratio = 0.0f;                     // 計画達成率 = 店舗数 ÷ 計画規模(0〜1に収める)
     AreaMilestone current = AreaMilestone::None;    // 今の店舗数での段階
 };
+
+// 段階の店舗数のしきい値(整合させた値)。設定・計画規模が変わっても、順序が破綻しない: 最低進捗 <= 来訪範囲の拡大 <= 計画の完成。
+//  ・計画規模が最低進捗より小さくても、「完成」は、最低進捗以上(最低進捗を満たさずに、完成にならない)。
+//  ・来訪範囲の拡大が、最低進捗より小さい・計画規模より大きい設定でも、その間に収める。
+struct AreaThresholds
+{
+    int minStores = 0;          // 最低進捗(= 設定。負は0)
+    int expandedStores = 0;     // 来訪範囲の拡大(最低進捗〜完成の間に収めた値)
+    int completeStores = 0;     // 計画の完成(= max(計画規模, 最低進捗))
+};
+AreaThresholds ComputeAreaThresholds(int plannedCapacity, const CommercialAreaSettings& settings);
+
+// 設定の矛盾(計画規模 < 最低進捗、拡大のしきい値が範囲外)の説明。矛盾が無ければ nullptr。矛盾があっても、判定は ComputeAreaThresholds で整合させるので、破綻しない(見せるだけ)。
+const char* DescribeAreaSettingsConflict(const CommercialAreaSettings& settings);
 
 AreaProgress ComputeAreaProgress(int storeCount, int plannedCapacity, const CommercialAreaSettings& settings);
 

@@ -316,6 +316,8 @@ bool Game::Initialize(HWND hwnd)
 
     // 商業エリア(P2-A): 区画の仮置き・移動の入力と枠の描画。区画の状態は m_areas が持つ。
     m_areaTool.Initialize(&m_context, &m_field, &m_areas);
+    // 週末の評判の更新(P2-D)。住民の更新の中で呼ばれるので、耐久試験(画面を描かない)でも動く。
+    m_demandSystem.SetAreaWeekEndCallback([this](int week, const std::unordered_map<uint32_t, int>& stores, const AreaLedger& ledger) { m_areas.UpdateReputations(week, stores, ledger); });
     m_demandSystem.SetAreaSource(&m_areas);         // 住民の外出の目的地に、周知済みの商業エリアを加える(P2-C1)。読み取り専用
     m_areaTool.SetOnMessage([this](const std::string& text)
     {
@@ -2303,7 +2305,7 @@ AreaPanelModel Game::BuildAreaPanelModel() const
     value("今の段階", AreaMilestoneName(progress.current));
     if (area->published)
     {
-        value("達成した最高の段階", AreaMilestoneName(area->achieved));
+        value("達成した最高の段階(履歴)", AreaMilestoneName(area->achieved));
     }
     note("計画の達成率について", "店の数だけを数えます。集客力・売上とは別です(店の用途・立地で決まります)。");
 
@@ -2337,7 +2339,7 @@ AreaPanelModel Game::BuildAreaPanelModel() const
 
     // 4つの指標(P2-C2)。予測(行先としての選ばれやすさ)と実績(実際の来訪・利用・売上)を分けて見せる。0人の時は「未計測」(0とは別)。
     {
-        const AreaIndicators ind = ComputeAreaIndicators(m_areas.CompositionOf(area->id), area->published, m_demandSystem.GetAreaLedger().Find(area->id), m_demandSystem.GetSettings());
+        const AreaIndicators ind = ComputeAreaIndicators(m_areas.CompositionOf(area->id), area->published, m_demandSystem.GetAreaLedger().Find(area->id), m_demandSystem.GetSettings(), area->reputation);
         auto measured = [](const IndicatorValue& v, const char* format) -> std::string
         {
             if (!v.measured) { return "未計測"; }
@@ -2352,8 +2354,22 @@ AreaPanelModel Game::BuildAreaPanelModel() const
         std::snprintf(buffer, sizeof(buffer), "豊富さ %.2f(%d軒・用途 %d種類)", ind.richness, ind.storeCount, ind.coveredPurposes);
         value("回遊性", std::string(buffer) + " / 1人あたり " + measured(ind.visitsPerVisitorLastWeek, "%.2f") + " 軒", ind.richness);
         value("消費効率", "1人あたりの実売上 " + measured(ind.salesPerVisitorLastWeek, "%.0f") + " 円(先週)");
-        value("評判", "固定 " + measured({ true, ind.reputation }, "%.1f") + "(更新は P2-D)");
-        note("指標について", "実績は、実際に施設を使った人だけで数えます(入店していない施設への売上配分はありません)。来訪者が0人の間は「未計測」です。");
+        {
+            // 評判(P2-D)。上がっている/下がっている/安定、と、その理由(計画の履行の状態)を短く見せる。
+            char rep[96];
+            const float delta = area->lastReputationDelta;
+            std::snprintf(rep, sizeof(rep), "%.2f(%s)", ind.reputation, !area->published ? "非公開: 変わらない" : (delta > 0.0005f ? "上昇中" : (delta < -0.0005f ? "低下中" : "安定")));
+            value("評判", rep, (std::max)(0.0f, (std::min)(1.0f, (ind.reputation - m_areas.Settings().reputationMin) / (m_areas.Settings().reputationMax - m_areas.Settings().reputationMin))), area->published && delta < -0.0005f);
+            if (area->published)
+            {
+                const AreaReputationResult st = EvaluateAreaReputation(*area, m_gameClock.GetWeekCount(), progress.storeCount, AreaUsageWeek{}, m_areas.Settings());
+                std::string why = AreaPlanStateName(st.planState);
+                if (st.planState == AreaPlanState::InitialGrace) { why += "(あと " + std::to_string(st.initialGraceLeft) + " 週)"; }
+                if (st.planState == AreaPlanState::Reorganizing) { why += "(あと " + std::to_string(st.reorganizeGraceLeft) + " 週で、減点が始まります)"; }
+                note("評判の理由", "計画: " + why + " / 今の店舗数 " + std::to_string(progress.storeCount) + "(最低 " + std::to_string(m_areas.Settings().minProgressStores) + ")");
+            }
+        }
+        note("指標について", "実績は、実際に施設を使った人だけで数えます(入店していない施設への売上配分はありません)。来訪者が0人の間は「未計測」です。評判は、今の店舗数と、住民が実際に使えたかで、週ごとに少しずつ変わります。");
     }
 
     header("周知");

@@ -61,6 +61,7 @@ void AreaDebugPanel::Draw(CommercialAreaManager& areas, const GameClock& clock, 
         ImGui::TextDisabled("周知した時点の値で、その区画に固定される");
         ImGui::SliderInt("最低進捗の店舗数", &s.minProgressStores, 0, 30);
         ImGui::SliderInt("来訪範囲の拡大の店舗数", &s.expandedRangeStores, 0, 30);
+        if (const char* conflict = DescribeAreaSettingsConflict(s)) { ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.3f, 1.0f), "設定の矛盾: %s", conflict); }
         ImGui::SliderInt("開発の猶予(週)", &s.graceWeeks, 0, 52);
         ImGui::TextDisabled("P2-A では、残りの週を見せるだけ(猶予が過ぎた後の評判の変化は P2-D)");
         ImGui::Separator();
@@ -69,6 +70,21 @@ void AreaDebugPanel::Draw(CommercialAreaManager& areas, const GameClock& clock, 
         ImGui::SliderFloat("日用品特化の、日用品寄りの割合", &s.dailyFocusedShare, 0.0f, 1.0f, "%.2f");
         ImGui::SliderFloat("娯楽特化の、日用品寄りの割合", &s.leisureFocusedShare, 0.0f, 1.0f, "%.2f");
         ImGui::TextDisabled("ラベルを付けるだけで、専門型・汎用型のどちらも、有利・不利にはしない");
+        ImGui::Separator();
+        ImGui::TextDisabled("評判(P2-D): 週末に、目標値(1.0 + 計画の履行の項 + 実際の利用の項)へ、少しずつ近づける");
+        ImGui::SliderFloat("評判の下限", &s.reputationMin, 0.0f, 1.0f, "%.2f");
+        ImGui::SliderFloat("評判の上限", &s.reputationMax, 1.0f, 2.0f, "%.2f");
+        ImGui::SliderFloat("1週に下がる量の上限", &s.reputationDropPerWeek, 0.0f, 0.2f, "%.3f");
+        ImGui::SliderFloat("1週に回復する量の上限", &s.reputationRecoverPerWeek, 0.0f, 0.2f, "%.3f");
+        ImGui::SliderFloat("計画未達の減点(店舗数0の時)", &s.planPenaltyMax, 0.0f, 1.0f, "%.2f");
+        ImGui::SliderFloat("計画規模がそろっている時の加点", &s.planCompleteBonus, 0.0f, 0.3f, "%.2f");
+        ImGui::SliderInt("再整備の猶予(週。最低進捗を下回ってから)", &s.reorganizeGraceWeeks, 0, 52);
+        ImGui::SliderInt("猶予の計測を取り消すのに必要な、連続の週数", &s.recoveryHoldWeeks, 1, 12);
+        ImGui::SliderInt("利用評価の最低サンプル数", &s.useMinSamples, 1, 50);
+        ImGui::SliderFloat("利用成功率の項の最大(±)", &s.useSuccessWeight, 0.0f, 0.3f, "%.3f");
+        ImGui::SliderFloat("利用成功率が0になる値", &s.useSuccessNeutral, 0.1f, 0.99f, "%.2f");
+        ImGui::SliderFloat("需要への貢献の項の最大", &s.useNeedWeight, 0.0f, 0.3f, "%.3f");
+        ImGui::SliderFloat("需要への貢献が0になる割合", &s.useNeedNeutral, 0.0f, 0.95f, "%.2f");
     }
 
     const std::vector<const char*> problems = areas.Validate();
@@ -103,7 +119,7 @@ void AreaDebugPanel::Draw(CommercialAreaManager& areas, const GameClock& clock, 
             }
             {
                 // 4つの指標(P2-C2)。予測が何を基準にした値かを、内訳つきで見せる。実績の割り算は、分母が0なら「未計測」。
-                const AreaIndicators ind = ComputeAreaIndicators(areas.CompositionOf(area.id), area.published, ledger.Find(area.id), demand.GetSettings());
+                const AreaIndicators ind = ComputeAreaIndicators(areas.CompositionOf(area.id), area.published, ledger.Find(area.id), demand.GetSettings(), area.reputation);
                 auto show = [](const IndicatorValue& v, const char* format) -> std::string
                 {
                     if (!v.measured) { return "未計測"; }
@@ -115,7 +131,22 @@ void AreaDebugPanel::Draw(CommercialAreaManager& areas, const GameClock& clock, 
                 ImGui::Text("回遊性 豊富さ(予測) %.2f(%d軒・用途 %d種類) / 実績: 1人あたりの利用施設数 先週 %s・通算 %s / 区画内の立ち寄り(通算) %d 回", ind.richness, ind.storeCount, ind.coveredPurposes,
                             show(ind.visitsPerVisitorLastWeek, "%.2f").c_str(), show(ind.visitsPerVisitorTotal, "%.2f").c_str(), ind.stopoversTotal);
                 ImGui::Text("消費効率 1人あたりの実売上 先週 %s 円・通算 %s 円", show(ind.salesPerVisitorLastWeek, "%.0f").c_str(), show(ind.salesPerVisitorTotal, "%.0f").c_str());
-                ImGui::Text("評判 %.2f(P2-Dまで固定)", ind.reputation);
+                {
+                    // 評判(P2-D)。過去の実績(履歴)・今の進捗・猶予の残りを、区別して見せる。
+                    const AreaProgress pr = areas.ProgressOf(area.id);
+                    const AreaReputationResult live = EvaluateAreaReputation(area, week, pr.storeCount, AreaUsageWeek{}, s);
+                    ImGui::Text("評判 %.3f(目標 %.3f / 直近の変化 %+.3f)", area.reputation, area.lastReputationTarget, area.lastReputationDelta);
+                    ImGui::Text("  直近の更新: 計画の項 %+.3f / 利用の項 %+.3f(状態: %s)", area.lastPlanTerm, area.lastUseTerm, AreaPlanStateName(static_cast<AreaPlanState>(area.lastPlanState)));
+                    ImGui::Text("  いま: %s / 店舗 %d(最低 %d) / 過去の最高到達(履歴) %s / 今の段階 %s", AreaPlanStateName(live.planState), pr.storeCount, s.minProgressStores,
+                                AreaMilestoneName(area.achieved), AreaMilestoneName(pr.current));
+                    if (area.published)
+                    {
+                        ImGui::Text("  初回の開発猶予の残り %d 週 / 再整備の猶予: %s(下回り始めた週 %d、最低進捗を連続で保った週 %d)",
+                                    live.initialGraceLeft > 0 ? live.initialGraceLeft : 0,
+                                    live.reorganizeGraceLeft > 0 ? (std::to_string(live.reorganizeGraceLeft) + " 週").c_str() : (area.belowMinimumSinceWeek > 0 ? "終了(または対象外)" : "なし"),
+                                    area.belowMinimumSinceWeek, area.metMinimumStreakWeeks);
+                    }
+                }
                 if (!ind.consistent) { ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "集計の不整合: 来訪者 > 延べ利用、または 目的の来訪者 > 来訪者(重複して数えている疑い)"); }
             }
             const std::string tableId = "構成##" + std::to_string(area.id);
@@ -217,18 +248,21 @@ void AreaDebugPanel::Draw(CommercialAreaManager& areas, const GameClock& clock, 
         {
             ImGui::TextDisabled("まだ集計がありません(エリアを目的にした外出も、区画の施設の利用も、起きていません)");
         }
-        else if (ImGui::BeginTable("##areaLedger", 12, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollX | ImGuiTableFlags_SizingFixedFit))
+        else if (ImGui::BeginTable("##areaLedger", 15, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollX | ImGuiTableFlags_SizingFixedFit))
         {
             ImGui::TableSetupColumn("区画");
             ImGui::TableSetupColumn("期間");
             ImGui::TableSetupColumn("目的にした人数");
             ImGui::TableSetupColumn("来訪者");
             ImGui::TableSetupColumn("目的の来訪者");
-            ImGui::TableSetupColumn("使えなかった人");
+            ImGui::TableSetupColumn("使えなかった(結果が決まった外出)");
             ImGui::TableSetupColumn("延べ利用");
             ImGui::TableSetupColumn("売上");
             ImGui::TableSetupColumn("1人あたり利用");
             ImGui::TableSetupColumn("1人あたり売上");
+            ImGui::TableSetupColumn("需要回復(標準)");
+            ImGui::TableSetupColumn("需要回復(実際)");
+            ImGui::TableSetupColumn("回復の割合");
             ImGui::TableSetupColumn("状態");
             ImGui::TableSetupColumn("点検");
             ImGui::TableHeadersRow();
@@ -247,11 +281,14 @@ void AreaDebugPanel::Draw(CommercialAreaManager& areas, const GameClock& clock, 
                     ImGui::TableNextColumn(); ImGui::Text("%d", t.visitors);
                     ImGui::TableNextColumn(); ImGui::Text("%d", t.purposeVisitors);
                     // 使えなかった人 = 目的にして出発したが、まだ(または結局)使っていない人。通算でだけ、確定した数になる(外出中の人は、まだ数えない)。
-                    ImGui::TableNextColumn(); ImGui::Text("%d", (std::max)(0, t.areaOutings - t.purposeVisitors));
+                    ImGui::TableNextColumn(); ImGui::Text("%d", (std::max)(0, t.areaResolved - t.areaSucceeded));
                     ImGui::TableNextColumn(); ImGui::Text("%d", t.visits);
                     ImGui::TableNextColumn(); ImGui::Text("%d", t.sales);
                     ImGui::TableNextColumn(); if (t.visitors > 0) { ImGui::Text("%.2f", static_cast<float>(t.visits) / static_cast<float>(t.visitors)); } else { ImGui::TextDisabled("-"); }
                     ImGui::TableNextColumn(); if (t.visitors > 0) { ImGui::Text("%.1f", static_cast<float>(t.sales) / static_cast<float>(t.visitors)); } else { ImGui::TextDisabled("-"); }
+                    ImGui::TableNextColumn(); ImGui::Text("%.0f", t.needNominal);
+                    ImGui::TableNextColumn(); ImGui::Text("%.0f", t.needActual);
+                    ImGui::TableNextColumn(); if (t.needNominal > 0.0f) { ImGui::Text("%.0f%%", 100.0f * t.needActual / t.needNominal); } else { ImGui::TextDisabled("未計測"); }
                     ImGui::TableNextColumn(); ImGui::TextUnformatted(exists ? "あり" : "削除済み");
                     ImGui::TableNextColumn();
                     // 整合: 来訪者 <= 延べ利用 / 目的の来訪者 <= 来訪者 / (通算以外は、期間をまたぐ外出があるので、ここでは見ない)
