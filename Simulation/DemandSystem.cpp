@@ -31,6 +31,10 @@ namespace
     // 道路区間そのものまでの距離(FindNearestPointOnRoad)に対して使う、狭めのしきい値。
     constexpr float kAdjacentDistance = WorldScale::FromLegacy(1.5f); // マス基準(マスが1.0だった頃の1.5)。マスの大きさに連動する
 
+    // 建物の「敷地」から道路の中心線までの距離の上限(建物の大きさに依らない)。= 道幅の半分(0.5)+ 許す隙間(0.5)。
+    // 中心で測ると、大きな建物(映画館など)は、隙間ゼロで隣接しても中心が遠くなり、接続できなかった。敷地の縁で測れば、大きさに依らず「隣接」を判定できる。
+    // 1×1の建物では、従来(中心から1.5)とほぼ同じ。境界ちょうどで、丸め誤差に左右されないよう、小さな余裕を足してある。
+    constexpr float kAdjacentEdgeDistance = WorldScale::FromLegacy(1.0f) + WorldScale::FromLegacy(0.01f);
     // 建物の位置とidだけを持つ軽量なコピー。
     // GameObject*のまま保持すると、途中でGameObjectFactory::Spawnが
     // *context.objectsを再確保した際にダングリングポインタになるため、
@@ -55,13 +59,13 @@ namespace
 
     // buildingの位置から一番近い道路区間上の点を探し、接続情報を組み立てる。
     // 住宅・施設・職場の建物リスト作成時に使う共通処理。
-    BuildingSnapshot MakeBuildingSnapshot(uint32_t id, const XMFLOAT3& position, const std::vector<RoadSegment>& segments, const RoadGraph& graph, float maxRoadDistance = kAdjacentDistance)
+    BuildingSnapshot MakeSnapshotFromNearest(uint32_t id, const XMFLOAT3& position, const std::optional<NearestRoadPoint>& nearestRoad,
+                                             const std::vector<RoadSegment>& segments, const RoadGraph& graph)
     {
         BuildingSnapshot snapshot;
         snapshot.id = id;
         snapshot.position = position;
 
-        std::optional<NearestRoadPoint> nearestRoad = FindNearestPointOnRoad(segments, position, maxRoadDistance);
         if (!nearestRoad.has_value())
         {
             return snapshot; // hasRoadConnection == falseのまま
@@ -81,6 +85,24 @@ namespace
         snapshot.nearestNode = graph.FindNearestNode(nearEndpoint);
 
         return snapshot;
+    }
+
+    // 位置(点)だけから、道路への接続を調べる(歩いている住民の位置・住居なしの元の位置など。敷地を持たない物)。中心から maxRoadDistance 以内。
+    BuildingSnapshot MakeBuildingSnapshot(uint32_t id, const XMFLOAT3& position, const std::vector<RoadSegment>& segments, const RoadGraph& graph, float maxRoadDistance = kAdjacentDistance)
+    {
+        return MakeSnapshotFromNearest(id, position, FindNearestPointOnRoad(segments, position, maxRoadDistance), segments, graph);
+    }
+
+    // 建物(オブジェクト)から、道路への接続を調べる。敷地(footprint)があれば、敷地の縁から道路までの距離で判定する(大きな建物も、隣接していれば接続できる)。
+    // 敷地が無い(幅・奥行が0。古いデータ・テスト)時は、従来どおり、中心から測る。接続点(入口/私道の端)は、敷地に一番近い道路上の点。
+    BuildingSnapshot MakeObjectSnapshot(const GameObject& obj, const std::vector<RoadSegment>& segments, const RoadGraph& graph)
+    {
+        const OrientedRect& rect = obj.placement.footprintRect;
+        if (rect.width > 0.0f && rect.depth > 0.0f)
+        {
+            return MakeSnapshotFromNearest(obj.id, obj.transform.position, FindNearestRoadToRect(segments, rect, kAdjacentEdgeDistance), segments, graph);
+        }
+        return MakeBuildingSnapshot(obj.id, obj.transform.position, segments, graph);
     }
 
     // 建物のコピーから、経路を作る時の両端の情報を取り出す。
@@ -1053,8 +1075,8 @@ bool DemandSystem::TryStartStopover(ResidentAgent& agent, GameContext& context, 
         if (testPlan) { FinishTestPlan(*testPlan, SimTestStatus::Rejected, SimTestReject::StopHomeMissing, 0, &agent, context); }
         return false;
     }
-    const RouteEndpoint homeEndpoint = ToEndpoint(MakeBuildingSnapshot(home->id, home->transform.position, *m_roads, graph));
-    const RouteEndpoint hereEndpoint = ToEndpoint(MakeBuildingSnapshot(currentFacility.id, currentFacility.transform.position, *m_roads, graph));
+    const RouteEndpoint homeEndpoint = ToEndpoint(MakeObjectSnapshot(*home, *m_roads, graph));
+    const RouteEndpoint hereEndpoint = ToEndpoint(MakeObjectSnapshot(currentFacility, *m_roads, graph));
     if (!homeEndpoint.hasRoadConnection || !hereEndpoint.hasRoadConnection)
     {
         RecordEvent(agent, context, SimEventKind::StopoverCheck, SimEventResult::NotMet, SimReason::StopNoRoad, currentFacility.id, 0.0f, 0.0f, 0.0f, stopIndex);
@@ -1114,7 +1136,7 @@ bool DemandSystem::TryStartStopover(ResidentAgent& agent, GameContext& context, 
             candidate.areaBoost = 1.0f + (areaBoostFull - 1.0f) * areaBoostShare;
         }
 
-        const RouteEndpoint candidateEndpoint = ToEndpoint(MakeBuildingSnapshot(other.id, other.transform.position, *m_roads, graph));
+        const RouteEndpoint candidateEndpoint = ToEndpoint(MakeObjectSnapshot(other, *m_roads, graph));
         RoutePlan leg = PlanRoute(hereEndpoint, candidateEndpoint, *m_roads, graph, *m_pathfinder, cache);
         if (leg.valid)
         {
@@ -1472,7 +1494,10 @@ bool DemandSystem::ReplanReturnRoute(ResidentAgent& agent, GameContext& context,
 
     const RoadGraph graph = RoadGraph::BuildFromSegments(*m_roads);
     PathCache cache;
-    const RouteEndpoint from = ToEndpoint(MakeBuildingSnapshot(0, facilityPosition, *m_roads, graph));
+    // 施設側の端は、行き先の施設(敷地を持つ)で調べる。施設が見つからなければ、保存してある経路の端の点で調べる。
+    const GameObject* routeFacility = GameObjectFactory::FindById(*context.objects, agent.targetFacilityId);
+    const RouteEndpoint from = ToEndpoint((routeFacility && routeFacility->kind == ObjectKind::Building)
+        ? MakeObjectSnapshot(*routeFacility, *m_roads, graph) : MakeBuildingSnapshot(0, facilityPosition, *m_roads, graph));
     const RouteEndpoint to = ToEndpoint(MakeBuildingSnapshot(0, homePosition, *m_roads, graph));
     const RoutePlan plan = PlanRoute(from, to, *m_roads, graph, *m_pathfinder, cache);
 
@@ -2412,7 +2437,7 @@ void DemandSystem::ProcessImmediateTestPlans(GameContext& context)
             const RoadGraph graph = RoadGraph::BuildFromSegments(*m_roads);
             PathCache cache;
             const RouteEndpoint from = ToEndpoint(MakeBuildingSnapshot(0, marker->transform.position, *m_roads, graph));
-            const RouteEndpoint to = ToEndpoint(MakeBuildingSnapshot(facility->id, facility->transform.position, *m_roads, graph));
+            const RouteEndpoint to = ToEndpoint(MakeObjectSnapshot(*facility, *m_roads, graph));
             const RouteEndpoint home = ToEndpoint(MakeBuildingSnapshot(0, homePosition, *m_roads, graph));
             const RoutePlan leg = PlanRoute(from, to, *m_roads, graph, *m_pathfinder, cache);
             const RoutePlan back = leg.valid ? PlanRoute(to, home, *m_roads, graph, *m_pathfinder, cache) : RoutePlan{};
@@ -2507,16 +2532,16 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
         }
         if (obj.buildingType == BuildingType::House)
         {
-            houses.push_back(MakeBuildingSnapshot(obj.id, obj.transform.position, segments, graph));
+            houses.push_back(MakeObjectSnapshot(obj, segments, graph));
         }
         else if (obj.buildingType == BuildingType::Office)
         {
-            offices.push_back(MakeBuildingSnapshot(obj.id, obj.transform.position, segments, graph));
+            offices.push_back(MakeObjectSnapshot(obj, segments, graph));
         }
         else if (IsFacility(obj.buildingType))
         {
             FacilitySnapshot facility;
-            facility.building = MakeBuildingSnapshot(obj.id, obj.transform.position, segments, graph);
+            facility.building = MakeObjectSnapshot(obj, segments, graph);
             facility.type = obj.buildingType;
             facility.footprint = obj.placement.footprintRect;
             facilities.push_back(facility);
