@@ -1602,12 +1602,15 @@ RoadCutResult RoadSystem::ApplyCut(const std::vector<RoadCutWindow>& windows)
     m_segments = result.segments;
     RebuildNodesAndMesh();
 
-    // 切り取った所の、不要になった青マスを消す。建物が使っているマス(既に建っている建物の敷地)は、残す。
-    // 消す範囲は、切り取った範囲を、道の両脇の列(1〜2マス)まで広げた四角。
+    // 切り取った所の、不要になった青マスを消す。
+    // 残すのは、①今も建っている建物の敷地、②残った道路の脇の帯(切り口の端には、延長が無い)。どちらにも重ならない青マスは、持ち主がいないので消す。
+    // 消す範囲は、切り取った範囲の「周り」まで(両脇の列と、道の端の延長の分を、長さの方向にも、広げた四角)。
+    // 切り取った範囲の中だけだと、道の端の延長の外側など、範囲の外に登録されていた青マス(正しく登録された物が、持ち主を失った)が、孤立して残っていた。
+    // 持ち主のいない青マスが、切り取りの近くにあれば、古いセーブの残りも、一緒に消える(遠くの物は、触らない)。
     if (m_orientationRegistry && m_field && m_context && m_context->objects)
     {
         const float cellSize = m_field->GetCellSize();
-        std::vector<OrientedRect> keepRects;
+        std::vector<OrientedRect> keepRects = BuildFrontageZones();
         for (const GameObject& obj : *m_context->objects)
         {
             if (obj.kind == ObjectKind::Building)
@@ -1615,17 +1618,19 @@ RoadCutResult RoadSystem::ApplyCut(const std::vector<RoadCutWindow>& windows)
                 keepRects.push_back(obj.placement.footprintRect);
             }
         }
+        const float margin = WorldScale::kRoadEndExtension + cellSize * static_cast<float>(WorldScale::kFrontageDepthCells + 1);
         for (const RoadCutWindow& window : windows)
         {
-            const float side = window.halfWidth + cellSize * static_cast<float>(WorldScale::kFrontageDepthCells + 1);
+            const float side = window.halfWidth + margin;
+            const float along = window.halfLength + margin;
             const float yaw = std::atan2(window.dirX, window.dirZ);
             const float c = std::cos(yaw);
             const float s = std::sin(yaw);
             OrientedRect rect;
             rect.yaw = yaw;
             rect.width = side * 2.0f;
-            rect.depth = window.halfLength * 2.0f;
-            rect.origin = XMFLOAT3(window.center.x - c * side - s * window.halfLength, 0.0f, window.center.z + s * side - c * window.halfLength);
+            rect.depth = along * 2.0f;
+            rect.origin = XMFLOAT3(window.center.x - c * side - s * along, 0.0f, window.center.z + s * side - c * along);
             m_orientationRegistry->RemoveCellsOverlappingExcept(rect, keepRects, cellSize);
         }
     }
@@ -1646,7 +1651,17 @@ std::vector<OrientedRect> RoadSystem::BuildFrontageZones() const
     zones.reserve(m_segments.size());
     for (const RoadSegment& segment : m_segments)
     {
-        OrientedRect rect = MakeRoadRect(segment, WorldScale::kRoadEndExtension);
+        // 端の延長(青マスが並ぶ範囲)は、切り口(平らな端)には無い。延長は、端ごとに決める。
+        OrientedRect rect = MakeRoadRect(segment, 0.0f);
+        const float startExtension = segment.flatStart ? 0.0f : WorldScale::kRoadEndExtension;
+        const float endExtension = segment.flatEnd ? 0.0f : WorldScale::kRoadEndExtension;
+        if (rect.depth > 0.0001f && (segment.start.x != segment.end.x || segment.start.z != segment.end.z))
+        {
+            // ローカル+Zは(sin, cos)。原点を-Z側へ始点の延長ぶんずらし、奥行きを両端の延長ぶん増やす。
+            rect.origin.x -= std::sin(rect.yaw) * startExtension;
+            rect.origin.z -= std::cos(rect.yaw) * startExtension;
+            rect.depth += startExtension + endExtension;
+        }
         // ローカル+Xは(cos, -sin)。原点を-X側へsideExtentだけずらし、幅を両脇ぶん増やす。
         rect.origin.x -= std::cos(rect.yaw) * sideExtent;
         rect.origin.z += std::sin(rect.yaw) * sideExtent;
