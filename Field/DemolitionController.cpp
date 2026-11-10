@@ -72,6 +72,23 @@ namespace
         return true;
     }
 
+    // 2つのスライスの四角が、面積を持って重なるか(辺が接するだけなら、重ならない)。分離軸判定。
+    bool WindowsOverlap(const RoadCutWindow& a, const RoadCutWindow& b)
+    {
+        const float eps = 0.01f;
+        const float cx = b.center.x - a.center.x;
+        const float cz = b.center.z - a.center.z;
+        const float axes[4][2] = { { a.dirX, a.dirZ }, { a.dirZ, -a.dirX }, { b.dirX, b.dirZ }, { b.dirZ, -b.dirX } };
+        for (const auto& n : axes)
+        {
+            const float d = std::fabs(cx * n[0] + cz * n[1]);
+            const float ra = std::fabs(a.dirX * n[0] + a.dirZ * n[1]) * a.halfLength + std::fabs(a.dirZ * n[0] - a.dirX * n[1]) * a.halfWidth;
+            const float rb = std::fabs(b.dirX * n[0] + b.dirZ * n[1]) * b.halfLength + std::fabs(b.dirZ * n[0] - b.dirX * n[1]) * b.halfWidth;
+            if (d >= ra + rb - eps) { return false; }
+        }
+        return true;
+    }
+
     // 道路のスライス(切り取る範囲の四角)を、枠と対角線(×)で描く。
     void DrawWindowMarker(DebugRenderer& renderer, const RoadCutWindow& window, const XMFLOAT4& color, bool cross)
     {
@@ -92,6 +109,164 @@ namespace
         {
             renderer.AddLine(c[0], c[2], color);
             renderer.AddLine(c[1], c[3], color);
+        }
+    }
+
+    // 解体で無くなる、道路の継ぎ目の埋め草(道幅の正方形。RoadMeshBuilder の AppendNodeCap)。
+    // 消える部分を、正方形を4つに分けた区画(半分×半分)ごとに持つ。
+    struct VanishingJointCap
+    {
+        XMFLOAT3 center{};          // 継ぎ目の位置(正方形の中心)
+        float half = 0.0f;          // 正方形の半分の幅(集まる道路の、いちばん広い道幅の半分)
+        bool vanish[2][2] = {};     // 区画が消えるか。[x の側(0=-,1=+)][z の側(0=-,1=+)]。残る道路の路面になる区画は false
+    };
+
+    // 2つの点が、XZ平面で同じ位置か。
+    bool IsSamePointXZ(const XMFLOAT3& a, const XMFLOAT3& b)
+    {
+        return std::fabs(a.x - b.x) < 1e-3f && std::fabs(a.z - b.z) < 1e-3f;
+    }
+
+    // 選んだスライスを切り取ると、埋め草が無くなる継ぎ目(切った後、そこに集まる道路が1本以下になる所)を探す。
+    std::vector<VanishingJointCap> FindVanishingJointCaps(const RoadSystem& roads, const std::vector<RoadCutWindow>& windows)
+    {
+        std::vector<VanishingJointCap> caps;
+        if (windows.empty())
+        {
+            return caps;
+        }
+        const RoadCutResult preview = roads.PreviewCut(windows);
+        if (!preview.changed)
+        {
+            return caps;
+        }
+        const std::vector<RoadSegment>& segments = roads.GetSegments();
+        for (const RoadNode& node : roads.GetNodes())
+        {
+            if (node.connectedSegmentIndices.size() < 2)
+            {
+                continue;
+            }
+            float halfWidth = 0.0f;
+            bool allCurve = true;
+            for (size_t index : node.connectedSegmentIndices)
+            {
+                if (index >= segments.size()) { continue; }
+                halfWidth = (std::max)(halfWidth, segments[index].width * 0.5f);
+                if (segments[index].drawMode != RoadDrawMode::Curve) { allCurve = false; }
+            }
+            // 滑らかな曲線どうしの継ぎ目(2本)は、埋め草を敷かず、継ぎ目の縁を共有する(メッシュ作りと同じ規則)。
+            if (halfWidth < 0.0001f || (node.connectedSegmentIndices.size() == 2 && allCurve))
+            {
+                continue;
+            }
+            int remaining = 0;
+            for (const RoadSegment& segment : preview.segments)
+            {
+                if (IsSamePointXZ(segment.start, node.position) || IsSamePointXZ(segment.end, node.position)) { ++remaining; }
+            }
+            if (remaining >= 2)
+            {
+                continue;   // 埋め草は、残る
+            }
+            VanishingJointCap cap;
+            cap.center = node.position;
+            cap.half = halfWidth;
+            bool any = false;
+            for (int ix = 0; ix < 2; ++ix)
+            {
+                for (int iz = 0; iz < 2; ++iz)
+                {
+                    // 区画の中心が、残る道路(この継ぎ目で終わる1本)の路面の上なら、その区画は消えない。
+                    const float qx = node.position.x + (ix == 0 ? -0.5f : 0.5f) * halfWidth;
+                    const float qz = node.position.z + (iz == 0 ? -0.5f : 0.5f) * halfWidth;
+                    bool onRemainingRoad = false;
+                    for (const RoadSegment& segment : preview.segments)
+                    {
+                        const bool atStart = IsSamePointXZ(segment.start, node.position);
+                        if (!atStart && !IsSamePointXZ(segment.end, node.position)) { continue; }
+                        const XMFLOAT3& farPoint = atStart ? segment.end : segment.start;
+                        const float dx = farPoint.x - node.position.x;
+                        const float dz = farPoint.z - node.position.z;
+                        const float length = std::sqrt(dx * dx + dz * dz);
+                        if (length < 1e-4f) { continue; }
+                        const float ux = dx / length;
+                        const float uz = dz / length;
+                        const float along = (qx - node.position.x) * ux + (qz - node.position.z) * uz;
+                        const float across = (qx - node.position.x) * uz - (qz - node.position.z) * ux;
+                        if (along >= -1e-3f && along <= length && std::fabs(across) <= segment.width * 0.5f) { onRemainingRoad = true; break; }
+                    }
+                    cap.vanish[ix][iz] = !onRemainingRoad;
+                    any = any || cap.vanish[ix][iz];
+                }
+            }
+            if (any)
+            {
+                caps.push_back(cap);
+            }
+        }
+        return caps;
+    }
+
+    // スライスの四角が、埋め草の正方形の中に、すっぽり入っているか(その印は、埋め草の印にまとめる)。
+    bool WindowInsideCap(const RoadCutWindow& window, const VanishingJointCap& cap)
+    {
+        const float perpX = window.dirZ;
+        const float perpZ = -window.dirX;
+        const float eps = 0.01f;
+        for (int su = -1; su <= 1; su += 2)
+        {
+            for (int sv = -1; sv <= 1; sv += 2)
+            {
+                const float x = window.center.x + window.dirX * su * window.halfLength + perpX * sv * window.halfWidth;
+                const float z = window.center.z + window.dirZ * su * window.halfLength + perpZ * sv * window.halfWidth;
+                if (std::fabs(x - cap.center.x) > cap.half + eps || std::fabs(z - cap.center.z) > cap.half + eps) { return false; }
+            }
+        }
+        return true;
+    }
+
+    // 消える埋め草を、ひとまとまりの印(枠と×)で描く。
+    // 全部消える = 正方形1つ、半分消える(片方の道路が残る) = 長方形1つ、それ以外(斜めの道路など) = 区画ごと。
+    void DrawVanishingJointCap(DebugRenderer& renderer, const VanishingJointCap& cap, const XMFLOAT4& color)
+    {
+        const float xs[3] = { cap.center.x - cap.half, cap.center.x, cap.center.x + cap.half };
+        const float zs[3] = { cap.center.z - cap.half, cap.center.z, cap.center.z + cap.half };
+        auto box = [&](float x0, float x1, float z0, float z1)
+        {
+            // 向きはワールドのX軸(dirX=1)。長さ方向=X、幅方向=Z。
+            RoadCutWindow w;
+            w.center = XMFLOAT3((x0 + x1) * 0.5f, 0.0f, (z0 + z1) * 0.5f);
+            w.dirX = 1.0f;
+            w.dirZ = 0.0f;
+            w.halfLength = (x1 - x0) * 0.5f;
+            w.halfWidth = (z1 - z0) * 0.5f;
+            DrawWindowMarker(renderer, w, color, true);
+        };
+        int count = 0;
+        for (int ix = 0; ix < 2; ++ix) { for (int iz = 0; iz < 2; ++iz) { if (cap.vanish[ix][iz]) { ++count; } } }
+        if (count == 4)
+        {
+            box(xs[0], xs[2], zs[0], zs[2]);
+            return;
+        }
+        if (count == 2)
+        {
+            for (int ix = 0; ix < 2; ++ix)
+            {
+                if (cap.vanish[ix][0] && cap.vanish[ix][1]) { box(xs[ix], xs[ix + 1], zs[0], zs[2]); return; }
+            }
+            for (int iz = 0; iz < 2; ++iz)
+            {
+                if (cap.vanish[0][iz] && cap.vanish[1][iz]) { box(xs[0], xs[2], zs[iz], zs[iz + 1]); return; }
+            }
+        }
+        for (int ix = 0; ix < 2; ++ix)
+        {
+            for (int iz = 0; iz < 2; ++iz)
+            {
+                if (cap.vanish[ix][iz]) { box(xs[ix], xs[ix + 1], zs[iz], zs[iz + 1]); }
+            }
         }
     }
 
@@ -528,9 +703,60 @@ void DemolitionController::Draw()
     }
     DebugRenderer& renderer = *m_context->debugRenderer;
 
-    for (const RoadSlice& slice : m_roadSlices)
+    // 折れ曲がりの角(2本が集まる継ぎ目)では、2本の道路の最後のスライスの四角が、重なる。重なった×が密になって乱れるので、
+    // 角の埋め草の正方形の中にあって、先に選んだ別の向きのスライスと重なるスライスは、枠だけにする(×は、先の方に残る)。
+    // 直線の道路(向きが同じ)・T字路・十字路(3本以上)は、今までと同じ。
+    std::vector<std::pair<XMFLOAT3, float>> corners;   // 角の継ぎ目の位置と、埋め草の半分の幅
+    if (m_roadSystem && m_roadSlices.size() >= 2)
     {
-        DrawWindowMarker(renderer, slice.window, kSelectedColor, true);
+        const std::vector<RoadSegment>& segments = m_roadSystem->GetSegments();
+        for (const RoadNode& node : m_roadSystem->GetNodes())
+        {
+            if (node.connectedSegmentIndices.size() != 2) { continue; }
+            float halfWidth = 0.0f;
+            for (size_t index : node.connectedSegmentIndices)
+            {
+                if (index < segments.size()) { halfWidth = (std::max)(halfWidth, segments[index].width * 0.5f); }
+            }
+            if (halfWidth > 0.0001f) { corners.emplace_back(node.position, halfWidth); }
+        }
+    }
+    // 解体で無くなる継ぎ目の埋め草(角の正方形)。中にすっぽり入るスライスの印は描かず、埋め草の印(枠と×1つ)にまとめる。
+    // (スライスごとに描くと、角の正方形の一部にしか×が付かず、角の全体が選ばれているように見えなかった。)
+    std::vector<VanishingJointCap> caps;
+    if (m_roadSystem && !m_roadSlices.empty())
+    {
+        caps = FindVanishingJointCaps(*m_roadSystem, SelectedWindows());
+    }
+    for (size_t i = 0; i < m_roadSlices.size(); ++i)
+    {
+        const RoadCutWindow& window = m_roadSlices[i].window;
+        bool insideCap = false;
+        for (const VanishingJointCap& cap : caps)
+        {
+            if (WindowInsideCap(window, cap)) { insideCap = true; break; }
+        }
+        if (insideCap)
+        {
+            continue;
+        }
+        bool cross = true;
+        for (const auto& corner : corners)
+        {
+            if (std::fabs(window.center.x - corner.first.x) > corner.second || std::fabs(window.center.z - corner.first.z) > corner.second) { continue; }
+            for (size_t j = 0; j < i && cross; ++j)
+            {
+                const RoadCutWindow& other = m_roadSlices[j].window;
+                const bool parallel = std::fabs(window.dirX * other.dirZ - window.dirZ * other.dirX) < 0.1f;
+                if (!parallel && WindowsOverlap(window, other)) { cross = false; }
+            }
+            if (!cross) { break; }
+        }
+        DrawWindowMarker(renderer, window, kSelectedColor, cross);
+    }
+    for (const VanishingJointCap& cap : caps)
+    {
+        DrawVanishingJointCap(renderer, cap, kSelectedColor);
     }
     if (m_hasHoverRoad && !m_dragging)
     {
