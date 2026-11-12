@@ -39,6 +39,9 @@ public:
     // 実時間のdeltaTimeを渡して時刻を進める。倍率(0=停止)をかけた分だけ進み、
     // 就寝に入る・起床する・24時を超える、という区切りを、その瞬間に処理する(1フレームに複数またいでも、取りこぼさない)。
     void Update(float realDeltaSeconds);
+    // ゲーム内の時間(秒。倍率をかけた後の値)を、そのまま渡して時刻を進める(倍率は使わない)。
+    // 固定刻み(ゲーム内の時間で、1回の長さを決める)で進める時に使う。Update(dt) は Advance(dt × 倍率) と、全く同じ結果になる。
+    void Advance(float gameSeconds);
 
     // 0.0以上24.0未満の、1日の中の時刻(時間単位)。
     float GetTimeOfDayHours() const { return m_timeOfDayHours; }

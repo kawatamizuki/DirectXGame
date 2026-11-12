@@ -39,7 +39,12 @@ int GameClock::ConsumeWeekStarts()
 
 void GameClock::Update(float realDeltaSeconds)
 {
-    m_scaledDeltaSeconds = realDeltaSeconds * m_timeScale;
+    Advance(realDeltaSeconds * m_timeScale);
+}
+
+void GameClock::Advance(float gameSeconds)
+{
+    m_scaledDeltaSeconds = gameSeconds;
     m_activeDeltaHours = 0.0f;
 
     // 活動時間と就寝で、時間の進む速さが違う。区切り(就寝に入る・24時・起床)ごとに、速さを切り替えて進める。
