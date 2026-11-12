@@ -93,6 +93,11 @@ private:
     // テストマップの自動検証(テストマップ 段階3)を、次のフレームで始める。id のテストマップの原本(ファイルの中身)を読み、実行条件に
     // テストマップのid・ファイル・指紋・ビルドを書き足して、SimEndurance へ渡す。ファイルは変えない。始められなければ false(message に理由)。
     bool StartTestMapTrials(const std::string& id, const SimTrialConditions& conditions, std::string& message);
+    // 街の状態を変える操作(建築・道路・解体・商業エリア・飾りの配置・編集モード・設定値など)を、止めている最中か。
+    // 耐久試験・自動検証が街を進めている間(Running)。異常で止まって状態を見ている間(Held)は、止めない。
+    bool IsWorldLocked() const { return m_endurance.GetState() == SimEnduranceState::Running; }
+    // 止めている間は、毎フレーム、編集モード・置きかけのツール・エディタの選択を、やめさせる(始まった時は、知らせを出す)。
+    void EnforceWorldLock();
     // テストマップ使用中の、普段のクイックセーブの保護と、別のセーブを読み込んだ時の、使用の終了(毎フレーム)。
     void UpdateTestMapSaveGuard();
 
@@ -248,6 +253,7 @@ private:
     GameUI m_gameUI;
     bool m_uiAvailable = false; // UIRendererの初期化に成功したか
     TitleMenu m_titleMenu;             // タイトル画面のスタート・終了のメニュー
+    bool m_wasWorldLocked = false;     // 前のフレームで、街の操作を止めていたか(止め始めた時に、知らせを出すため)
     bool m_wasInTitleScene = false;    // 前のフレームで、タイトル画面だったか(始まった瞬間を見つけるため)
     float m_titleTime = 0.0f;          // タイトル画面が始まってからの時間(秒。カメラを回すのに使う)
     DirectX::XMFLOAT3 m_titleFocus = { 0.0f, 0.0f, 0.0f }; // タイトル画面のカメラが見る点(街の中心)

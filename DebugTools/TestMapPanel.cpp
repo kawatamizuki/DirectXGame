@@ -1,8 +1,10 @@
 ﻿#include "TestMapPanel.h"
 #include <cstdio>
 #include <cstring>
+#include <algorithm>
 #include "imgui.h"
 #include "TestMapSession.h"
+#include "SimEndurance.h"
 
 namespace
 {
@@ -89,7 +91,7 @@ const TestMapEntry* TestMapPanel::FindEntry(const std::string& id) const
     return nullptr;
 }
 
-void TestMapPanel::Draw(TestMapStore& store, TestMapSession& session, bool canOperate, const char* whyNot)
+void TestMapPanel::Draw(TestMapStore& store, TestMapSession& session, bool canOperate, const char* whyNot, const TrialAccess& trials)
 {
     if (m_open && !*m_open)
     {
@@ -112,6 +114,7 @@ void TestMapPanel::Draw(TestMapStore& store, TestMapSession& session, bool canOp
         ImGui::TextColored(kColorDraft, "%s", whyNot);
     }
 
+    DrawTrialSummary(trials);
     DrawActive(store, session, canOperate);
 
     Heading("保存済みのテストマップ");
@@ -129,6 +132,8 @@ void TestMapPanel::Draw(TestMapStore& store, TestMapSession& session, bool canOp
     {
         ImGui::TextDisabled("一覧から、テストマップを選ぶと、内容と操作が出ます。");
     }
+
+    DrawTrials(trials);
 
     DrawSaveNew(store, session, canOperate);
 
@@ -597,4 +602,194 @@ void TestMapPanel::DrawPopups(TestMapStore& store, TestMapSession& session)
     {
         m_popup = Popup::None;     // 外から閉じられた
     }
+}
+
+void TestMapPanel::DrawTrialSummary(const TrialAccess& trials)
+{
+    if (!trials.endurance || trials.endurance->GetRunningMode() != SimEnduranceMode::TestMapTrials)
+    {
+        return;
+    }
+    SimEndurance& endurance = *trials.endurance;
+    if (endurance.GetState() == SimEnduranceState::Running)
+    {
+        const SimTrialConditions& c = endurance.GetTrialConditions();
+        const size_t total = (std::max)(static_cast<size_t>(1), endurance.GetTrialTotal());
+        ImGui::TextColored(kColorDraft, "自動検証を実行中: %zu / %zu 回目   %d / %d 週(建築・解体・編集・セーブ・ロードは、止めています)",
+                           endurance.GetTrialIndex() + 1, total, endurance.GetWeeksDone(), c.weeks);
+        if (ImGui::SmallButton("自動検証を中止"))
+        {
+            endurance.RequestCancel();
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("詳しい進み具合・結果は、下の「自動検証」にあります。");
+    }
+    else if (endurance.HasTrialRun())
+    {
+        const SimTrialConditions& c = endurance.GetTrialConditions();
+        const SimTrialDeterminism d = endurance.GetTrialDeterminism();
+        const char* determinism = !c.determinismCheck ? "" : (!d.checked ? "   決定論の確認: 比べられませんでした" : (d.matched ? "   決定論の確認: 一致" : "   決定論の確認: 不一致"));
+        ImGui::TextColored(kColorNote, "自動検証の前回の結果: %s を %zu 回%s(表は、下の「自動検証」にあります)", c.testMapId.c_str(),
+                           endurance.GetTrialResults().size(), determinism);
+    }
+}
+
+void TestMapPanel::DrawTrials(const TrialAccess& trials)
+{
+    Heading("自動検証(保存したテストマップから、住民のシミュレーションを、何回か進める)");
+    if (!trials.endurance)
+    {
+        return;
+    }
+    if (!ImGui::CollapsingHeader("自動検証の条件と結果", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        return;
+    }
+    SimEndurance& endurance = *trials.endurance;
+    const bool trialMode = endurance.GetRunningMode() == SimEnduranceMode::TestMapTrials;
+    const bool running = endurance.GetState() == SimEnduranceState::Running && trialMode;
+
+    ImGui::TextWrapped("毎回、テストマップの原本(ファイルの中身)から始めます(前の回の住民・時間は、引き継ぎません)。終わる・中止すると、今の街へ戻ります。"
+                       "原本のファイルと、普段のセーブは、変わりません。実行中は、建築・解体・編集・セーブ・ロードはできません。");
+    ImGui::TextDisabled("結果は、この画面に出すだけです(ファイルには保存しません)。合否の判定はしません。");
+
+    // ---- 対象と条件 ----
+    const TestMapEntry* entry = FindEntry(m_selected);
+    if (running)
+    {
+        ImGui::Text("対象: %s", endurance.GetTrialConditions().testMapId.c_str());
+    }
+    else if (entry)
+    {
+        ImGui::Text("対象: %s(id: %s)", entry->meta.name.c_str(), entry->id.c_str());
+        if (!entry->valid) { ImGui::TextColored(kColorError, "このテストマップは、読めません: %s", entry->error.c_str()); }
+    }
+    else
+    {
+        ImGui::TextColored(kColorDraft, "上の一覧から、テストマップを選んでください。");
+    }
+
+    ImGui::BeginDisabled(running);
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::InputInt("1回の試行で進める週数", &m_trialWeeks);
+    m_trialWeeks = (std::max)(1, (std::min)(kSimTrialMaxWeeks, m_trialWeeks));
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::InputInt("試行の回数", &m_trialCount);
+    m_trialCount = (std::max)(1, (std::min)(kSimTrialMaxCount, m_trialCount));
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::InputScalar("基準の種", ImGuiDataType_U32, &m_trialBaseSeed);
+    ImGui::Checkbox("決定論の確認(最後に、1回目と同じ種で、もう1回進めて、指紋を比べる)", &m_trialDeterminism);
+    ImGui::EndDisabled();
+    const SimTrialConditions defaults;
+    ImGui::TextDisabled("時計の倍率: %.0f 倍(暫定で固定。結果は倍率にも左右されるので、条件として記録します)", defaults.timeScale);
+    ImGui::TextDisabled("試行ごとの種は、基準の種と回の番号から作ります(同じ条件なら、同じ種の並び)。全部で %d 回進めます。",
+                        m_trialCount + (m_trialDeterminism ? 1 : 0));
+
+    // ---- 実行・中止・進み具合 ----
+    if (!running)
+    {
+        const bool canPress = entry && entry->valid && trials.canStart && trials.start;
+        ImGui::BeginDisabled(!canPress);
+        if (ImGui::Button("自動検証を始める"))
+        {
+            SimTrialConditions conditions;
+            conditions.weeks = m_trialWeeks;
+            conditions.trialCount = m_trialCount;
+            conditions.baseSeed = m_trialBaseSeed;
+            conditions.determinismCheck = m_trialDeterminism;
+            std::string message;
+            const bool ok = trials.start(m_selected, conditions, message);
+            m_trialStartError = ok ? std::string() : message;
+        }
+        ImGui::EndDisabled();
+        if (!trials.canStart && trials.whyNot && trials.whyNot[0] != '\0')
+        {
+            ImGui::TextColored(kColorDraft, "%s", trials.whyNot);
+        }
+        ImGui::TextDisabled("ゲームが途中で落ちた時に備えて、始める前に、今の街をF5で保存しておくと安心です。");
+        if (!m_trialStartError.empty())
+        {
+            ImGui::TextColored(kColorError, "%s", m_trialStartError.c_str());
+        }
+    }
+    else
+    {
+        const SimTrialConditions& c = endurance.GetTrialConditions();
+        const size_t total = (std::max)(static_cast<size_t>(1), endurance.GetTrialTotal());
+        const size_t index = endurance.GetTrialIndex();
+        const int weeksDone = endurance.GetWeeksDone();
+        const float within = (std::min)(1.0f, static_cast<float>(weeksDone) / static_cast<float>((std::max)(1, c.weeks)));
+        const float progress = (static_cast<float>(index) + within) / static_cast<float>(total);
+        const bool repeat = c.determinismCheck && index + 1 == total;
+        ImGui::TextColored(kColorDraft, "実行中: %zu / %zu 回目%s   %d / %d 週", index + 1, total, repeat ? "(決定論の確認)" : "", weeksDone, c.weeks);
+        ImGui::ProgressBar((std::max)(0.0f, (std::min)(1.0f, progress)), ImVec2(-1.0f, 0.0f));
+        ImGui::Text("この回の経過 %.1f 秒   異常 %llu 件", endurance.GetWallSeconds(), static_cast<unsigned long long>(endurance.GetAnomalyCount()));
+        if (ImGui::Button("中止"))
+        {
+            endurance.RequestCancel();
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("中止すると、そこまでの結果を残して、今の街へ戻ります。");
+    }
+    if (trialMode && !endurance.GetMessage().empty())
+    {
+        ImGui::TextWrapped("%s", endurance.GetMessage().c_str());
+    }
+
+    // ---- 結果 ----
+    if (!endurance.HasTrialRun())
+    {
+        return;
+    }
+    const SimTrialConditions& c = endurance.GetTrialConditions();
+    ImGui::Spacing();
+    ImGui::Text("前回(実行中)の条件: %s   %d 週 × %d 回%s   倍率 %.0f   基準の種 %u", c.testMapId.c_str(), c.weeks, c.trialCount,
+                c.determinismCheck ? " + 決定論の確認" : "", c.timeScale, c.baseSeed);
+    ImGui::TextDisabled("原本の指紋 %s   ビルド %s   設定の種(実行前の値) %u", ShortHash(c.testMapFingerprint).c_str(), c.gameBuild.c_str(), c.settings.seed);
+    if (!running && c.determinismCheck)
+    {
+        const SimTrialDeterminism d = endurance.GetTrialDeterminism();
+        if (d.checked)
+        {
+            ImGui::TextColored(d.matched ? kColorOfficial : kColorError, "%s", d.matched ? "決定論の確認: 同じ種の2回の指紋が、一致しました"
+                                                                                        : "決定論の確認: 同じ種の2回の指紋が、一致しませんでした(同じ条件なのに、結果が違います)");
+        }
+        else
+        {
+            ImGui::TextColored(kColorDraft, "決定論の確認: 比べられませんでした(同じ種の2回の、どちらかが、最後まで進んでいません)");
+        }
+    }
+
+    const std::vector<SimTrialResult>& results = endurance.GetTrialResults();
+    const ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_ScrollX | ImGuiTableFlags_ScrollY;
+    const float height = ImGui::GetTextLineHeightWithSpacing() * (static_cast<float>((std::min)(results.size(), static_cast<size_t>(10))) + 1.6f);
+    if (!results.empty() && ImGui::BeginTable("TestMapTrialResults", 12, flags, ImVec2(0.0f, height)))
+    {
+        ImGui::TableSetupScrollFreeze(1, 1);
+        const char* headers[] = { "回", "種", "終わり方", "週", "異常", "指紋", "人口", "住民", "需要不足", "立ち往生", "資金", "実時間(秒)" };
+        for (const char* header : headers) { ImGui::TableSetupColumn(header); }
+        ImGui::TableHeadersRow();
+        for (const SimTrialResult& r : results)
+        {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            if (r.determinismRun) { ImGui::Text("%d(確認)", r.index + 1); } else { ImGui::Text("%d", r.index + 1); }
+            ImGui::TableNextColumn(); ImGui::Text("%u", r.seed);
+            ImGui::TableNextColumn();
+            if (r.completed) { ImGui::Text("完了"); } else { ImGui::TextColored(kColorDraft, "%s", r.stopReason.c_str()); }
+            ImGui::TableNextColumn(); ImGui::Text("%d", r.weeksDone);
+            ImGui::TableNextColumn();
+            if (r.anomalies > 0) { ImGui::TextColored(kColorError, "%llu", static_cast<unsigned long long>(r.anomalies)); } else { ImGui::Text("0"); }
+            ImGui::TableNextColumn(); ImGui::Text("%s", ShortHash(r.digest.hash).c_str());
+            ImGui::TableNextColumn(); ImGui::Text("%d", r.indicators.populationTotal);
+            ImGui::TableNextColumn(); ImGui::Text("%d", r.indicators.agentCount);
+            ImGui::TableNextColumn(); ImGui::Text("%d", r.indicators.unmetDemand);
+            ImGui::TableNextColumn(); ImGui::Text("%d", r.indicators.strandedCount);
+            ImGui::TableNextColumn(); ImGui::Text("%d", r.indicators.cash);
+            ImGui::TableNextColumn(); ImGui::Text("%.2f", r.wallSeconds);
+        }
+        ImGui::EndTable();
+    }
+    ImGui::TextDisabled("指紋が同じ = 起きたこと(イベント・抽選)が同じ。違う種で指紋が違うかどうかは、合否の条件ではありません(参考)。");
+    ImGui::TextDisabled("人口などは、その回が終わった時点の値です。住民の停滞は、失敗とは扱いません。");
 }

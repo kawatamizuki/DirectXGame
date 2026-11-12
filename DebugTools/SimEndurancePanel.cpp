@@ -107,6 +107,15 @@ void SimEndurancePanel::Draw(SimEndurance& endurance, bool canStart, const char*
             ImGui::TextColored(kColorWarning, "%s", whyNot);
         }
     }
+    else if (state == SimEnduranceState::Running && endurance.GetRunningMode() == SimEnduranceMode::TestMapTrials)
+    {
+        // テストマップの自動検証(同じ仕組みで動いている)。進み具合・結果は、テストマップのパネルに出す。
+        ImGui::TextColored(kColorWarning, "テストマップの自動検証を、実行中です(進み具合と結果は、「テストマップ」パネルに出ます)。");
+        if (ImGui::Button("中止"))
+        {
+            endurance.RequestCancel();
+        }
+    }
     else if (state == SimEnduranceState::Running)
     {
         const int weeks = endurance.GetWeeksDone();

@@ -538,7 +538,8 @@ void Game::Update()
     }
 
 #endif
-    if (IsInGameScene())
+    EnforceWorldLock();     // 耐久試験・自動検証の実行中は、街を変える操作を止める
+    if (IsInGameScene() && !IsWorldLocked())
     {
         m_propPlacer.Update();
     }
@@ -587,16 +588,20 @@ void Game::Update()
     }
     if (IsInGameScene() && m_context.mode == GameMode::Playing)
     {
-        if (!m_context.inputConsumed)
+        // 耐久試験・自動検証の実行中は、建築・道路・解体・商業エリアのツールを動かさない(試験用の街を、変えない)。
+        if (!m_context.inputConsumed && !IsWorldLocked())
         {
             m_buildController.Update();
         }
-        if (!m_context.inputConsumed)
+        if (!m_context.inputConsumed && !IsWorldLocked())
         {
             m_roadSystem.Update();
         }
-        m_demolition.Update(); // 解体ツールの間だけ動く(押している間は、自分でinputConsumedを立てる)
-        m_areaTool.Update();   // 商業エリアのツールの間だけ動く(区画をクリック・ドラッグしている間は、自分でinputConsumedを立てる)
+        if (!IsWorldLocked())
+        {
+            m_demolition.Update(); // 解体ツールの間だけ動く(押している間は、自分でinputConsumedを立てる)
+            m_areaTool.Update();   // 商業エリアのツールの間だけ動く(区画をクリック・ドラッグしている間は、自分でinputConsumedを立てる)
+        }
 
         if (m_noticeSecondsLeft > 0.0f)
         {
@@ -1167,6 +1172,15 @@ MenuModel Game::BuildMenuModel() const
 
 void Game::ApplyMenuCommand(const MenuCommand& command)
 {
+    // 耐久試験・自動検証の実行中は、建築・道路・解体・商業エリアのツールを選べない。
+    if (IsWorldLocked() && (command.type == MenuCommandType::SelectBuilding || command.type == MenuCommandType::SelectRoad ||
+                            command.type == MenuCommandType::SetRoadDrawMode || command.type == MenuCommandType::SelectDemolish ||
+                            command.type == MenuCommandType::SelectArea))
+    {
+        m_noticeText = "耐久試験・自動検証の実行中は、建築・解体はできません(終わると、実行前の街へ戻ります)";
+        m_noticeSecondsLeft = 4.0f;
+        return;
+    }
     switch (command.type)
     {
     case MenuCommandType::SelectBuilding:
@@ -1509,6 +1523,36 @@ bool Game::StartTestMapTrials(const std::string& id, const SimTrialConditions& c
     return m_endurance.RequestTrials(bytes, conditions, message);
 }
 
+void Game::EnforceWorldLock()
+{
+    const bool locked = IsWorldLocked();
+    if (locked)
+    {
+        if (!m_wasWorldLocked)
+        {
+            m_noticeText = "耐久試験・自動検証の実行中は、建築・解体・編集・セーブ・ロードはできません";
+            m_noticeSecondsLeft = 4.0f;
+        }
+        // 編集モード(オブジェクトの移動・削除・元に戻す)には、入らせない。
+        if (m_context.mode != GameMode::Playing)
+        {
+            m_context.mode = GameMode::Playing;
+            m_noticeText = "耐久試験・自動検証の実行中は、編集モードに入れません";
+            m_noticeSecondsLeft = 4.0f;
+        }
+        // 置きかけ・選びかけのツールを、やめる(実行を始める前に選んでいた物も)。
+        if (m_context.placementTool != PlacementTool::None)
+        {
+            m_roadSystem.CancelPlacement();
+            m_demolition.Cancel();
+            m_areaTool.Cancel();
+            m_context.placementTool = PlacementTool::None;
+        }
+        m_debugEditor.ClearSelection();     // インスペクターから、オブジェクトを書き換えさせない
+    }
+    m_wasWorldLocked = locked;
+}
+
 void Game::UpdateTestMapSaveGuard()
 {
     // テストマップ使用中は、普段のクイックセーブへ、保存できない(「Scenario」パネルの「Save」ボタンなど、他の入口からも)。
@@ -1738,6 +1782,12 @@ void Game::ApplyGameViewRect()
 
 void Game::PlaceAssetAtViewCenter(const std::string& modelPath)
 {
+    if (IsWorldLocked())
+    {
+        m_noticeText = "耐久試験・自動検証の実行中は、飾りを置けません";
+        m_noticeSecondsLeft = 4.0f;
+        return;
+    }
     // ゲームビューの中心(ビューの左上が原点の座標)。
     float x = static_cast<float>(m_renderer.GetViewWidth()) * 0.5f;
     float y = static_cast<float>(m_renderer.GetViewHeight()) * 0.5f;
@@ -2799,8 +2849,12 @@ void Game::Draw()
 #ifdef ENABLE_EDITOR
     // 人流・需要シミュレーションの統計・プロファイラ・ログはモードによらず常時表示する
     // (Editorメニューのパネル一覧、またはタイトルバーの×で閉じられる)。
+    // 耐久試験・自動検証が街を進めている間は、街や結果を変えるパネル(設定値・行動テスト・時計・資金・素材の配置・商業エリア)を、操作できなくする。
+    const bool worldLocked = IsWorldLocked();
+    ImGui::BeginDisabled(worldLocked);
     m_demandSystem.DrawDebugUI(m_editorUi.PanelFlag("City Stats"));
     m_residentDebugPanel.Draw(m_demandSystem, m_objects);
+    ImGui::EndDisabled();
     m_simStatsPanel.Draw(m_demandSystem, m_objects);
     m_simReproPanel.Draw(m_demandSystem, m_repro, m_rewind.IsEnabled());
     m_rewindPanel.Draw(m_rewind, m_repro);
@@ -2813,9 +2867,11 @@ void Game::Draw()
         else if (m_repro.GetState() != SimReproState::Idle) { canStart = false; whyNot = "「乱数・再現」の記録・再生が動いている間は、始められません。"; }
         m_endurancePanel.Draw(m_endurance, canStart, whyNot);
     }
+    ImGui::BeginDisabled(worldLocked);
     m_gameClock.DrawDebugUI(m_editorUi.PanelFlag("Time"));
     m_gameEconomy.DrawDebugUI(m_editorUi.PanelFlag("Economy"));
     m_assetBrowser.DrawDebugUI();
+    ImGui::EndDisabled();
     m_assetViewer.DrawDebugUI();
     m_audioPanel.DrawDebugUI();
     // 耐久試験・自動検証の間は、「Scenario」パネルのセーブ・ロードを止める(試験用の街を、普段のセーブへ書かない・控えを失わない)。
@@ -2831,12 +2887,24 @@ void Game::Draw()
         const char* whyNot = "";
         bool canOperate = true;
         if (!IsInGameScene()) { canOperate = false; whyNot = "ゲームシーンの中だけ、保存・読み込みできます。"; }
-        else if (m_endurance.IsDriving()) { canOperate = false; whyNot = "耐久試験が動いている間は、街を入れ替えられません。"; }
+        else if (m_endurance.IsDriving()) { canOperate = false; whyNot = "耐久試験・自動検証が動いている間は、街を入れ替えられません。"; }
         else if (m_repro.GetState() != SimReproState::Idle) { canOperate = false; whyNot = "「乱数・再現」の記録・再生が動いている間は、街を入れ替えられません。"; }
         else if (m_rewind.IsEnabled()) { canOperate = false; whyNot = "「タイムライン」がONの間は、街を入れ替えられません(OFFにしてください)。"; }
-        m_testMapPanel.Draw(m_testMaps, m_testMapSession, canOperate, whyNot);
+
+        // 自動検証を始められるか: 耐久試験と同じ条件(ゲームシーンのPlayingで、タイムライン・再現セッション・耐久試験が動いていない)。
+        TestMapPanel::TrialAccess trials;
+        trials.endurance = &m_endurance;
+        trials.start = [this](const std::string& id, const SimTrialConditions& conditions, std::string& message) { return StartTestMapTrials(id, conditions, message); };
+        trials.canStart = true;
+        if (!(IsInGameScene() && m_context.mode == GameMode::Playing)) { trials.canStart = false; trials.whyNot = "ゲームシーンのPlayingの時だけ、始められます。"; }
+        else if (m_endurance.IsDriving()) { trials.canStart = false; trials.whyNot = "耐久試験が動いている(または、止まっている)間は、始められません。"; }
+        else if (m_rewind.IsEnabled()) { trials.canStart = false; trials.whyNot = "「タイムライン」がONの間は、始められません(OFFにしてください)。"; }
+        else if (m_repro.GetState() != SimReproState::Idle) { trials.canStart = false; trials.whyNot = "「乱数・再現」の記録・再生が動いている間は、始められません。"; }
+        m_testMapPanel.Draw(m_testMaps, m_testMapSession, canOperate, whyNot, trials);
     }
+    ImGui::BeginDisabled(worldLocked);
     m_areaDebugPanel.Draw(m_areas, m_gameClock, m_demandSystem);
+    ImGui::EndDisabled();
 
     // ホバーのヒントとショートカット一覧。全てのパネルを描いた後。
     m_editorUi.EndFrame(editorFrame);
