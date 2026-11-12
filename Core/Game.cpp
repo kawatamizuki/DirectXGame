@@ -393,6 +393,8 @@ bool Game::Initialize(HWND hwnd)
         sessionIo.capture = io.capture;
         sessionIo.loadBytes = [this](const std::string& bytes, const std::string& label, std::string& message) { return m_scenarioManager.LoadFromBytes(bytes, label, message, false); };
         m_testMapSession.SetIO(sessionIo);
+        // 「Scenario」パネルから通常のセーブを読み込む時は、読み込む前の街の控えが捨てられるので、先に確認する。
+        m_scenarioManager.SetLoadConfirmCheck([this](const std::string& path) { return m_testMapSession.LoadWouldEndSession(path); });
     }
 
     // 「Editor > エディタ機能のON/OFF」に出すスイッチ。全て登録し終えてから、保存してある設定を読む。
@@ -1474,9 +1476,7 @@ void Game::UpdateTestMapSaveGuard()
         if (m_testMapSession.Active().valid)
         {
             const std::string& loaded = m_scenarioManager.LastLoadPath();
-            const bool isTestMapFile = PathGuard::IsInsideDirectory(loaded, ScenarioManager::kTestMapsDirectory);
-            const bool isTestQuickSave = PathGuard::IsInsideDirectory(loaded, TestMapSession::kQuickSavePath);
-            if (!isTestMapFile && !isTestQuickSave)
+            if (m_testMapSession.LoadWouldEndSession(loaded))
             {
                 m_testMapSession.EndSession();
                 m_noticeText = "別のセーブを読み込んだので、テストマップの使用を終えました(F5は、普段のクイックセーブへ戻ります)";

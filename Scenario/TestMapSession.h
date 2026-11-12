@@ -31,6 +31,10 @@ public:
     // クイックセーブの保存先: テストマップ使用中は、上の別のファイル。そうでなければ、normalPath(普段のクイックセーブ)。
     std::string QuickSavePath(const std::string& normalPath) const { return Active().valid ? std::string(kQuickSavePath) : normalPath; }
 
+    // path のセーブを読み込むと、テストマップの使用が終わる(控えが捨てられる)か。使用中で、テストマップのファイルでも、テスト用のクイックセーブでもなければ true。
+    // 読み込みの前の確認(ScenarioManager のパネル)と、読み込んだ後の使用の終了(Game)で、同じ判定を使う。
+    bool LoadWouldEndSession(const std::string& path) const;
+
     // テストマップの使用を、終える(街は、そのまま。使用中の表示と、読み込む前の街の控えを、捨てる)。別のセーブを読み込んだ時・「使用をやめる」で呼ぶ。
     void EndSession() { m_store.ClearActive(); ForgetOriginal(); }
 

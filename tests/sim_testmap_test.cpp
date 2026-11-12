@@ -399,6 +399,7 @@ static void TestSession(const fs::path& sandbox)
 
     // 最初は、控えが無い。使用中でもない。
     CHECK(!session.HasOriginal() && !session.Active().valid);
+    CHECK(!session.LoadWouldEndSession("Saves/my_save.json"));   // 使っていなければ、通常のセーブの読み込みに、確認は要らない
     bool modified = true;
     CHECK(!session.IsLayoutModified(modified));                   // 使用中でなければ、調べられない
 
@@ -467,6 +468,15 @@ static void TestSession(const fs::path& sandbox)
     CHECK(session.QuickSavePath(normalQuickSave) == TestMapSession::kQuickSavePath);
     CHECK(session.QuickSavePath(normalQuickSave) != normalQuickSave);
     CHECK(PathGuard::IsInsideDirectory(session.QuickSavePath(normalQuickSave), normalQuickSave) == false);   // 普段のクイックセーブとは、別のファイル
+    // 通常のセーブを読み込むと使用が終わる(読み込みの前に確認を出す判定)。テストマップのファイル・テスト用のクイックセーブは、終わらない。
+    CHECK(session.LoadWouldEndSession("Saves/my_save.json"));
+    CHECK(session.LoadWouldEndSession(normalQuickSave));
+    CHECK(session.LoadWouldEndSession("Scenarios/tutorial.json"));
+    CHECK(!session.LoadWouldEndSession(TestMapSession::kQuickSavePath));
+    CHECK(!session.LoadWouldEndSession((fs::path(store.Root()) / "map_a.json").string()));
+    CHECK(!session.LoadWouldEndSession((fs::path(store.Root()) / "Drafts" / "map_b.json").string()));
+    // 確認の判定だけでは、何も変わらない(キャンセル相当): 使用中のまま、控えも残る。
+    CHECK(session.Active().valid && session.HasOriginal());
     // 使用をやめる(別のセーブを読み込んだ時・「使用をやめる」): 使用中の表示も、控えも、消える。街は、そのまま。
     const std::string cityBefore = world;
     session.EndSession();

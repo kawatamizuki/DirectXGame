@@ -1,4 +1,15 @@
 ﻿#include "TestMapSession.h"
+#include "PathGuard.h"
+
+bool TestMapSession::LoadWouldEndSession(const std::string& path) const
+{
+    if (!Active().valid)
+    {
+        return false;   // テストマップを使っていなければ、終わる物も無い
+    }
+    // テストマップのファイル(別のテストマップへ移る)と、テスト用のクイックセーブは、使用が続く。
+    return !PathGuard::IsInsideDirectory(path, m_store.Root()) && !PathGuard::IsInsideDirectory(path, kQuickSavePath);
+}
 
 bool TestMapSession::Load(const std::string& id, std::string& message)
 {

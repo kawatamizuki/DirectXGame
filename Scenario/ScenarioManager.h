@@ -60,6 +60,11 @@ public:
     // pathの書き方を変えても、すり抜けられない(PathGuard)。止めている間に、そのファイルへ Save すると、失敗して、reason を知らせる。
     void SetBlockedSavePath(const std::string& path, const std::string& reason) { m_blockedSavePath = path; m_blockedReason = reason; }
 
+    // 「Scenario」パネルから読み込む時の、確認の要否の判定(テストマップ使用中は、読み込むと、読み込む前の街の控えが捨てられるため)。
+    // 判定が true を返すパスは、パネルが確認ダイアログを出し、「読み込む」を押された時だけ Load する。キャンセルすれば、何も変わらない。
+    // 判定が空(既定)なら、確認は出ない。F5/F9・耐久試験など、パネル以外の読み込みには、影響しない。
+    void SetLoadConfirmCheck(std::function<bool(const std::string& path)> check) { m_loadConfirmCheck = std::move(check); }
+
     // 直近に、ファイルから読み込んだ(Load が成功した)パスと、その回数。メモリからの読み込み(巻き戻し・耐久試験・元の街に戻す)は、数えない。
     const std::string& LastLoadPath() const { return m_lastLoadPath; }
     unsigned LoadSerial() const { return m_loadSerial; }
@@ -114,7 +119,10 @@ private:
 
     std::vector<ISaveable*> m_saveables;
     std::vector<std::string> m_protectedDirectories;   // 通常のセーブが書けないフォルダ
-    std::string m_blockedSavePath;                     // 一時的に、通常のセーブを止めているファイル(空=止めていない)
+    std::function<bool(const std::string&)> m_loadConfirmCheck;   // パネルからの読み込みに確認が要るか(空=不要)
+    std::string m_pendingLoadPath;                     // 確認待ちの読み込み先
+    bool m_openLoadConfirm = false;                    // 確認ダイアログを開く合図
+    std::string m_blockedSavePath;                    // 一時的に、通常のセーブを止めているファイル(空=止めていない)
     std::string m_blockedReason;
     std::string m_lastLoadPath;                        // 直近に、ファイルから読み込んだパス
     unsigned m_loadSerial = 0;                         // ファイルからの読み込みが、成功した回数

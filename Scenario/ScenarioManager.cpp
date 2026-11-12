@@ -506,6 +506,19 @@ void ScenarioManager::DrawDebugUI(bool* open)
     ImGui::InputText("Path", m_pathBuffer, sizeof(m_pathBuffer));
 
     std::string message;
+    // 読み込みの入口(Load / Load tutorial map)。テストマップ使用中は、控えが捨てられるので、先に確認する(判定は SetLoadConfirmCheck)。
+    auto requestLoad = [&](const std::string& path)
+    {
+        if (m_loadConfirmCheck && m_loadConfirmCheck(path))
+        {
+            m_pendingLoadPath = path;
+            m_openLoadConfirm = true;
+        }
+        else
+        {
+            Load(path, message);
+        }
+    };
     if (ImGui::Button("Save"))
     {
         Save(m_pathBuffer, message);
@@ -513,13 +526,13 @@ void ScenarioManager::DrawDebugUI(bool* open)
     ImGui::SameLine();
     if (ImGui::Button("Load"))
     {
-        Load(m_pathBuffer, message);
+        requestLoad(m_pathBuffer);
     }
 
     // 初期マップ(Git管理する Scenarios/tutorial.json)は、誤って上書きしないよう、ここからは、保存できない(読み込みだけ)。編集が必要になったら、確認つきの専用の操作を、別に作る。
     if (ImGui::Button("Load tutorial map"))
     {
-        Load(kStartScenarioPath, message);
+        requestLoad(kStartScenarioPath);
     }
 
     ImGui::TextDisabled("F5: quick save / F9: quick load (%s)", kQuickSavePath);
@@ -527,6 +540,36 @@ void ScenarioManager::DrawDebugUI(bool* open)
     {
         ImGui::Separator();
         ImGui::TextWrapped("%s", m_lastMessage.c_str());
+    }
+
+    // ---- 確認: テストマップ使用中に、通常のセーブを読み込む ----
+    if (m_openLoadConfirm)
+    {
+        ImGui::OpenPopup("テストマップ使用中の読み込み##scenario");
+        m_openLoadConfirm = false;
+    }
+    if (ImGui::BeginPopupModal("テストマップ使用中の読み込み##scenario", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        ImGui::TextWrapped("読み込むセーブ: %s", m_pendingLoadPath.c_str());
+        ImGui::Separator();
+        ImGui::BulletText("今の街が、このセーブの状態に、置き換わります");
+        ImGui::BulletText("テストマップを読み込む前の街の復元情報(控え)が、破棄されます");
+        ImGui::BulletText("読み込み後は、「元の街に戻す」が、できなくなります");
+        ImGui::BulletText("テストマップの使用が終わり、F5/F9は、普段のクイックセーブに戻ります");
+        ImGui::TextDisabled("キャンセルすれば、読み込みも、控えの破棄も、行いません。読み込みに失敗した場合も、控えは、そのまま残ります。");
+        if (ImGui::Button("読み込む"))
+        {
+            Load(m_pendingLoadPath, message);
+            m_pendingLoadPath.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("キャンセル"))
+        {
+            m_pendingLoadPath.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
     }
 
     ImGui::End();
