@@ -90,6 +90,9 @@ private:
     // クイックセーブ・クイックロード(F5/F9・メニュー)。テストマップ使用中は、普段のクイックセーブ(Saves/quicksave.json)を守るため、別のファイル(Saves/quicksave_testmap.json)を使う。
     void QuickSave(std::string& message);
     void QuickLoad(std::string& message);
+    // テストマップの自動検証(テストマップ 段階3)を、次のフレームで始める。id のテストマップの原本(ファイルの中身)を読み、実行条件に
+    // テストマップのid・ファイル・指紋・ビルドを書き足して、SimEndurance へ渡す。ファイルは変えない。始められなければ false(message に理由)。
+    bool StartTestMapTrials(const std::string& id, const SimTrialConditions& conditions, std::string& message);
     // テストマップ使用中の、普段のクイックセーブの保護と、別のセーブを読み込んだ時の、使用の終了(毎フレーム)。
     void UpdateTestMapSaveGuard();
 

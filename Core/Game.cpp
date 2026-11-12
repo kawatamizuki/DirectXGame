@@ -12,6 +12,7 @@
 #include "EditorGuard.h"
 #include "FacilityData.h"
 #include "PathGuard.h"
+#include "AtomicFile.h"
 #include <algorithm>
 #include <cfloat>
 #include <cstdio>
@@ -379,6 +380,19 @@ bool Game::Initialize(HWND hwnd)
             m_gameClock.Update(stepSeconds);
             m_demandSystem.Update(m_gameClock.GetScaledDeltaSeconds(), m_context, m_roadSystem.GetSegments());
         });
+    // テストマップの自動検証: 試行が終わった時点の、街の簡単な指標(表示するだけ。合否の判定には使わない)。
+    m_endurance.SetIndicatorFunction([this]()
+    {
+        const DemandStats stats = m_demandSystem.GetStats();
+        SimTrialIndicators indicators;
+        indicators.populationTotal = stats.populationTotal;
+        indicators.agentCount = stats.agentCount;
+        indicators.unmetDemand = stats.unmetDemand;
+        indicators.homelessCount = stats.homelessCount;
+        indicators.strandedCount = stats.strandedCount;
+        indicators.cash = m_gameEconomy.GetCash();
+        return indicators;
+    });
 
     // 統計の出力(放置して集める)。観察者として、異常の数を数える。
     m_statsLogger.Initialize(&m_demandSystem, &m_areas, &m_gameClock);
@@ -1430,6 +1444,14 @@ void Game::HandleScenarioHotkeys()
 
 void Game::QuickSave(std::string& message)
 {
+    if (m_endurance.IsDriving())
+    {
+        // 耐久試験・自動検証の間の街は、試験用の物。普段のクイックセーブへ、書き込まない。
+        message = "耐久試験・自動検証の実行中は、セーブできません(終わると、実行前の街へ戻ります)";
+        m_noticeText = message;
+        m_noticeSecondsLeft = 4.0f;
+        return;
+    }
     const bool testMode = m_testMapSession.Active().valid;
     const std::string path = m_testMapSession.QuickSavePath(ScenarioManager::kQuickSavePath);
     const bool ok = m_scenarioManager.Save(path, message);
@@ -1444,6 +1466,14 @@ void Game::QuickSave(std::string& message)
 
 void Game::QuickLoad(std::string& message)
 {
+    if (m_endurance.IsDriving())
+    {
+        // 読み込むと、実行前の街の控えへ戻せなくなる(試験が中止になる)ので、実行中は読み込まない。
+        message = "耐久試験・自動検証の実行中は、ロードできません(中止してから、読み込んでください)";
+        m_noticeText = message;
+        m_noticeSecondsLeft = 4.0f;
+        return;
+    }
     const bool testMode = m_testMapSession.Active().valid;
     const std::string path = m_testMapSession.QuickSavePath(ScenarioManager::kQuickSavePath);
     const bool ok = m_scenarioManager.Load(path, message);
@@ -1453,6 +1483,30 @@ void Game::QuickLoad(std::string& message)
                           : "テスト用のクイックセーブを読み込めませんでした(まだ、保存していない場合は、F5で保存してください)";
         m_noticeSecondsLeft = 4.0f;
     }
+}
+
+bool Game::StartTestMapTrials(const std::string& id, const SimTrialConditions& conditionsIn, std::string& message)
+{
+    // テストマップの原本(ファイルの中身)を読むだけ。ファイルは変えない。使用中のテストマップの状態(控え・表示)にも、触れない。
+    TestMapEntry entry;
+    if (!m_testMaps.Find(id, entry) || !entry.valid)
+    {
+        message = "テストマップが見つからない、または、読めません: " + id + (entry.error.empty() ? std::string() : "(" + entry.error + ")");
+        return false;
+    }
+    std::string bytes;
+    std::string error;
+    if (!ReadFileBytes(entry.path, bytes, error))
+    {
+        message = "テストマップを読めません: " + error;
+        return false;
+    }
+    SimTrialConditions conditions = conditionsIn;
+    conditions.testMapId = entry.id;
+    conditions.testMapPath = entry.path;
+    TestMapStore::ComputeFingerprint(bytes, conditions.testMapFingerprint);
+    conditions.gameBuild = __DATE__ " " __TIME__;
+    return m_endurance.RequestTrials(bytes, conditions, message);
 }
 
 void Game::UpdateTestMapSaveGuard()
@@ -2764,7 +2818,10 @@ void Game::Draw()
     m_assetBrowser.DrawDebugUI();
     m_assetViewer.DrawDebugUI();
     m_audioPanel.DrawDebugUI();
+    // 耐久試験・自動検証の間は、「Scenario」パネルのセーブ・ロードを止める(試験用の街を、普段のセーブへ書かない・控えを失わない)。
+    ImGui::BeginDisabled(m_endurance.IsDriving());
     m_scenarioManager.DrawDebugUI(m_editorUi.PanelFlag("Scenario"));
+    ImGui::EndDisabled();
     Profiler::DrawDebugUI(m_objects, m_roadSystem, m_occupancyGrid, m_demandSystem, m_editorUi.PanelFlag("Profiler"));
     Debug::DrawDebugUI(m_editorUi.PanelFlag("Log"));
     m_memoryPanel.Draw([this]() { return BuildMemoryReport(); });

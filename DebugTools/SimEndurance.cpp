@@ -119,6 +119,7 @@ void SimEndurance::NotifyWorldReplaced()
         return;
     }
     m_state = SimEnduranceState::Idle;
+    RestoreSeedSetting();   // 自動検証の途中なら、設定の種を、実行前の値へ戻す(読み込まれた街は、そのまま)
     m_message = "中止しました: 試験の途中で、街が読み込み直されました(ロードなど)";
 }
 
@@ -212,7 +213,15 @@ void SimEndurance::Update(float /*realDeltaSeconds*/)
         m_requestCancel = false;
         if (m_state == SimEnduranceState::Running)
         {
-            FinishRun("中止しました", false);
+            if (m_mode == SimEnduranceMode::TestMapTrials)
+            {
+                RecordTrial("中止しました", false);
+                ConcludeTrials("中止しました");
+            }
+            else
+            {
+                FinishRun("中止しました", false);
+            }
         }
     }
     if (m_requestKeep)
@@ -241,6 +250,14 @@ void SimEndurance::Update(float /*realDeltaSeconds*/)
             Begin(m_requestMode);
         }
     }
+    if (m_requestTrials)
+    {
+        m_requestTrials = false;
+        if (m_state == SimEnduranceState::Idle)
+        {
+            BeginTrials();
+        }
+    }
     if (m_state == SimEnduranceState::Running)
     {
         RunSlice();
@@ -251,11 +268,30 @@ void SimEndurance::RunSlice()
 {
     const auto frameStart = std::chrono::steady_clock::now();
     const double budget = static_cast<double>((std::max)(1, m_settings.budgetMilliseconds));
-    m_clock->SetTimeScale((std::max)(0.1f, m_settings.timeScale));
+    m_clock->SetTimeScale(ActiveTimeScale());
     while (true)
     {
         const int weeksDone = m_clock->GetWeekCount() - m_startWeek;
-        if (m_secondRun)
+        if (m_mode == SimEnduranceMode::TestMapTrials)
+        {
+            // 自動検証: 1回の試行の終わり。記録して、次の試行へ(続きは、次のフレームで)。
+            if (weeksDone >= m_trialConditions.weeks)
+            {
+                FinishTrial("指定の週数に達しました", true);
+                return;
+            }
+            if (m_anomalyCount > 0 && m_trialConditions.stopTrialOnAnomaly)
+            {
+                FinishTrial("異常が出たので、この試行を止めました", false);
+                return;
+            }
+            if (ElapsedSeconds(m_runStart) >= static_cast<double>(m_trialConditions.wallLimitSecondsPerTrial))
+            {
+                FinishTrial("実時間の上限に達したので、この試行を止めました", false);
+                return;
+            }
+        }
+        else if (m_secondRun)
         {
             if (m_steps >= m_firstRunSteps)
             {
@@ -276,7 +312,8 @@ void SimEndurance::RunSlice()
                 return;
             }
         }
-        if (ElapsedSeconds(m_runStart) + m_wallBefore >= static_cast<double>((std::max)(1, m_settings.wallLimitSeconds)))
+        if (m_mode != SimEnduranceMode::TestMapTrials &&
+            ElapsedSeconds(m_runStart) + m_wallBefore >= static_cast<double>((std::max)(1, m_settings.wallLimitSeconds)))
         {
             FinishRun("実時間の上限に達したので、止めました", false);
             return;
@@ -284,7 +321,7 @@ void SimEndurance::RunSlice()
 
         m_stepFunction(kStepSeconds, true);
         ++m_steps;
-        if (m_settings.sampleIntervalSteps > 0 && (m_steps % static_cast<uint64_t>(m_settings.sampleIntervalSteps)) == 0)
+        if (m_mode != SimEnduranceMode::TestMapTrials && m_settings.sampleIntervalSteps > 0 && (m_steps % static_cast<uint64_t>(m_settings.sampleIntervalSteps)) == 0)
         {
             Sample();
         }
@@ -374,15 +411,192 @@ void SimEndurance::Conclude()
     }
 }
 
-void SimEndurance::Restore()
+bool SimEndurance::Restore()
 {
-    LoadBase();
+    const bool ok = LoadBase();
     m_clock->SetTimeScale(m_userScale);
     m_state = SimEnduranceState::Idle;
-    if (m_message.empty() || m_message.find("異常が出たので止めました") == 0)
+    if (ok && (m_message.empty() || m_message.find("異常が出たので止めました") == 0))
     {
         m_message = "元の世界へ戻しました(試験の前の状態・時間の速度)";
     }
+    return ok;
+}
+
+float SimEndurance::ActiveTimeScale() const
+{
+    const float scale = (m_mode == SimEnduranceMode::TestMapTrials) ? m_trialConditions.timeScale : m_settings.timeScale;
+    return (std::max)(0.1f, scale);
+}
+
+// ---- テストマップの自動検証 ----
+
+bool SimEndurance::RequestTrials(const std::string& trialBaseBytes, const SimTrialConditions& conditions, std::string& message)
+{
+    if (m_state != SimEnduranceState::Idle || m_requestStart || m_requestTrials)
+    {
+        message = "耐久試験・自動検証が動いている間は、始められません";
+        return false;
+    }
+    const std::string problem = ValidateTrialConditions(conditions);
+    if (!problem.empty())
+    {
+        message = "始められません: " + problem;
+        return false;
+    }
+    if (trialBaseBytes.empty())
+    {
+        message = "始められません: テストマップの中身が空です";
+        return false;
+    }
+    m_pendingTrialBytes = trialBaseBytes;
+    m_pendingConditions = conditions;
+    m_requestTrials = true;
+    message = "自動検証を始めます";
+    return true;
+}
+
+bool SimEndurance::BeginTrials()
+{
+    if (!m_demand->GetDebugRecorder().IsEnabled())
+    {
+        m_message = "記録がOFFです(住民デバッグの「記録する」をONにしてください。異常の検出と指紋は、記録の仕組みを使います)";
+        return false;
+    }
+    // 実行前の街(終わったら戻す)を、メモリに控える。ファイルには書かない(通常のセーブを、変えない)。
+    std::string message;
+    if (!m_scenario->CaptureBytes(m_baseBytes, message))
+    {
+        m_message = "実行前の街を控えられません: " + message;
+        return false;
+    }
+    m_trialBaseBytes = std::move(m_pendingTrialBytes);
+    m_pendingTrialBytes.clear();
+    m_trialConditions = m_pendingConditions;
+    m_trialConditions.settings = m_demand->GetSettings();      // 使った設定値(記録だけ)
+    m_trialSeeds = BuildTrialSeeds(m_trialConditions);
+    m_trialIndex = 0;
+    m_trialResults.clear();
+    m_trialsValid = true;
+    m_userScale = m_clock->GetTimeScale();
+    m_mode = SimEnduranceMode::TestMapTrials;
+    m_secondRun = false;
+    m_wallBefore = 0.0;
+    // 試行の間だけ、設定の種を、試行の種で置き換える(新しく生まれる住民の性格も、この種で決まる)。終わったら戻す。
+    m_savedSettingsSeed = m_demand->GetSettings().seed;
+    m_seedOverridden = true;
+    m_state = SimEnduranceState::Running;
+    if (!StartTrial())
+    {
+        ConcludeTrials("テストマップを読み込めませんでした");
+        return false;
+    }
+    return true;
+}
+
+bool SimEndurance::LoadTrialBase(uint32_t seed)
+{
+    // 原本を、指定の種(FixedSeed)で読み込む。セーブに残っている乱数の状態は使わない(種だけで、乱数の列が決まる)。
+    m_demand->GetSettings().seed = seed;
+    const SimRandomMode previous = m_demand->GetRandomMode();
+    m_demand->SetRandomMode(SimRandomMode::FixedSeed);
+    std::string message;
+    m_expectedLoad = true;
+    const bool ok = m_scenario->LoadFromBytes(m_trialBaseBytes, "testmap-trial", message, true);
+    m_expectedLoad = false;
+    m_demand->SetRandomMode(previous);
+    if (!ok)
+    {
+        m_message = "テストマップを読み込めません: " + message;
+    }
+    return ok;
+}
+
+bool SimEndurance::StartTrial()
+{
+    if (m_trialIndex >= m_trialSeeds.size() || !LoadTrialBase(m_trialSeeds[m_trialIndex]))
+    {
+        return false;
+    }
+    m_clock->SetTimeScale(ActiveTimeScale());
+    m_steps = 0;
+    m_startWeek = m_clock->GetWeekCount();
+    m_anomalyCount = 0;
+    m_anomalyByKind.fill(0);
+    m_firstAnomaly = SimEnduranceAnomaly{};
+    m_maxFrameMs = 0.0;
+    m_runStart = std::chrono::steady_clock::now();
+    m_message = "自動検証: " + std::to_string(m_trialIndex + 1) + " / " + std::to_string(m_trialSeeds.size()) + " 回目を進めています";
+    return true;
+}
+
+void SimEndurance::RecordTrial(const std::string& reason, bool completed)
+{
+    SimTrialResult result;
+    result.index = static_cast<int>(m_trialIndex);
+    result.seed = m_trialIndex < m_trialSeeds.size() ? m_trialSeeds[m_trialIndex] : 0;
+    result.determinismRun = m_trialConditions.determinismCheck && m_trialIndex + 1 == m_trialSeeds.size() && m_trialSeeds.size() >= 2;
+    result.completed = completed;
+    result.stopReason = reason;
+    result.steps = m_steps;
+    result.weeksDone = m_clock->GetWeekCount() - m_startWeek;
+    result.wallSeconds = ElapsedSeconds(m_runStart);
+    result.anomalies = m_anomalyCount;
+    result.digest = m_demand->GetRunDigest();
+    if (m_indicatorFunction)
+    {
+        result.indicators = m_indicatorFunction();
+    }
+    m_trialResults.push_back(result);
+}
+
+void SimEndurance::FinishTrial(const std::string& reason, bool completed)
+{
+    RecordTrial(reason, completed);
+    ++m_trialIndex;
+    if (m_trialIndex >= m_trialSeeds.size())
+    {
+        ConcludeTrials("全ての試行が終わりました");
+        return;
+    }
+    if (!StartTrial())
+    {
+        ConcludeTrials("次の試行の、テストマップを読み込めませんでした");
+    }
+}
+
+void SimEndurance::RestoreSeedSetting()
+{
+    if (m_seedOverridden)
+    {
+        m_demand->GetSettings().seed = m_savedSettingsSeed;
+        m_seedOverridden = false;
+    }
+}
+
+void SimEndurance::ConcludeTrials(const std::string& reason)
+{
+    // 先に、設定の種を戻す(実行前の街の、新しく生まれる住民の性格が、試行の種で決まらないように)。
+    // 次に、実行前の街を、控えから戻す(乱数の状態・時間の倍率も、実行前のまま)。
+    RestoreSeedSetting();
+    const std::string failure = m_message;
+    const bool restored = Restore();
+    if (!restored)
+    {
+        m_message = "自動検証を終えましたが、実行前の街へ戻せませんでした(" + m_message + ")。F9などで、セーブを読み込み直してください";
+        return;
+    }
+    std::string text = "自動検証: " + reason + "(" + std::to_string(m_trialResults.size()) + " 回)。街は、実行前の状態へ戻しました";
+    if (reason.find("読み込") != std::string::npos && !failure.empty())
+    {
+        text += "。" + failure;
+    }
+    const SimTrialDeterminism determinism = EvaluateDeterminism(m_trialResults);
+    if (determinism.checked)
+    {
+        text += determinism.matched ? "。決定論の確認: 同じ種の2回の指紋が、一致しました" : "。決定論の確認: 同じ種の2回の指紋が、一致しませんでした";
+    }
+    m_message = text;
 }
 
 void SimEndurance::WriteCsv()

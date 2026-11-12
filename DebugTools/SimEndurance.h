@@ -7,6 +7,7 @@
 #include <vector>
 #include "SimDebugRecorder.h"
 #include "SimRunDigest.h"
+#include "SimTrial.h"
 
 class DemandSystem;
 class GameClock;
@@ -24,6 +25,10 @@ class ScenarioManager;
 //  ・決定論テスト: 同じ基点・同じ乱数の状態から、同じステップ数を2回進めて、イベントの指紋が一致するかを調べる。
 //  ・異常は、記録の観察者として数える(記録の容量で、古いイベントを捨てても、数え落とさない)。記録がONの間だけ(Editorのビルド)。
 //  ・「プレイヤーの操作」は入れない(同じ状態から、同じ時間を進めるだけ)。
+//  ・テストマップの自動検証(テストマップ 段階3): 同じ進め方で、テストマップの原本から、試行を何回か進める(RequestTrials)。
+//    「実行前の街」(m_baseBytes。終わったら戻す)と「試行の原本」(m_trialBaseBytes。毎回ここから始める)は、別々に持つ。
+//    試行ごとに、乱数を「指定の種」(FixedSeed)で始める。結果はメモリに持つだけで、ファイルには書かない(保存は段階4)。
+//    異常で止まっても、Held にはしない(必ず、実行前の街へ戻す)。
 enum class SimEnduranceState : uint8_t
 {
     Idle,       // 何もしていない
@@ -34,7 +39,8 @@ enum class SimEnduranceState : uint8_t
 enum class SimEnduranceMode : uint8_t
 {
     Endurance,      // 耐久試験: 指定の週数を進めて、異常・負荷を調べる
-    Determinism     // 決定論テスト: 同じ条件で2回進めて、指紋が一致するかを調べる
+    Determinism,    // 決定論テスト: 同じ条件で2回進めて、指紋が一致するかを調べる
+    TestMapTrials   // テストマップの自動検証: テストマップの原本から、試行を何回か進める
 };
 
 struct SimEnduranceSettings
@@ -104,6 +110,7 @@ class SimEndurance : public ISimRecordObserver
 {
 public:
     using StepFunction = std::function<void(float, bool)>;
+    using IndicatorFunction = std::function<SimTrialIndicators()>;   // 試行が終わった時点の、街の簡単な指標を集める(ゲーム側が渡す)
     static constexpr float kStepSeconds = 1.0f / 60.0f;
     static constexpr const char* kOutputDirectory = "Saves/endurance";
 
@@ -114,6 +121,18 @@ public:
     void RequestCancel() { m_requestCancel = true; }
     void RequestKeepWorld() { m_requestKeep = true; }       // Held: この状態のまま、ふだんのプレイに戻る
     void RequestRestoreWorld() { m_requestRestore = true; } // Held: 元の世界へ戻す
+
+    // ---- テストマップの自動検証 ----
+    void SetIndicatorFunction(IndicatorFunction function) { m_indicatorFunction = std::move(function); }
+    // 自動検証を、次の Update で始める。trialBaseBytes = テストマップの原本(ファイルの中身)。
+    // 条件がおかしい・動いている最中なら、false(message に理由)。中止は RequestCancel。
+    bool RequestTrials(const std::string& trialBaseBytes, const SimTrialConditions& conditions, std::string& message);
+    bool HasTrialRun() const { return m_trialsValid; }                                     // 一度でも、自動検証を始めたか
+    const SimTrialConditions& GetTrialConditions() const { return m_trialConditions; }   // 最後の(実行中の)自動検証の条件
+    const std::vector<SimTrialResult>& GetTrialResults() const { return m_trialResults; }
+    SimTrialDeterminism GetTrialDeterminism() const { return EvaluateDeterminism(m_trialResults); }
+    size_t GetTrialIndex() const { return m_trialIndex; }                                 // 実行中の試行(0から)
+    size_t GetTrialTotal() const { return m_trialSeeds.size(); }                          // 試行の総数(決定論の確認の1回を含む)
 
     // 実行中・止まっている間は、時計と住民の更新を、このクラスが決める。
     bool IsDriving() const { return m_state != SimEnduranceState::Idle; }
@@ -134,7 +153,11 @@ public:
     const std::vector<SimEnduranceSample>& GetSamples() const { return m_samples; }
     const std::string& GetMessage() const { return m_message; }
     // 基点の保存データ・計測の表が使っているメモリの概算(バイト)。メモリのパネル用。
-    size_t EstimateBytes() const { return m_baseBytes.capacity() + m_samples.capacity() * sizeof(SimEnduranceSample); }
+    size_t EstimateBytes() const
+    {
+        return m_baseBytes.capacity() + m_samples.capacity() * sizeof(SimEnduranceSample) + m_trialBaseBytes.capacity() + m_pendingTrialBytes.capacity() +
+               m_trialResults.capacity() * sizeof(SimTrialResult);
+    }
 
     // ---- 記録の観察者(異常を数える) ----
     void OnEvent(const SimEvent& event) override;
@@ -149,7 +172,17 @@ private:
     void RunSlice();
     void FinishRun(const std::string& reason, bool completed);
     void Conclude();
-    void Restore();
+    bool Restore();                 // 実行前の街へ戻す(読み込めなかったら、false)
+
+    // ---- テストマップの自動検証 ----
+    bool BeginTrials();
+    bool StartTrial();              // 原本を、今の試行の種で読み込んで、計測を始める
+    bool LoadTrialBase(uint32_t seed);
+    void RecordTrial(const std::string& reason, bool completed);
+    void FinishTrial(const std::string& reason, bool completed);    // 記録して、次の試行へ(最後なら、終える)
+    void ConcludeTrials(const std::string& reason);                 // 種を戻して、実行前の街へ戻す
+    void RestoreSeedSetting();
+    float ActiveTimeScale() const;
     void WriteCsv();
     void Sample();
 
@@ -188,4 +221,18 @@ private:
     bool m_requestCancel = false;
     bool m_requestKeep = false;
     bool m_requestRestore = false;
+
+    // ---- テストマップの自動検証 ----
+    IndicatorFunction m_indicatorFunction;
+    std::string m_trialBaseBytes;           // 試行の原本(テストマップのファイルの中身)。実行前の街(m_baseBytes)とは別に持つ
+    std::string m_pendingTrialBytes;        // 始める要求の原本(次の Update で、m_trialBaseBytes へ移す)
+    SimTrialConditions m_pendingConditions; // 始める要求の条件
+    bool m_requestTrials = false;
+    SimTrialConditions m_trialConditions;   // 実行中(最後)の条件
+    std::vector<uint32_t> m_trialSeeds;     // 試行ごとの種の並び
+    size_t m_trialIndex = 0;                // 実行中の試行
+    std::vector<SimTrialResult> m_trialResults;
+    bool m_trialsValid = false;
+    uint32_t m_savedSettingsSeed = 0;       // 実行前の、設定の種(settings.seed)。終わったら戻す
+    bool m_seedOverridden = false;          // 設定の種を、試行の種で置き換えている最中か
 };
