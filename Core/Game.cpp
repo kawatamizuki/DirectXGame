@@ -359,6 +359,7 @@ bool Game::Initialize(HWND hwnd)
         m_repro.NotifyWorldReplaced(); // 記録・再生の途中で、街が読み込み直されたら、中止する
         m_rewind.NotifyWorldReplaced(); // タイムラインは、(自分の巻き戻し以外で)街が入れ替わったら、記録を最初からやり直す
         m_endurance.NotifyWorldReplaced(); // 耐久試験は、途中で街が入れ替わったら、中止する
+        m_fixedStep.Reset();               // 前の街で貯まっていた時間を、新しい街に持ち込まない(読み込んだ直後に、まとめて進めない)
     });
     m_repro.Initialize(&m_demandSystem, &m_scenarioManager, &m_gameClock, &m_objects);
     m_rewind.Initialize(&m_demandSystem, &m_scenarioManager, &m_gameClock, &m_objects,
@@ -485,10 +486,17 @@ void Game::Update()
     {
         clockDelta = 0.0f; // Stop(Editing)の間は、住民だけでなく、ゲーム内の時間も止める(時刻は、Timeパネルのスライダーで動かせる)
     }
-    // タイムラインがONの間は、ゲームシーンの時計も、住民の更新と一緒に、タイムラインが決める(下)。
-    if (!((m_rewind.IsDriving() || m_endurance.IsDriving()) && IsInGameScene()))
+    // 通常プレイ(ゲームシーンの Playing)は、固定時間刻みで、時計と住民を一緒に進める(下の UpdateSimulationFixed)。
+    // それ以外(タイトル画面の背景・Editing・再現の記録/再生中)は、今までどおり、ここで時計を進める。
+    // タイムライン・耐久試験がONの間は、ゲームシーンの時計も、住民の更新と一緒に、それらが決める(下)。
+    const bool fixedSim = UsesFixedSimulation();
+    if (!fixedSim)
     {
-        m_gameClock.Update(clockDelta);
+        m_fixedStep.Reset();    // 固定刻みを使っていない間の時間は、貯めない(戻った時に、まとめて進めない)
+        if (!((m_rewind.IsDriving() || m_endurance.IsDriving()) && IsInGameScene()))
+        {
+            m_gameClock.Update(clockDelta);
+        }
     }
 
     for (auto& obj : m_objects)
@@ -617,9 +625,14 @@ void Game::Update()
             // タイムラインON: 固定刻みで、時計と住民を、何ステップか進める(巻き戻し中は、進め直し)。
             m_rewind.Update(m_timeManager.GetDeltaTime(), true);
         }
+        else if (fixedSim)
+        {
+            // 通常プレイ: 固定時間刻み(ゲーム内 1/60秒)で、時計 → 住民 を、貯まった回数だけ進める。
+            UpdateSimulationFixed(m_timeManager.GetDeltaTime());
+        }
         else
         {
-            // 住民の移動・需要更新は、ゲーム内時間の倍率(停止/倍速)に従って進める。
+            // 再現(記録・再生)の間: 今までどおり、1フレームに1回、再現が決めた刻み × 倍率で進める(F3 で固定刻みにそろえる)。
             m_demandSystem.Update(m_gameClock.GetScaledDeltaSeconds(), m_context, m_roadSystem.GetSegments());
 
             // 一時停止の条件に当てはまるイベントが記録されていたら、シミュレーションの更新が済んだ、この安全な所で、すぐ時間を止める
@@ -1521,6 +1534,53 @@ bool Game::StartTestMapTrials(const std::string& id, const SimTrialConditions& c
     TestMapStore::ComputeFingerprint(bytes, conditions.testMapFingerprint);
     conditions.gameBuild = __DATE__ " " __TIME__;
     return m_endurance.RequestTrials(bytes, conditions, message);
+}
+
+bool Game::UsesFixedSimulation() const
+{
+    return IsInGameScene() && m_context.mode == GameMode::Playing && m_repro.GetState() == SimReproState::Idle &&
+           !m_rewind.IsDriving() && !m_endurance.IsDriving();
+}
+
+int Game::UpdateSimulationFixed(float realDeltaSeconds)
+{
+    const float timeScale = m_gameClock.GetTimeScale();
+    const int steps = m_fixedStep.Accumulate(realDeltaSeconds, timeScale);
+    if (steps == 0 && !(timeScale > 0.0f))
+    {
+        // 一時停止中(倍率0): 時間は進めないが、今までどおり、進める時間0で住民の更新を1回呼ぶ
+        // (行動テストのすぐ効く指示(帰宅・行き先変更・体力)・住民の表示を、止めている間も反映するため)。
+        // 動いている間(倍率>0)は、回数が0のフレームでは呼ばない(FPSによって呼ぶ回数が変わり、結果がずれないように)。
+        m_gameClock.Advance(0.0f);
+        m_demandSystem.Update(0.0f, m_context, m_roadSystem.GetSegments());
+        if (m_demandSystem.GetDebugRecorder().IsPauseActive())
+        {
+            SyncMenuTimeScale();
+        }
+        return 0;
+    }
+    return RunSimulationSteps(steps);
+}
+
+int Game::RunSimulationSteps(int steps)
+{
+    const float step = static_cast<float>(m_fixedStep.StepGameSeconds());
+    for (int i = 0; i < steps; ++i)
+    {
+        // 1ステップ: 時計 → 住民(耐久試験・自動検証と同じ順番)。
+        m_gameClock.Advance(step);
+        m_demandSystem.Update(m_gameClock.GetScaledDeltaSeconds(), m_context, m_roadSystem.GetSegments());
+
+        // 一時停止の条件(住民デバッグ)に当てはまるイベントが記録されたら、このステップで止めて、時間を止める。
+        // 残りの回数は進めない(倍速・低FPSで、1フレームに何回も進めている時に、止まるべき所を通り過ぎないように)。
+        if (m_demandSystem.GetDebugRecorder().IsPauseActive())
+        {
+            SyncMenuTimeScale();
+            m_fixedStep.Reset();
+            return i + 1;
+        }
+    }
+    return steps;
 }
 
 void Game::EnforceWorldLock()

@@ -31,6 +31,7 @@
 #include "TestMapStore.h"
 #include "TestMapSession.h"
 #include "TestMapPanel.h"
+#include "FixedTimestep.h"
 #include "MemoryPanel.h"
 #include "AreaDebugPanel.h"
 #include "CityCameraController.h"
@@ -98,6 +99,16 @@ private:
     bool IsWorldLocked() const { return m_endurance.GetState() == SimEnduranceState::Running; }
     // 止めている間は、毎フレーム、編集モード・置きかけのツール・エディタの選択を、やめさせる(始まった時は、知らせを出す)。
     void EnforceWorldLock();
+
+    // ---- シミュレーションの固定時間刻み(通常プレイ。F2) ----
+    // 今フレームの通常プレイを、固定刻みで進めるか: ゲームシーンの Playing で、再現・巻き戻し・耐久試験が時計と住民を動かしていない時。
+    // (再現・巻き戻し・耐久試験・自動検証は、F3 で同じ進め方にそろえるまで、今までの進め方のまま)
+    bool UsesFixedSimulation() const;
+    // 1フレーム分: 実時間 × 倍率を貯め、固定刻み(ゲーム内 1/60秒)の分だけ、時計 → 住民 の順で進める。進めた回数を返す。
+    // 一時停止中(倍率0)は、今までどおり、進める時間0で住民の更新を1回だけ呼ぶ(行動テストのすぐ効く指示・見た目の表示のため)。
+    int UpdateSimulationFixed(float realDeltaSeconds);
+    // 固定刻みで steps 回進める(時計 → 住民)。一時停止の条件(住民デバッグ)に当たったら、そこで止めて、時間を止める。進めた回数を返す。
+    int RunSimulationSteps(int steps);
     // テストマップ使用中の、普段のクイックセーブの保護と、別のセーブを読み込んだ時の、使用の終了(毎フレーム)。
     void UpdateTestMapSaveGuard();
 
@@ -345,6 +356,7 @@ private:
 
     // 耐久試験・決定論テスト(長い期間を、画面を描かずに進めて、異常・負荷・決定論を調べる)。実行中は、時計と住民の更新を、これが決める。
     SimEndurance m_endurance;
+    FixedTimestep m_fixedStep;          // 通常プレイの固定刻み(ゲーム内 1/60秒。実時間 × 倍率を貯めて、刻みの分だけ進める)
     SimEndurancePanel m_endurancePanel;
 
     // 放置して集める、行動の統計の出力(週ごとにファイルへ追記)。記録・出力は、乱数・住民の状態に触れない。
