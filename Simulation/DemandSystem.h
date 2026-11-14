@@ -558,6 +558,10 @@ private:
 
     // 数秒おきに呼ぶ: 新しい住民の生成、外出の判定と施設選び、統計更新を行う(重い処理はここだけ)。
     void RunDemandTick(GameContext& context, std::vector<RoadSegment>& segments);
+    // 施設の所属(m_areaOfFacility: 施設のid → 区画のid)を、今の建物と区画から作り直す。区画ごとの所属施設の一覧を返す。
+    // 需要の計算(RunDemandTick)と、読み込み直後の作り直し(Update の最初)で、同じこの関数を使う(結果が食い違わないように)。
+    // 施設 = 建物のうち IsFacility の種類(道路の接続は問わない)。所属の規則は ComputeAreaMembers(P2-A)のまま。
+    std::vector<AreaMembers> RebuildAreaMembership(const std::vector<GameObject>& objects);
 
     // 記録を足す(古いものから捨てる)。
     void PushDecisionLog(DecisionLogEntry entry);
@@ -584,6 +588,9 @@ private:
     AreaLedger m_areaLedger;                // 商業エリアの区画ごとの、外出・来訪者・利用・売上(P2-C1)
     const IAreaSource* m_areaSource = nullptr; // 区画を読む窓口(読み取り専用。所有しない)
     std::unordered_map<uint32_t, uint32_t> m_areaOfFacility; // 施設のid → 所属する区画のid(直近の更新の時点。保存しない)
+    // 施設の所属を作り直す必要があるか。読み込み(Reset)で立て、次の Update の最初で作り直して下ろす。
+    // (所属は保存しない派生データ。以前は、次の需要の計算(約3秒後)まで空のままで、その間の利用・立ち寄り・週末の評判が、区画の外として扱われていた)
+    bool m_areaMembershipDirty = true;
     int m_weeksEnded = 0;                   // 処理した週末の回数(月末の判定に使う。セーブされる)
 
     float m_tickTimer = 0.0f;

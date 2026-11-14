@@ -173,6 +173,7 @@ void DemandSystem::Reset()
     m_stopTally = StopoverTally{};
     m_lastStopPull = 0.0f;
     m_areaOfFacility.clear();
+    m_areaMembershipDirty = true;  // 区画(商業エリア)は、住民より後に読み込まれるので、ここでは作らない。次の Update の最初で作り直す
     m_weeksEnded = 0;
     m_decisionLog.clear();
     m_debugRecorder.StartNewRun(); // 住民の入れ替わり(ロード・リセット)で、古い記録は意味を失う(別の世界になる)
@@ -773,6 +774,12 @@ void DemandSystem::Load(const Json& section, int /*version*/, const LoadContext&
 void DemandSystem::Update(float deltaTime, GameContext& context, std::vector<RoadSegment>& segments)
 {
     m_roads = &segments;
+    // 読み込み直後: 所属を使う処理(週末の評判・施設の利用の終わり・立ち寄り)より先に、施設の所属を作り直す。
+    // 読み込みが全て終わった後(区画も読み込まれた後)の、最初の更新で行う。一時停止中(進める時間0の更新)でも行う。
+    if (m_areaMembershipDirty && context.objects)
+    {
+        RebuildAreaMembership(*context.objects);
+    }
     ProcessClockEvents(context);
     AdvanceAgentTimers(context);
     ProcessImmediateTestPlans(context); // 行動テストの、すぐ消化できる指示(帰宅・行き先変更・体力)。更新の最初の、安全なタイミングで
@@ -2514,6 +2521,39 @@ void DemandSystem::FinalizeTestOnOutingEnd(ResidentAgent& agent, GameContext& co
     }
 }
 
+std::vector<AreaMembers> DemandSystem::RebuildAreaMembership(const std::vector<GameObject>& objects)
+{
+    m_areaOfFacility.clear();
+    m_areaMembershipDirty = false;
+    std::vector<AreaMembers> members;
+    if (!m_areaSource || m_areaSource->GetAreas().empty())
+    {
+        return members;
+    }
+    // 施設の一覧: 需要の計算(RunDemandTick)の施設の一覧と、同じ条件・同じ並び(建物の並び順。住宅・オフィスは除く)。
+    std::vector<AreaFacility> areaFacilities;
+    for (const GameObject& obj : objects)
+    {
+        if (obj.kind != ObjectKind::Building || obj.buildingType == BuildingType::House || obj.buildingType == BuildingType::Office ||
+            !IsFacility(obj.buildingType))
+        {
+            continue;
+        }
+        AreaFacility item;
+        item.objectId = obj.id;
+        item.type = obj.buildingType;
+        item.footprint = obj.placement.footprintRect;
+        areaFacilities.push_back(item);
+    }
+    const std::vector<CommercialArea>& areas = m_areaSource->GetAreas();
+    members = ComputeAreaMembers(areas, areaFacilities, m_areaSource->GetAreaSettings());
+    for (size_t i = 0; i < members.size() && i < areas.size(); ++i)
+    {
+        for (uint32_t id : members[i].facilityIds) { m_areaOfFacility[id] = members[i].areaId; }
+    }
+    return members;
+}
+
 void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>& segments)
 {
     PROFILE_SCOPE("DemandSystem::RunDemandTick");
@@ -2564,28 +2604,16 @@ void DemandSystem::RunDemandTick(GameContext& context, std::vector<RoadSegment>&
         }
     }
 
-    // 商業エリア(P2-C1): 施設の所属を、この施設一覧から求める(ゲームのフレーム・描画に依存しない。P2-Aの規則をそのまま使う)。
+    // 商業エリア(P2-C1): 施設の所属を求める(ゲームのフレーム・描画に依存しない。P2-Aの規則をそのまま使う)。
+    // 読み込み直後の作り直し(Update の最初)と、同じ関数で作る。
     // 外出の目的の候補になる区画(周知済みで、所属施設がある。倍率が0の状態は除く)が、1つでもあれば、外出の理由「エリア」の候補がある。
-    std::vector<AreaMembers> areaMembers;
-    m_areaOfFacility.clear();
+    std::vector<AreaMembers> areaMembers = RebuildAreaMembership(*context.objects);
     bool areaAvailable = false;
-    if (m_areaSource && !m_areaSource->GetAreas().empty())
+    if (m_areaSource)
     {
         const std::vector<CommercialArea>& areas = m_areaSource->GetAreas();
-        std::vector<AreaFacility> areaFacilities;
-        areaFacilities.reserve(facilities.size());
-        for (const FacilitySnapshot& facility : facilities)
-        {
-            AreaFacility item;
-            item.objectId = facility.building.id;
-            item.type = facility.type;
-            item.footprint = facility.footprint;
-            areaFacilities.push_back(item);
-        }
-        areaMembers = ComputeAreaMembers(areas, areaFacilities, m_areaSource->GetAreaSettings());
         for (size_t i = 0; i < areaMembers.size() && i < areas.size(); ++i)
         {
-            for (uint32_t id : areaMembers[i].facilityIds) { m_areaOfFacility[id] = areaMembers[i].areaId; }
             const float factor = areas[i].published ? m_settings.areaPublishedFactor : m_settings.areaUnpublishedFactor;
             if (factor > 0.0f && !areaMembers[i].facilityIds.empty()) { areaAvailable = true; }
         }
